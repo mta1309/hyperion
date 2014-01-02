@@ -91,24 +91,31 @@ CPU_BITMAP      intmask = 0;            /* Interrupt CPU mask        */
          * [2] Decrement the CPU timer for each CPU  *
          *-------------------------------------------*/
 
-        /* Set interrupt flag if the CPU timer is negative */
-        if (CPU_TIMER(regs) < 0)
+        /*  If LPAR mode and not waiting, or in BASIC mode, decrement
+         *  the CPU timer and update the CPU timer interrupt state, if.
+         *  necessary.
+         */
+        if (!WAITSTATE(&regs->psw) || !sysblk.lparmode)
         {
-            if (!IS_IC_PTIMER(regs))
+            /* Set interrupt flag if the CPU timer is negative */
+            if (cpu_timer(regs) < 0)
             {
-                ON_IC_PTIMER(regs);
-                intmask |= regs->cpubit;
+                if (!IS_IC_PTIMER(regs))
+                {
+                    ON_IC_PTIMER(regs);
+                    intmask |= regs->cpubit;
+                }
             }
+            else if(IS_IC_PTIMER(regs))
+                OFF_IC_PTIMER(regs);
         }
-        else if(IS_IC_PTIMER(regs))
-            OFF_IC_PTIMER(regs);
 
 #if defined(_FEATURE_SIE)
         /* When running under SIE also update the SIE copy */
         if(regs->sie_active)
         {
             /* Set interrupt flag if the CPU timer is negative */
-            if (CPU_TIMER(regs->guestregs) < 0)
+            if (cpu_timer_SIE(regs) < 0)
             {
                 ON_IC_PTIMER(regs->guestregs);
                 intmask |= regs->cpubit;
@@ -171,7 +178,6 @@ int     i;                              /* Loop index                */
 REGS   *regs;                           /* -> REGS                   */
 U64     mipsrate;                       /* Calculated MIPS rate      */
 U64     siosrate;                       /* Calculated SIO rate       */
-U64     cpupct;                         /* Calculated cpu percentage */
 U64     total_mips;                     /* Total MIPS rate           */
 U64     total_sios;                     /* Total SIO rate            */
 
@@ -180,6 +186,7 @@ U64     now;                            /* Current time of day       */
 U64     then;                           /* Previous time of day      */
 U64     diff;                           /* Interval                  */
 U64     halfdiff;                       /* One-half interval         */
+U64     waittime;                       /* Wait time                 */
 const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
 #define diffrate(_x,_y) \
@@ -188,10 +195,6 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 #endif /*OPTION_MIPS_COUNTING*/
 
     UNREFERENCED(argp);
-
-#if defined(USE_GETTID)
-    sysblk.todtidp = gettid();
-#endif /*defined(USE_GETTID)*/
 
     /* Set root mode in order to set priority */
     SETMODE(ROOT);
@@ -205,6 +208,7 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
     /* Display thread started message on control panel */
     WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Timer");
+    SET_THREAD_NAME_ID(-1, "CPU Timer");
 
 #ifdef OPTION_MIPS_COUNTING
     then = host_tod();
@@ -262,17 +266,16 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
                 total_sios += siosrate;
 
                 /* Calculate CPU busy percentage */
-                cpupct = regs->waittime;
+                waittime = regs->waittime;
                 regs->waittime = 0;
                 if (regs->waittod)
                 {
-                    cpupct += now - regs->waittod;
+                    waittime += now - regs->waittod;
                     regs->waittod = now;
                 }
-                cpupct = diffrate(diff - cpupct, 100);
-                if (cpupct > 100)
-                  cpupct = 100;
-                regs->cpupct = cpupct;
+                regs->cpupct = min((diff > waittime) ?
+                                     diffrate(diff - waittime, 100) : 0,
+                                   100);
 
                 release_lock(&sysblk.cpulock[i]);
 
@@ -309,7 +312,6 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
 } /* end function timer_update_thread */
 
-#ifdef OPTION_CAPPING
 LOCK caplock;
 COND capcond;
 
@@ -463,4 +465,3 @@ int numcap = 1;              /* Number of CPU's being capped         */
     WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Capping manager");
     return(NULL);
 }
-#endif // OPTION_CAPPING

@@ -26,7 +26,7 @@
   #pragma optimize( "", off )           // disable optimizations for reliable breakpoints
 #endif
 
-#if defined( LCS_TIMING_DEBUG ) || defined( OPTION_WTHREADS )
+#if defined( LCS_TIMING_DEBUG )
   #define PTT_LCS_TIMING_DEBUG      PTT
 #else
   #define PTT_LCS_TIMING_DEBUG      __noop
@@ -68,7 +68,7 @@ static void     LCS_QueryIPAssists( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame );
 static void     LCS_LanStats      ( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame );
 static void     LCS_DefaultCmdProc( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame );
 
-static void*    LCS_PortThread( PLCSPORT pLCSPORT );
+static void*    LCS_PortThread( void* arg /*PLCSPORT pLCSPORT */ );
 
 static int      LCS_EnqueueEthFrame( PLCSDEV pLCSDEV, BYTE   bPort,
                                      BYTE*   pData,   size_t iSize );
@@ -294,10 +294,12 @@ int  LCS_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
             rc = TUNTAP_CreateInterface( pLCSBLK->pszTUNDevice,
                                          IFF_TAP | IFF_NO_PI,
                                          &pLCSBLK->Port[pLCSDev->bPort].fd,
-                                         pLCSBLK->Port[pLCSDev->bPort].szNetDevName );
+                                         pLCSBLK->Port[pLCSDev->bPort].szNetIfName );
 
+            // HHC00901 "%1d:%04X %s: interface %s, type %s opened"
             WRMSG(HHC00901, "I", SSID_TO_LCSS(pLCSDev->pDEVBLK[0]->ssid), pLCSDev->pDEVBLK[0]->devnum,
-                      pLCSBLK->Port[pLCSDev->bPort].szNetDevName, "TAP");
+                                 pLCSDev->pDEVBLK[0]->typname,
+                                 pLCSBLK->Port[pLCSDev->bPort].szNetIfName, "TAP");
 
 #if defined(OPTION_W32_CTCI)
 
@@ -306,20 +308,22 @@ int  LCS_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
                 struct tt32ctl tt32ctl;
 
                 memset( &tt32ctl, 0, sizeof(tt32ctl) );
-                strlcpy( tt32ctl.tt32ctl_name, pLCSBLK->Port[pLCSDev->bPort].szNetDevName, sizeof(tt32ctl.tt32ctl_name) );
+                strlcpy( tt32ctl.tt32ctl_name, pLCSBLK->Port[pLCSDev->bPort].szNetIfName, sizeof(tt32ctl.tt32ctl_name) );
 
                 tt32ctl.tt32ctl_devbuffsize = pLCSBLK->iKernBuff;
                 if( TUNTAP_IOCtl( pLCSBLK->Port[pLCSDev->bPort].fd, TT32SDEVBUFF, (char*)&tt32ctl ) != 0  )
                 {
                     WRMSG(HHC00902, "W", SSID_TO_LCSS(pLCSDev->pDEVBLK[0]->ssid), pLCSDev->pDEVBLK[0]->devnum,
-                          "TT32SDEVBUFF", pLCSBLK->Port[pLCSDev->bPort].szNetDevName, strerror( errno ) );
+                          pLCSDev->pDEVBLK[0]->typname,
+                          "TT32SDEVBUFF", pLCSBLK->Port[pLCSDev->bPort].szNetIfName, strerror( errno ) );
                 }
 
                 tt32ctl.tt32ctl_iobuffsize = pLCSBLK->iIOBuff;
                 if( TUNTAP_IOCtl( pLCSBLK->Port[pLCSDev->bPort].fd, TT32SIOBUFF, (char*)&tt32ctl ) != 0  )
                 {
                     WRMSG(HHC00902, "W", SSID_TO_LCSS(pLCSDev->pDEVBLK[0]->ssid), pLCSDev->pDEVBLK[0]->devnum,
-                          "TT32SIOBUFF", pLCSBLK->Port[pLCSDev->bPort].szNetDevName, strerror( errno ) );
+                          pLCSDev->pDEVBLK[0]->typname,
+                          "TT32SIOBUFF", pLCSBLK->Port[pLCSDev->bPort].szNetIfName, strerror( errno ) );
                 }
             }
 #endif
@@ -357,10 +361,10 @@ int  LCS_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
 
 void  LCS_ExecuteCCW( DEVBLK* pDEVBLK, BYTE  bCode,
                       BYTE    bFlags,  BYTE  bChained,
-                      U16     sCount,  BYTE  bPrevCode,
+                      U32     sCount,  BYTE  bPrevCode,
                       int     iCCWSeq, BYTE* pIOBuf,
                       BYTE*   pMore,   BYTE* pUnitStat,
-                      U16*    pResidual )
+                      U32*    pResidual )
 {
     int             iNum;               // Number of bytes to move
     BYTE            bOpCode;            // CCW opcode with modifier
@@ -746,7 +750,7 @@ void  LCS_Query( DEVBLK* pDEVBLK, char** ppszClass,
               pLCSDEV->bPort,
               pLCSDEV->bMode == LCSDEV_MODE_IP ? "IP" : "SNA",
               sType[pLCSDEV->bType],
-              pLCSDEV->pLCSBLK->Port[pLCSDEV->bPort].szNetDevName,
+              pLCSDEV->pLCSBLK->Port[pLCSDEV->bPort].szNetIfName,
               pLCSDEV->pLCSBLK->fDebug ? " -d" : "",
               ( pDEVBLK->devnum & 1 ) == 0 ? pLCSDEV->pDEVBLK[0]->excps : pLCSDEV->pDEVBLK[1]->excps );
 }
@@ -758,9 +762,9 @@ void  LCS_Query( DEVBLK* pDEVBLK, char** ppszClass,
 // it all available LCS Frames that we have buffered up in our buffer.
 // --------------------------------------------------------------------
 
-void  LCS_Read( DEVBLK* pDEVBLK,   U16   sCount,
+void  LCS_Read( DEVBLK* pDEVBLK,   U32   sCount,
                 BYTE*   pIOBuf,    BYTE* pUnitStat,
-                U16*    pResidual, BYTE* pMore )
+                U32*    pResidual, BYTE* pMore )
 {
     PLCSHDR     pLCSHdr;
     PLCSDEV     pLCSDEV = (PLCSDEV)pDEVBLK->dev_data;
@@ -782,17 +786,6 @@ void  LCS_Read( DEVBLK* pDEVBLK,   U16   sCount,
             release_lock( &pLCSDEV->Lock );
 
             // Wait 5 seconds then check for channel conditions
-#if defined( OPTION_WTHREADS )
-// Use a straight relative wait rather than the calculated wait of the POSIX
-// based threading.
-
-            obtain_lock( &pLCSDEV->EventLock );
-
-            rc = timed_wait_condition( &pLCSDEV->Event,
-                                       &pLCSDEV->EventLock,
-                                       CTC_READ_TIMEOUT_SECS * 1000 );
-
-#else //!defined( OPTION_WTHREADS )
             {
                 struct timespec waittime;
                 struct timeval  now;
@@ -808,7 +801,6 @@ void  LCS_Read( DEVBLK* pDEVBLK,   U16   sCount,
                                            &pLCSDEV->EventLock,
                                            &waittime );
             }
-#endif // defined( OPTION_WTHREADS)
 
             release_lock( &pLCSDEV->EventLock );
 
@@ -951,9 +943,9 @@ static void  LCS_EndMWrite( DEVBLK* pDEVBLK, int nEthBytes, int nEthFrames )
 //                         LCS_Write
 // ====================================================================
 
-void  LCS_Write( DEVBLK* pDEVBLK,   U16   sCount,
+void  LCS_Write( DEVBLK* pDEVBLK,   U32   sCount,
                  BYTE*   pIOBuf,    BYTE* pUnitStat,
-                 U16*    pResidual )
+                 U32*    pResidual )
 {
     PLCSDEV     pLCSDEV      = (PLCSDEV)pDEVBLK->dev_data;
     PLCSHDR     pLCSHDR      = NULL;
@@ -1245,13 +1237,13 @@ static void  LCS_Startup( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     pLCSPORT = &pLCSDEV->pLCSBLK->Port[pLCSDEV->bPort];
 
-    VERIFY( TUNTAP_SetIPAddr( pLCSPORT->szNetDevName, "0.0.0.0" ) == 0 );
-    VERIFY( TUNTAP_SetMTU   ( pLCSPORT->szNetDevName,  "1500"   ) == 0 );
+    VERIFY( TUNTAP_SetIPAddr( pLCSPORT->szNetIfName, "0.0.0.0" ) == 0 );
+    VERIFY( TUNTAP_SetMTU   ( pLCSPORT->szNetIfName,  "1500"   ) == 0 );
 
 #ifdef OPTION_TUNTAP_SETMACADDR
     if (pLCSPORT->fLocalMAC)
     {
-        VERIFY( TUNTAP_SetMACAddr( pLCSPORT->szNetDevName,
+        VERIFY( TUNTAP_SetMACAddr( pLCSPORT->szNetIfName,
                                    pLCSPORT->szMACAddress ) == 0 );
     }
 #endif // OPTION_TUNTAP_SETMACADDR
@@ -1318,7 +1310,7 @@ static void  LCS_StartLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 #endif /* defined( TUNTAP_IFF_RUNNING_NEEDED ) */
 
         // Enable the interface by turning on the IFF_UP flag...
-        VERIFY( TUNTAP_SetFlags( pLCSPORT->szNetDevName, nIFFlags ) == 0 );
+        VERIFY( TUNTAP_SetFlags( pLCSPORT->szNetIfName, nIFFlags ) == 0 );
 
 #ifdef OPTION_TUNTAP_DELADD_ROUTES
 
@@ -1328,7 +1320,7 @@ static void  LCS_StartLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
         for( pLCSRTE = pLCSPORT->pRoutes; pLCSRTE; pLCSRTE = pLCSRTE->pNext )
         {
-            VERIFY( TUNTAP_AddRoute( pLCSPORT->szNetDevName,
+            VERIFY( TUNTAP_AddRoute( pLCSPORT->szNetIfName,
                              pLCSRTE->pszNetAddr,
                              pLCSRTE->pszNetMask,
                              NULL,
@@ -1352,7 +1344,7 @@ static void  LCS_StartLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     if( pLCSDEV->pszIPAddress )
     {
-        VERIFY( TUNTAP_AddRoute( pLCSPORT->szNetDevName,
+        VERIFY( TUNTAP_AddRoute( pLCSPORT->szNetIfName,
                          pLCSDEV->pszIPAddress,
                          "255.255.255.255",
                          NULL,
@@ -1389,7 +1381,7 @@ static void  LCS_StopLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
     usleep( 250*1000 );
 
     // Disable the interface by turning off the IFF_UP flag...
-    VERIFY( TUNTAP_SetFlags( pLCSPORT->szNetDevName, 0 ) == 0 );
+    VERIFY( TUNTAP_SetFlags( pLCSPORT->szNetIfName, 0 ) == 0 );
 
 #ifdef OPTION_TUNTAP_DELADD_ROUTES
 
@@ -1400,7 +1392,7 @@ static void  LCS_StopLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     if( pLCSDEV->pszIPAddress )
     {
-        VERIFY( TUNTAP_DelRoute( pLCSPORT->szNetDevName,
+        VERIFY( TUNTAP_DelRoute( pLCSPORT->szNetIfName,
                          pLCSDEV->pszIPAddress,
                          "255.255.255.255",
                          NULL,
@@ -1413,7 +1405,7 @@ static void  LCS_StopLan( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     for( pLCSRTE = pLCSPORT->pRoutes; pLCSRTE; pLCSRTE = pLCSRTE->pNext )
     {
-        VERIFY( TUNTAP_DelRoute( pLCSPORT->szNetDevName,
+        VERIFY( TUNTAP_DelRoute( pLCSPORT->szNetIfName,
                          pLCSRTE->pszNetAddr,
                          pLCSRTE->pszNetMask,
                          NULL,
@@ -1539,7 +1531,7 @@ static void  LCS_LanStats( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     memset( &ifr, 0, sizeof( ifr ) );
 
-    strcpy( ifr.ifr_name, pLCSPORT->szNetDevName );
+    strcpy( ifr.ifr_name, pLCSPORT->szNetIfName );
 
     pPortMAC  = (BYTE*) &pLCSPORT->MAC_Address;
 
@@ -1548,7 +1540,7 @@ static void  LCS_LanStats( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     if( TUNTAP_IOCtl( fd, SIOCGIFHWADDR, (char*)&ifr ) != 0  )
     {
-        WRMSG(HHC00941, "E", "SIOCGIFHWADDR", pLCSPORT->szNetDevName, strerror( errno ) );
+        WRMSG(HHC00941, "E", "SIOCGIFHWADDR", pLCSPORT->szNetIfName, strerror( errno ) );
         // FIXME: we should probably be returning a non-zero hwReturnCode
         // STORE_HW( reply.bLCSCmdHdr.hwReturnCode, 0x0002 );
         return;
@@ -1563,14 +1555,14 @@ static void  LCS_LanStats( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 
     /* Report what MAC address we will really be using */
     // "CTC: lcs device '%s' using mac %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X"
-    WRMSG(HHC00942, "I", pLCSPORT->szNetDevName, *(pIFaceMAC+0),*(pIFaceMAC+1),
+    WRMSG(HHC00942, "I", pLCSPORT->szNetIfName, *(pIFaceMAC+0),*(pIFaceMAC+1),
                                     *(pIFaceMAC+2),*(pIFaceMAC+3),
                                     *(pIFaceMAC+4),*(pIFaceMAC+5));
 
     /* Issue warning if different from specified value */
     if (memcmp( pPortMAC, pIFaceMAC, IFHWADDRLEN ) != 0)
     {
-        WRMSG(HHC00943, "W", pLCSPORT->szNetDevName, *(pPortMAC+0),*(pPortMAC+1),
+        WRMSG(HHC00943, "W", pLCSPORT->szNetIfName, *(pPortMAC+0),*(pPortMAC+1),
                                         *(pPortMAC+2),*(pPortMAC+3),
                                         *(pPortMAC+4),*(pPortMAC+5));
 
@@ -1617,8 +1609,9 @@ static void  LCS_DefaultCmdProc( PLCSDEV pLCSDEV, PLCSCMDHDR pCmdFrame )
 //                       LCS_PortThread
 // ====================================================================
 
-static void*  LCS_PortThread( PLCSPORT pLCSPORT )
+static void*  LCS_PortThread( void* arg)
 {
+    PLCSPORT    pLCSPORT = (PLCSPORT) arg;
     PLCSDEV     pLCSDev;
     PLCSDEV     pPrimaryLCSDEV;
     PLCSDEV     pSecondaryLCSDEV;
@@ -1648,14 +1641,6 @@ static void*  LCS_PortThread( PLCSPORT pLCSPORT )
                 && !pLCSPORT->fStarted
             )
             {
-#if defined( OPTION_WTHREADS )
-                timed_wait_condition
-                (
-                    &pLCSPORT->Event,       // ptr to condition to wait on
-                    &pLCSPORT->EventLock,   // ptr to controlling lock (must be held!)
-                    250                     // max #of milliseconds to wait
-                );
-#else
                 timed_wait_condition_relative_usecs
                 (
                     &pLCSPORT->Event,       // ptr to condition to wait on
@@ -1663,7 +1648,6 @@ static void*  LCS_PortThread( PLCSPORT pLCSPORT )
                     250*1000,               // max #of microseconds to wait
                     NULL                    // [OPTIONAL] ptr to tod value (may be NULL)
                 );
-#endif
             }
         }
         release_lock( &pLCSPORT->EventLock );
@@ -1904,7 +1888,7 @@ static void*  LCS_PortThread( PLCSPORT pLCSPORT )
     // Housekeeping - Cleanup Port Block
 
     memset( pLCSPORT->MAC_Address,  0, sizeof( MAC ) );
-    memset( pLCSPORT->szNetDevName, 0, IFNAMSIZ );
+    memset( pLCSPORT->szNetIfName, 0, IFNAMSIZ );
     memset( pLCSPORT->szMACAddress, 0, 32 );
 
     for( pLCSRTE = pLCSPORT->pRoutes; pLCSRTE; pLCSRTE = pLCSPORT->pRoutes )
@@ -2084,7 +2068,7 @@ int  ParseArgs( DEVBLK* pDEVBLK, PLCSBLK pLCSBLK,
     memset( &addr, 0, sizeof( struct in_addr ) );
 
     // Set some initial defaults
-#if defined( WIN32 )
+#if defined( OPTION_W32_CTCI )
     pLCSBLK->pszTUNDevice   = strdup( tt32_get_default_iface() );
 #else
     pLCSBLK->pszTUNDevice   = strdup( HERCTUN_DEV );

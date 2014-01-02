@@ -47,7 +47,7 @@ W32_DLL_IMPORT  char*  w32_w32errmsg( int errnum, char* pszBuffer, size_t nBuffS
 //////////////////////////////////////////////////////////////////////////////////////////
 // Large File Support...
 
-#if (_MSC_VER < 1400)
+#if (_MSC_VER < VS2005)
   W32_DLL_IMPORT  __int64  w32_ftelli64 ( FILE* stream );
   W32_DLL_IMPORT    int    w32_fseeki64 ( FILE* stream, __int64 offset, int origin );
   W32_DLL_IMPORT    int    w32_ftrunc64 ( int fd, __int64 new_size );
@@ -117,9 +117,11 @@ W32_DLL_IMPORT char* strtok_r ( char* s, const char* sep, char** lasts);
 #endif
 
 #if !defined(HAVE_SYS_RESOURCE_H)
-  // Note: we only provide the absolute minimum required information
-  #define  RUSAGE_SELF       0      // Current process
-  #define  RUSAGE_CHILDREN  -1      // Children of the current process
+  // Note: We only provide the absolute minimum required information;
+  //       RUSAGE_BOTH not defined as RUSAGE_BOTH is deprecated.
+  #define  RUSAGE_SELF      ( 0)    // Current process
+  #define  RUSAGE_CHILDREN  (-1)    // Children of the current process
+  #define  RUSAGE_THREAD    ( 1)    // Current thread
   struct rusage                     // Resource utilization information
   {
     struct timeval  ru_utime;       // User time used
@@ -216,7 +218,7 @@ W32_DLL_IMPORT int    w32_fprintf( FILE* stream, const char* format, ... );
 W32_DLL_IMPORT int    w32_fclose ( FILE* stream );
 W32_DLL_IMPORT int    w32_get_stdin_char ( char* pCharBuff, int wait_millisecs );
 W32_DLL_IMPORT pid_t  w32_poor_mans_fork ( char*  pszCommandLine, int* pnWriteToChildStdinFD );
-W32_DLL_IMPORT void   w32_set_thread_name( TID tid, char* name );
+W32_DLL_IMPORT void   w32_set_thread_name( TID tid, const char* name );
 
 W32_DLL_IMPORT unsigned long  w32_hpagesize();
 
@@ -239,7 +241,7 @@ W32_DLL_IMPORT char*  w32_strcasestr( const char* haystack, const char* needle )
 //////////////////////////////////////////////////////////////////////////////////////////
 // Support for disabling of CRT Invalid Parameter Handler...
 
-#if defined( _MSVC_ ) && defined( _MSC_VER ) && ( _MSC_VER >= 1400 )
+#if defined( _MSVC_ ) && defined( _MSC_VER ) && ( _MSC_VER >= VS2005 )
 
 #define DISABLE_CRT_INVALID_PARAMETER_HANDLER()   DisableInvalidParameterHandling()
 #define ENABLE_CRT_INVALID_PARAMETER_HANDLING()   EnableInvalidParameterHandling()
@@ -247,12 +249,12 @@ W32_DLL_IMPORT char*  w32_strcasestr( const char* haystack, const char* needle )
 W32_DLL_IMPORT  void  DisableInvalidParameterHandling();
 W32_DLL_IMPORT  void  EnableInvalidParameterHandling();
 
-#else // !defined( _MSVC_ ) || !defined( _MSC_VER ) || ( _MSC_VER < 1400 )
+#else // !defined( _MSVC_ ) || !defined( _MSC_VER ) || ( _MSC_VER < VS2005 )
 
 #define DISABLE_CRT_INVALID_PARAMETER_HANDLER()   /* (no nothing) */
 #define ENABLE_CRT_INVALID_PARAMETER_HANDLING()   /* (no nothing) */
 
-#endif // defined( _MSVC_ ) && defined( _MSC_VER ) && ( _MSC_VER >= 1400 )
+#endif // defined( _MSVC_ ) && defined( _MSC_VER ) && ( _MSC_VER >= VS2005 )
 
 //////////////////////////////////////////////////////////////////////////////////////////
 

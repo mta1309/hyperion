@@ -75,6 +75,7 @@ typedef struct CMDTAB CMDTAB;
 #define SYSCMDNOPERNDIAG8   (SYSCMDNDIAG8 - SYSOPER)
 #define SYSCMDNOPERNPROG    (SYSCMDNOPER  - SYSPROG)
 #define SYSPROGDEVEL        (SYSPROG | SYSDEVEL)
+#define SYSPROGDEVELDEBUG   (SYSPROG | SYSDEVEL | SYSDEBUG)
 
 /*-------------------------------------------------------------------*/
 /* Macros used to define entries in the command table                */
@@ -117,9 +118,8 @@ static  CMDTAB   cmdtab[]  = {              /* (COMMAND table)       */
 
   CALL_EXTCMD ( cachestats_cmd )            /* (lives in cache.c)    */
   CALL_EXTCMD ( shared_cmd     )            /* (lives in shared.c)   */
-#if defined   ( OPTION_PTTRACE )            /* ( OPTION_PTTRACE )    */
   CALL_EXTCMD ( ptt_cmd        )            /* (lives in pttrace.c)  */
-#endif     /* ( OPTION_PTTRACE ) */         /* ( OPTION_PTTRACE )    */
+  CALL_EXTCMD ( locks_cmd      )            /* (lives in hthreads.c) */
 
 /*-------------------------------------------------------------------*/
 /* $zapcmd - internal debug - may cause havoc - use with caution     */
@@ -131,16 +131,14 @@ int i;
 
 //  Format:
 //
-//      $zapcmd  xxxx  NoCfg
-//      $zapcmd  xxxx  Cmd
-//            ...etc...
+//      $zapcmd  cmdname  CFG|NOCFG|CMD|NOCMD
 //
-//  For non-DEBUG (i.e. RETAIL/Release) builds:
+//  For normal non-DEBUG production release builds, use the sequence:
 //
-//      msglvl   VERBOSE        (optional)
-//      msglvl   DEBUG          (optional)
-//      cmdlvl   DEBUG          (*required!*)  (because not DEBUG build,
-//      $zapcmd  XXXX  Cmd                      and $zapcmd is SYSDEBUG)
+//      msglvl   VERBOSE      (optional)
+//      msglvl   DEBUG        (optional)
+//      cmdlvl   DEBUG        (*required!*) (because not DEBUG build,
+//      $zapcmd  cmdname  CMD                and $zapcmd is SYSDEBUG)
 //
 //  In other words, the $zapcmd is itself a "debug" level command, and
 //  thus in order to use it, the debug cmdlvl must be set first (which
@@ -236,7 +234,7 @@ char*  argv[MAX_ARGS];
      obtain_lock( &sysblk.cmdlock );                                 \
      {                                                               \
          TID tid = thread_id();                                      \
-         while (sysblk.cmdtid && tid != sysblk.cmdtid)               \
+         while (sysblk.cmdtid && !equal_threads(tid,sysblk.cmdtid))  \
              wait_condition( &sysblk.cmdcond, &sysblk.cmdlock );     \
          sysblk.cmdtid = tid;                                        \
          sysblk.cmdcnt++;                                            \
@@ -266,7 +264,7 @@ char*  argv[MAX_ARGS];
 #else
  #define HERC_CMD_EXIT()
 #endif
- 
+
 /*-------------------------------------------------------------------*/
 /* Route Hercules command to proper command handling function        */
 /*-------------------------------------------------------------------*/
@@ -582,10 +580,17 @@ int HelpCommand( CMDFUNC_ARGS_PROTO )
         /* List standard formatted commands from our routing table */
         for (pCmdTab = cmdtab; pCmdTab->statement; pCmdTab++)
         {
+            if (pCmdTab->type == SYSPROGDEVELDEBUG)
+            {
+                /* Special System Programmer Developer Debug command */
+                /* Command Level must also be Debug too, else hidden */
+                if ((sysblk.sysgroup & SYSGROUP_PROGDEVELDEBUG) != SYSGROUP_PROGDEVELDEBUG)
+                    continue;
+            }
             if (  (pCmdTab->type & sysblk.sysgroup)
                && (pCmdTab->shortdesc)
                && (pfxlen == 0 || !strncasecmp( argv[1], pCmdTab->statement, pfxlen ))
-               )
+            )
             {
                 longflag = ' ';
                 if (pCmdTab->longdesc)
@@ -633,6 +638,13 @@ int HelpCommand( CMDFUNC_ARGS_PROTO )
             cmdlen = pCmdTab->mincmdlen ? pCmdTab->mincmdlen : strlen( pCmdTab->statement );
             matchlen = MAX( strlen(argv[1]), cmdlen );
 
+            if (pCmdTab->type == SYSPROGDEVELDEBUG)
+            {
+                /* Special System Programmer Developer Debug command */
+                /* Command Level must also be Debug too, else hidden */
+                if ((sysblk.sysgroup & SYSGROUP_PROGDEVELDEBUG) != SYSGROUP_PROGDEVELDEBUG)
+                    continue;
+            }
             if (1
                 && (pCmdTab->shortdesc)
                 && (pCmdTab->type & sysblk.sysgroup)
@@ -864,7 +876,7 @@ void *panel_command (void *cmdline)
         {
         int priomsg = TRUE;     /* Priority scp command   */
         int scpecho = TRUE;     /* (always echo to hmc)   */
-            if (!cmd[0]) {      /* (empty command given?) */    
+            if (!cmd[0]) {      /* (empty command given?) */
                 cmd[0] = ' ';   /* (MUST send something!) */
                 cmd[1] = 0;
             }
@@ -874,6 +886,6 @@ void *panel_command (void *cmdline)
     }
 #endif /* defined( OPTION_CMDTGT ) */
 
-    return (void*)rc;
+    return (void*)((uintptr_t)rc);
 }
 /* end panel_command / panel_command_r */

@@ -85,7 +85,7 @@ do { \
     } /* end if(!data-chained) */ \
     if ( dev->index > 1 ) \
     { \
-        for (i = 1; i < dev->index; i++) \
+        for (i = 1; i < (U32)dev->index; i++) \
         { \
             dev->buf[dev->bufoff] = SPACE; \
             dev->bufoff++; \
@@ -93,7 +93,7 @@ do { \
         } /* end for(i) */ \
     } /* end if ( dev->index > 1 )  */ \
     /* Calculate number of bytes to write and set residual count */ \
-    num = (count < dev->bufres) ? count : dev->bufres; \
+    num = (count < (U32)dev->bufres) ? count : (U32)dev->bufres; \
     *residual = count - num; \
     /* Copy data from channel buffer to print buffer */ \
     for (i = 0; i < num; i++) \
@@ -129,7 +129,7 @@ do { \
 #define SKIP_TO_CHAN() \
 do { \
     havechan = 0; \
-    for ( i = 0; i < dev->lpp; i++ ) \
+    for ( i = 0; i < (U32)dev->lpp; i++ ) \
     { \
         line = LINENUM( dev->currline + i ); \
         if ( dev->fcb[line] != chan )  \
@@ -175,7 +175,7 @@ do { \
     } \
 } while (0)
 
-static void* spthread (DEVBLK* dev);        /*  (forward reference)  */
+static void* spthread ( void* dev );        /*  (forward reference)  */
 
 /*-------------------------------------------------------------------*/
 /* Dump the FCB info                                                 */
@@ -225,8 +225,9 @@ static int onconnect_callback (DEVBLK* dev)
 /*-------------------------------------------------------------------*/
 /* Thread to monitor the sockdev remote print spooler connection     */
 /*-------------------------------------------------------------------*/
-static void* spthread (DEVBLK* dev)
+static void* spthread (void* arg)
 {
+    DEVBLK* dev = (DEVBLK*) arg;
     BYTE byte;
     fd_set readset, errorset;
     struct timeval tv;
@@ -331,7 +332,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
     if (dev->fd >= 0)
     {
         (dev->hnd->close)(dev);
-    
+
         release_lock (&dev->lock);
         device_attention (dev, CSW_DE);
         obtain_lock (&dev->lock);
@@ -471,7 +472,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
             if (errno != 0 || nxt == ptr || *nxt != 0 || ( dev->lpi != 6 && dev->lpi != 8 ) )
             {
                 j = ptr - argv[iarg];
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                 return -1;
             }
             continue;
@@ -481,7 +482,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
         {
             if (dev->devtype != 0x3211 )
             {
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, 1);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], 1);
                 return -1;
             }
             ptr = argv[iarg]+6;
@@ -490,7 +491,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
             if (errno != 0 || nxt == ptr || *nxt != 0 || ( dev->index < 0 || dev->index > 15) )
             {
                 j = ptr - argv[iarg];
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                 return -1;
             }
             continue;
@@ -504,7 +505,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
             if (errno != 0 || nxt == ptr || *nxt != 0 ||dev->lpp > FCBSIZE)
             {
                 j = ptr - argv[iarg];
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                 return -1;
             }
             continue;
@@ -518,7 +519,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
             if (errno != 0 || nxt == ptr || *nxt != 0 ||  dev->ffchan < 1 || dev->ffchan > 12)
             {
                 j = ptr - argv[iarg];
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                 return -1;
             }
             continue;
@@ -540,7 +541,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
                     if (errno != 0 || *nxt != ':' || nxt == ptr || line > dev->lpp || dev->fcb[line] != 0 )
                     {
                         j = ptr - argv[iarg];
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                         return -1;
                     }
 
@@ -550,7 +551,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
                     if (errno != 0 || (*nxt != ',' && *nxt != 0) || nxt == ptr || chan < 1 || chan > 12 )
                     {
                         j = ptr - argv[iarg];
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                         return -1;
                     }
                     dev->fcb[line] = chan;
@@ -572,14 +573,14 @@ int   sockdev = 0;                     /* 1 == is socket device     */
                     if (errno != 0 || (*nxt != ',' && *nxt != 0) || nxt == ptr || line > dev->lpp || dev->fcb[line] != 0 )
                     {
                         j = ptr - argv[iarg];
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                         return -1;
                     }
                     chan += 1;
                     if ( chan > 12 )
                     {
                         j = ptr - argv[iarg];
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                         return -1;
                     }
                     dev->fcb[line] = chan;
@@ -590,7 +591,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
                 if ( chan != 12 )
                 {
                     j = 5;
-                    WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, j);
+                    WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], j);
                     return -1;
                 }
             }
@@ -598,7 +599,7 @@ int   sockdev = 0;                     /* 1 == is socket device     */
             continue;
         }
 
-        WRMSG (HHC01102, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1);
+        WRMSG (HHC01102, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg]);
         return -1;
     }
 
@@ -912,12 +913,12 @@ int fd = dev->fd;
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 static void printer_execute_ccw (DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual)
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual)
 {
 int             rc = 0;                 /* Return code               */
-int             i;                      /* Loop counter              */
-int             num;                    /* Number of bytes to move   */
+U32             i;                      /* Loop counter              */
+U32             num;                    /* Number of bytes to move   */
 char           *eor;                    /* -> end of record string   */
 char           *nls = "\n\n\n";         /* -> new lines              */
 BYTE            c;                      /* Print character           */
@@ -1130,7 +1131,7 @@ char            wbuf[150];
         }
         else
         {
-            int i = 0;
+            U32 i = 0;
             int j = 1;
             int more = 1;
             for (i = 0; i <= FCBSIZE; i++) dev->fcb[i] = 0;
@@ -1379,17 +1380,24 @@ char            wbuf[150];
     /*---------------------------------------------------------------*/
     /* SENSE ID                                                      */
     /*---------------------------------------------------------------*/
-        /* Calculate residual byte count */
-        num = (count < dev->numdevid) ? count : dev->numdevid;
-        *residual = count - num;
-        if (count < dev->numdevid) *more = 1;
 
-        /* Copy device identifier bytes to channel I/O buffer */
-        memcpy (iobuf, dev->devid, num);
+        /* SENSE ID is only supported if LEGACYSENSEID is ON;
+         * otherwise, fall through to invalid operation.
+         */
+        if (sysblk.legacysenseid)
+        {
+            /* Calculate residual byte count */
+            num = (count < dev->numdevid) ? count : dev->numdevid;
+            *residual = count - num;
+            if (count < dev->numdevid) *more = 1;
 
-        /* Return unit status */
-        *unitstat = CSW_CE | CSW_DE;
-        break;
+            /* Copy device identifier bytes to channel I/O buffer */
+            memcpy (iobuf, dev->devid, num);
+
+            /* Return unit status */
+            *unitstat = CSW_CE | CSW_DE;
+            break;
+        }
 
     default:
     /*---------------------------------------------------------------*/

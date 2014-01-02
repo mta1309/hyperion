@@ -2,8 +2,6 @@
 # CONFIGURE.AC: Process this file with AutoConf to produce a configure script.
 ###############################################################################
 
-# $Id$
-
 #    AC is AutoConfigure, AM is AutoMake, and AH is AutoHeader. The
 #    'HC_XXXX..' macros are custom Hercules autoconf macros defined
 #    in the 'hercules.m4' file in the 'autoconf' subdirectory.
@@ -12,7 +10,7 @@ AC_INIT(hercules.h)                     # (package, version, bugreport email, et
 AC_REVISION($Revision$)                 # (the version of this configure.ac)
 AC_CONFIG_AUX_DIR(autoconf)             # (directory containing auxillary build tools)
 AM_INIT_AUTOMAKE(hercules,4.00)         # (the version of our software package)
-AM_CONFIG_HEADER(config.h)              # (the file the resulting configure script will produce)
+AC_CONFIG_HEADERS(config.h)             # (the file the resulting configure script will produce)
 AM_MAINTAINER_MODE()
 AC_CANONICAL_HOST()                     # (sets $host_cpu, $host_vendor, and $host_os)
 AC_CANONICAL_TARGET()                   # (sets $target_cpu, $target_vendor, and $target_os)
@@ -360,9 +358,6 @@ AS_IF([test "x${ac_cv_func_dlopen}" = "xyes" -o "x${ac_cv_lib_dl_dlopen}" = "xye
     [hc_cv_have_dlopen=yes],
     [hc_cv_have_dlopen=no])
 
-AM_GNU_GETTEXT([external])              # GNU internationalization and localization
-AM_ICONV()                              # GNU internationalization and localization
-
 HC_LD_DISALLOWDUPS()                    # Add linker options to LDFLAGS variable
                                         # to warn about duplicate libtool symbols,
                                         # if needed.
@@ -384,6 +379,7 @@ hc_error=no
 
 AH_TEMPLATE( [CUSTOM_BUILD_STRING],     [Define to provide additional information about this build] )
 AH_TEMPLATE( [MAX_CPU_ENGINES],         [Defines the maximum number of emulated CPU engines] )
+AH_TEMPLATE( [HOST_ARCH],               [Define as quoted 'target_cpu' value = target host CPU architecture] )
 AH_TEMPLATE( [DEBUG],                   [Define to enable extra debugging code (TRACE/VERIFY/ASSERT macros)] )
 AH_TEMPLATE( [C99_FLEXIBLE_ARRAYS],     [Define if your gcc properly supports C99 flexible arrays] )
 AH_TEMPLATE( [HAVE_ATTR_REGPARM],       [Define if your gcc properly supports __attribute__((regparm(n)))] )
@@ -408,13 +404,13 @@ AH_TEMPLATE( [OPTION_FTHREADS],         [Define to use included threads implemen
 AH_TEMPLATE( [TIMESPEC_IN_TIME_H],      [Define if 'struct timespec' defined in <time.h>] )
 AH_TEMPLATE( [TIMESPEC_IN_SYS_TYPES_H], [Define if 'struct timespec' defined in <sys/types.h>] )
 AH_TEMPLATE( [_BSD_SOCKLEN_T_],         [Define missing macro on apple darwin (osx) platform] )
-AH_TEMPLATE( [_INTL_REDIRECT_MACROS],   [Define to 1 if non-Intel architecture (gettext)] )
 AH_TEMPLATE( [CCKD_BZIP2],              [Define to enable bzip2 compression in emulated DASDs] )
 AH_TEMPLATE( [HET_BZIP2],               [Define to enable bzip2 compression in emulated tapes] )
 AH_TEMPLATE( [OPTION_CAPABILITIES],     [Define to enable posix draft 1003.1e capabilities] )
 AH_TEMPLATE( [ENABLE_OBJECT_REXX],      [Define to enable open object rexx support] )
 AH_TEMPLATE( [ENABLE_REGINA_REXX],      [Define to enable Regina Rexx support] )
 AH_TEMPLATE( [ENABLE_IPV6],             [Define to enable IPV6 support] )
+AH_TEMPLATE( [HAVE_HQA_H],              [Define to if header "hqa.h" exists in HQA dir] )
 
 ###############################################################################
 #   Checks for REQUIRED (non-optional) header files...
@@ -486,6 +482,8 @@ AC_CACHE_SAVE()
 #  or not without having to do their own AC_CHECK_HEADERS (since we've already
 #  done it).
 
+HC_CHECK_HQA_DIR()                # (Hercules Build Configuration QA Testing)
+
 #------------------------------------------------------------------------------
 #  PROGRAMMING NOTE: on Darwin sys/socket.h must be included before
 #  net/if.h, net/route.h, or netinet/in.h can be #included, and on OS X 10.3
@@ -536,6 +534,50 @@ AC_CHECK_HEADERS( linux/if_tun.h, [hc_cv_have_linux_if_tun_h=yes], [hc_cv_have_l
 AC_CHECK_HEADERS( sys/ioctl.h,    [hc_cv_have_sys_ioctl_h=yes],    [hc_cv_have_sys_ioctl_h=no]    )
 
 #------------------------------------------------------------------------------
+#  PROGRAMMING NOTE: On Linux struct in6_ifreq is defined in linux/ipv6.h.
+#  On other systems it may be defined in netinet6/in6_var.h or elsewhere.
+
+#  in6_*.h files are stricly for library separation.  They should not be included
+#  directly.  This is enforced on FreeBSD and OS/X.  On OS/X you can get away with netinet/in_var.h;
+#  in FreeBSD you have to do it by the book, but this works for OS/X too.
+
+AC_CHECK_HEADERS( linux/ipv6.h,       [hc_cv_have_linux_ipv6_h=yes],       [hc_cv_have_linux_ipv6_h=no] )
+# FreeBSD has this guy
+AC_CHECK_HEADERS( net/if_var.h,   [hc_cv_have_net_in_var_h=yes],   [hc_cv_have_net_in_var_h=no],
+[
+    #include <net/if.h>
+    #include <net/if_var.h>
+] )
+AC_CHECK_HEADERS( netinet/in.h,   [hc_cv_have_netinet_in_h=yes],   [hc_cv_have_netinet_in_h=no] )
+AC_CHECK_HEADERS( netinet/tcp.h,  [hc_cv_have_netinet_tcp_h=yes],  [hc_cv_have_netinet_tcp_h=no])
+AC_CHECK_HEADERS( net/route.h,    [hc_cv_have_net_route_h=yes],    [hc_cv_have_net_route_h=no])
+AC_CHECK_HEADERS( netinet/in_var.h,   [hc_cv_have_netinet_in_var_h=yes],   [hc_cv_have_netinet_in_var_h=no],
+[
+    #if HAVE_NET_IF_VAR_H
+    #include <net/if.h>
+    #include <net/if_var.h>
+    #if HAVE_NETINET_IN_H
+    #include <netinet/in.h>
+    #include <netinet/in_var.h>
+    #endif
+    #endif
+] )
+
+# Autoconf adds an include for file being tested at the end of the program, but that is OK,
+# as we've been good boys.  The duplicate include has no effect.
+AC_CHECK_HEADERS( netinet6/in6_var.h, [hc_cv_have_netinet6_in6_var_h=yes], [hc_cv_have_netinet6_in6_var_h=no],
+[
+    #if HAVE_NET_IF_VAR_H
+    #include <net/if.h>
+    #include <net/if_var.h>
+    #if HAVE_NETINET_IN_H
+    #include <netinet/in.h>
+    #include <netinet/in_var.h>
+    #endif
+    #endif
+] )
+
+#------------------------------------------------------------------------------
 #  PROGRAMMING NOTE: on *BSD systems sys/param.h must be #included before
 #  sys/mount.h as it contains the #define of NGROUPS.
 
@@ -559,8 +601,6 @@ AC_CHECK_HEADERS( bzlib.h,        [hc_cv_have_bzlib_h=yes],        [hc_cv_have_b
 AC_CHECK_HEADERS( dlfcn.h,        [hc_cv_have_dlfcn_h=yes],        [hc_cv_have_dlfcn_h=no]        )
 AC_CHECK_HEADERS( fenv.h,         [hc_cv_have_fenv_h=yes],         [hc_cv_have_fenv_h=no]         )
 AC_CHECK_HEADERS( inttypes.h,     [hc_cv_have_inttypes_h=yes],     [hc_cv_have_inttypes_h=no]     )
-AC_CHECK_HEADERS( iconv.h,        [hc_cv_have_iconv_h=yes],        [hc_cv_have_iconv_h=no]        )
-AC_CHECK_HEADERS( libintl.h,      [hc_cv_have_libintl_h=yes],      [hc_cv_have_libintl_h=no]      )
 AC_CHECK_HEADERS( locale.h,       [hc_cv_have_locale_h=yes],       [hc_cv_have_locale_h=no]       )
 AC_CHECK_HEADERS( ltdl.h,         [hc_cv_have_ltdl_h=yes],         [hc_cv_have_ltdl_h=no]         )
 AC_CHECK_HEADERS( malloc.h,       [hc_cv_have_malloc_h=yes],       [hc_cv_have_malloc_h=no]       )
@@ -623,7 +663,9 @@ AC_CHECK_DECLS( _SC_NPROCESSORS_CONF, [hc_cv_have_sc_nprocessors_conf=yes], [hc_
 AC_CHECK_DECLS( _SC_NPROCESSORS_ONLN, [hc_cv_have_sc_nprocessors_onln=yes], [hc_cv_have_sc_nprocessors_onln=no], [#include <unistd.h>] )
 
 AC_CHECK_DECLS( SIOCSIFNETMASK,       [hc_cv_have_siocsifnetmask=yes],      [hc_cv_have_siocsifnetmask=no],      [#include <linux/sockios.h>] )
+AC_CHECK_DECLS( SIOCSIFBRDADDR,       [hc_cv_have_siocsifbrdaddr=yes],      [hc_cv_have_siocsifbrdaddr=no],      [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCSIFHWADDR,        [hc_cv_have_siocsifhwaddr=yes],       [hc_cv_have_siocsifhwaddr=no],       [#include <linux/sockios.h>] )
+AC_CHECK_DECLS( SIOCGIFHWADDR,        [hc_cv_have_siocgifhwaddr=yes],       [hc_cv_have_siocgifhwaddr=no],       [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCADDRT,            [hc_cv_have_siocaddrt=yes],           [hc_cv_have_siocaddrt=no],           [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCDELRT,            [hc_cv_have_siocdelrt=yes],           [hc_cv_have_siocdelrt=no],           [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCDIFADDR,          [hc_cv_have_siocdifaddr=yes],         [hc_cv_have_siocdifaddr=no],         [#include <linux/sockios.h>] )
@@ -713,7 +755,6 @@ AC_CHECK_LIB( z,      uncompress     )
 AC_CHECK_LIB( bz2,    BZ2_bzBuffToBuffDecompress,
             [ hc_cv_have_libbz2=yes ],
             [ hc_cv_have_libbz2=no  ] )
-AC_CHECK_LIB( iconv,  iconv          )
 # jbs 10/15/2003 Solaris requires -lrt for sched_yield() and fdatasync()
 AC_CHECK_LIB( rt,     sched_yield    )
 # rbowler 2008/03/10 rev 1.196 Solaris 2.9 requires -lpthread
@@ -734,7 +775,6 @@ AC_CACHE_SAVE()
 #   defined gets added to the LIBS library search variable...
 ###############################################################################
 
-AC_CHECK_FUNCS( iconv )
 AC_CHECK_FUNCS( memrchr )
 AC_CHECK_FUNCS( getopt_long )
 AC_CHECK_FUNCS( sqrtl ldexpl fabsl fmodl frexpl )
@@ -759,7 +799,12 @@ AC_CHECK_FUNCS( fork socketpair )
 AC_CHECK_FUNCS( sysconf )
 AC_CHECK_FUNCS( mlock )
 AC_CHECK_FUNCS( mlockall )
-AC_CHECK_FUNCS( gettid )
+AC_CHECK_FUNCS( pvalloc )
+AC_CHECK_FUNCS( valloc )
+AC_CHECK_FUNCS( posix_memalign )
+
+
+
 
 AC_CHECK_FUNCS( vsscanf,
                [hc_cv_have_vsscanf=yes],
@@ -838,6 +883,35 @@ AC_CHECK_MEMBERS( [struct in_addr.s_addr],
 #endif
 #if HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#endif
+] )
+
+# This test works for Linux and OS/X
+AC_CHECK_MEMBERS( [struct in6_ifreq.ifr6_addr],
+                  [hc_cv_have_in6_ifreq_ifr6_addr=yes  ],
+                  [hc_cv_have_in6_ifreq_ifr6_addr=no   ],
+[
+#ifdef HAVE_LINUX_IPV6_H
+#include <linux/ipv6.h>
+#endif
+#ifdef HAVE_NETINET6_IN6_VAR_H
+#include <netinet6/in6_var.h>
+#endif
+] )
+
+# FreeBSD naming scheme
+AC_CHECK_MEMBERS( [struct in6_ifreq.ifr_ifru.ifru_flags],
+                  [hc_cv_have_in6_ifreq_ifru_addr=yes  ],
+                  [hc_cv_have_in6_ifreq_ifru_addr=no   ],
+[
+#ifdef HAVE_LINUX_IPV6_H
+#include <linux/ipv6.h>
+#endif
+#ifdef HAVE_NETINET6_IN6_VAR_H
+#include <net/if.h>
+#include <net/if_var.h>
+#include <netinet/in.h>
+#include <netinet/in_var.h> // Not the ipv6 file, please
 #endif
 ] )
 
@@ -1324,6 +1398,38 @@ AC_CACHE_SAVE()
 #  later on), but that approach was rejected since it would tend to make our
 #  configure.ac script less clean (simple and straightforward).
 
+AC_ARG_ENABLE( hqa,
+
+    AC_HELP_STRING( [--enable-hqa=DIR],
+
+        [define HQA_DIR override directory]
+    ),
+    [
+        hc_cv_hqa_opt=${enableval}
+
+        if test -d "$hc_cv_hqa_opt"; then
+          if test -e "$hc_cv_hqa_opt/hqa.h"; then
+            hc_cv_have_hqa_h=yes
+          else
+            hc_cv_have_hqa_h=no
+          fi
+        else
+          AC_MSG_RESULT( [ERROR: --enable-hqa directory not found: $hc_cv_hqa_opt] )
+          hc_error=yes
+          hc_cv_have_hqa_h=no
+        fi
+
+        if test "$hc_cv_have_hqa_h" = "yes"; then
+          if test "$hc_cv_hqa_inc" != "."; then
+            AC_MSG_RESULT( [WARNING: --enable-hqa value overrides existing HAQ_DIR value] )
+          fi
+          hc_cv_hqa_inc=$hc_cv_hqa_opt
+        else
+          hc_cv_hqa_inc=.
+        fi
+    ]
+)
+
 AC_ARG_ENABLE( dynamic-load,
 
     AC_HELP_STRING([--disable-dynamic-load],
@@ -1692,6 +1798,17 @@ if test "$hc_cv_ena_regina_rexx" = "yes" ; then
 
 fi
 
+if test "$hc_cv_ena_ipv6" = "yes" ; then
+
+   if test "$hc_cv_have_in6_ifreq_ifr6_addr" != "yes" &&
+      test "$hc_cv_have_in6_ifreq_ifru_addr" != "yes"
+   then
+      AC_MSG_RESULT( [ERROR: IPv6 support requested but struct in6_ifreq is not available] )
+      hc_error=yes
+   fi
+
+fi
+
 if test "$hc_cv_build_hercifc" = "yes"; then
 
    if test "$hc_cv_have_linux_if_tun_h" != "yes"; then
@@ -1985,7 +2102,8 @@ if test "x$hc_cv_opt_custom_build_str" != "x"; then
     AC_DEFINE_UNQUOTED( [CUSTOM_BUILD_STRING], "${hc_cv_opt_custom_build_str}" )
 fi
 
-AC_DEFINE_UNQUOTED( [MAX_CPU_ENGINES],    ${hc_cv_opt_num_cpu_engines}  )
+AC_DEFINE_UNQUOTED( [MAX_CPU_ENGINES],  ${hc_cv_opt_num_cpu_engines} )
+AC_DEFINE_UNQUOTED( [HOST_ARCH],       "${target_cpu}" )
 
 AC_CACHE_SAVE()
 
@@ -2003,6 +2121,7 @@ CPPFLAGS="$CPPFLAGS"' -DPKGDATADIR=\"$(pkgdatadir)\" -DMODULESDIR=\"$(modexecdir
 #  (place only AC_DEFINE here; place AC_DEFINE_UNQUOTED above)  #
 #---------------------------------------------------------------#
 
+test "$hc_cv_have_hqa_h"                  = "yes"  &&  AC_DEFINE(HAVE_HQA_H)
 test "$hc_cv_opt_debug"                   = "yes"  &&  AC_DEFINE(DEBUG)
 test "$hc_cv_have_inttypes_h"             = "yes"  &&  AC_DEFINE(HAVE_INTTYPES_H)
 test "$hc_cv_have_u_int8_t"               = "yes"  &&  AC_DEFINE(HAVE_U_INT)
@@ -2022,7 +2141,6 @@ test "$hc_cv_have_getset_uid"            != "yes"  &&  AC_DEFINE(NO_SETUID)
 test "$hc_cv_asm_byteswap"               != "yes"  &&  AC_DEFINE(NO_ASM_BYTESWAP)
 test "$hc_cv_non_unique_gettimeofday"     = "yes"  &&  AC_DEFINE(NON_UNIQUE_GETTIMEOFDAY)
 test "$hc_cv_build_hercifc"               = "yes"  &&  AC_DEFINE(BUILD_HERCIFC)
-test "$hc_cv_opt_setuid_hercifc"          = "no"   &&  AC_DEFINE(NO_SETUID)
 test "$hc_cv_opt_capabilities"            = "yes"  &&  AC_DEFINE(OPTION_CAPABILITIES)
 test "$hc_cv_ena_object_rexx"             = "yes"  &&  AC_DEFINE(ENABLE_OBJECT_REXX)
 test "$hc_cv_ena_regina_rexx"             = "yes"  &&  AC_DEFINE(ENABLE_REGINA_REXX)
@@ -2048,21 +2166,6 @@ if test "$hc_cv_is_windows"  != "yes"  &&
    test "$hc_cv_have_fenv_h" != "yes"; then
 
     AC_DEFINE(NO_IEEE_SUPPORT)
-fi
-
-if test "$hc_cv_is_apple" = "yes"; then
-
-    AC_DEFINE(_INTL_REDIRECT_MACROS)
-
-    #
-    #  TODO??
-    #
-    #  Do whatever is necessary to get the following symbol defined
-    #  so the included libltdl will be built and used...
-    #
-
-##  AC_PROVIDE_AC_LIBTOOL_DLOPEN()
-
 fi
 
 #--------------------------------------------------#
@@ -2119,6 +2222,10 @@ AC_CACHE_SAVE()
 #  Pass certain values/settings as makefile variables to automake (makefile.am)  #
 #--------------------------------------------------------------------------------#
 
+# Note: Building of shared libraries is forced, and we force use of libtool too.
+
+AM_CONDITIONAL( BUILD_SHARED,        [ test "$hc_cv_hdl_build_shared" = "yes" ] )
+AM_CONDITIONAL( USE_DLLTOOL,         [ test "$hc_cv_is_windows"       = "yes" ] )
 AM_CONDITIONAL( OPTION_DYNAMIC_LOAD, [ test "$hc_cv_opt_dynamic_load" = "yes" ] )
 AM_CONDITIONAL( BUILD_FTHREADS,      [ test "$hc_cv_opt_fthreads"     = "yes" ] )
 AM_CONDITIONAL( BUILD_HERCIFC,       [ test "$hc_cv_build_hercifc"    = "yes" ] )
@@ -2130,14 +2237,11 @@ if test "x$hc_cv_hercifc_groupname" != "x"; then
     AC_SUBST(HERCIFC_GROUPNAME)
 fi
 
-#  Building of shared libraries is forced, and we force use of libtool too.
-
-AM_CONDITIONAL( BUILD_SHARED,        [ test "$hc_cv_hdl_build_shared" = "yes" ] )
-AM_CONDITIONAL( USE_DLLTOOL,         [ test "$hc_cv_is_windows"       = "yes" ] )
+AC_SUBST(HQA_INC,$hc_cv_hqa_inc)
 
 AC_CACHE_SAVE()
 
-AC_OUTPUT( [ Makefile util/Makefile html/Makefile crypto/Makefile po/Makefile.in po/Makefile man/Makefile m4/Makefile decNumber/Makefile] )
+AC_OUTPUT( [ Makefile util/Makefile html/Makefile crypto/Makefile man/Makefile m4/Makefile decNumber/Makefile] )
 
 ###############################################################################
 #   (end-of-file)

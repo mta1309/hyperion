@@ -8,9 +8,7 @@
 /* Interpretive Execution - (c) Copyright Jan Jaeger, 1999-2012      */
 /* z/Architecture support - (c) Copyright Jan Jaeger, 1999-2012      */
 
-#ifdef HAVE_CONFIG_H
-  #include <config.h> // Hercules build configuration options/settings
-#endif
+#include "hstdinc.h"        /* Standard header file includes         */
 
 /*-------------------------------------------------------------------*/
 /* Performance attribute: use registers to pass function parameters  */
@@ -90,6 +88,7 @@
 #include "hconsts.h"      // (Hercules-wide #define constants)
 #include "hthreads.h"     // (Hercules-wide threading macros)
 #include "hmacros.h"      // (Hercules-wide #define macros)
+#include "hmalloc.h"      // (Hercules malloc/free functions)
 #include "herror.h"       // (Hercules-wide error definitions)
 #include "chain.h"        // (Chain and queue macros/inlines)
 #include "extstring.h"    // (Extended string handling routines)

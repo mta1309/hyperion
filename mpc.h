@@ -1,7 +1,7 @@
 /* MPC.H        (c) Copyright Jan Jaeger,  2010-2012                 */
 /*              (c) Copyright Ian Shorter, 2011-2012                 */
 /*              (c) Copyright Harold Grovesteen, 2011-2012           */
-/*              MPC                                                  */
+/*              MPC (Multi-Path Channel) functions                   */
 
 /* This implementation is based on the S/390 Linux implementation    */
 
@@ -19,61 +19,6 @@
 #define MPC_DLL_IMPORT DLL_EXPORT
 #endif
 
-/*********************************************************************/
-/* Macros                                                            */
-/*********************************************************************/
-
-#define FETCH_F3(_value, _storage) (_value) = fetch_f3(_storage)
-
-#define STORE_F3(_storage, _value) store_f3(_storage, _value)
-
-/*-------------------------------------------------------------------*
- * fetch_f3_noswap and fetch_f3                                      *
- *-------------------------------------------------------------------*/
-#if !defined(fetch_f3_noswap)
-  #if defined(fetch_f3)
-    #define fetch_f3_noswap(_p) CSWAP32(fetch_f3((_p)))
-  #else
-//  #if !defined(OPTION_STRICT_ALIGNMENT)
-//    static __inline__ U32 fetch_fw_noswap(const void *ptr) {
-//      return *(U32 *)ptr;
-//    }
-//  #else
-      static __inline__ U32 fetch_f3_noswap(const void *ptr) {
-        U32 value;
-        memcpy(&value, (BYTE *)ptr, 3);
-        value <<= 8;
-        return value;
-      }
-//  #endif
-  #endif
-#endif
-#if !defined(fetch_f3)
-  #define fetch_f3(_p) CSWAP32(fetch_f3_noswap((_p)))
-#endif
-
-/*-------------------------------------------------------------------*
- * store_f3_noswap and store_f3                                      *
- *-------------------------------------------------------------------*/
-#if !defined(store_f3_noswap)
-  #if defined(store_f3)
-    #define store_f3_noswap(_p, _v) store_f3((_p), CSWAP32(_v))
-  #else
-//  #if !defined(OPTION_STRICT_ALIGNMENT)
-//    static __inline__ void store_f3_noswap(void *ptr, U32 value) {
-//      *(U32 *)ptr = value;
-//    }
-//  #else
-      static __inline__ void store_f3_noswap(void *ptr, U32 value) {
-        value >>= 8;
-        memcpy((BYTE *)ptr, (BYTE *)&value, 3);
-      }
-//  #endif
-  #endif
-#endif
-#if !defined(store_f3)
-  #define store_f3(_p, _v) store_f3_noswap((_p), CSWAP32((_v)))
-#endif
 
 /*********************************************************************/
 /* Structures                                                        */
@@ -120,7 +65,8 @@ struct _MPC_TH                     /* Transport Header               */
                                    /* 4-bytes isn't clear. The only  */
                                    /* contents that have been seen   */
                                    /* are 0x00E00000.                */
-#define MPC_TH_FIRST4 0x00E00000   /*                                */
+#define MPC_TH_FIRST4  0x00E00000  /*                                */
+#define MPC_END_FIRST4 0x0000C000  /* Adapter shutdown/close?        */
 /*004*/  FWORD  seqnum;            /* Sequence number.               */
 /*008*/  FWORD  offrrh;            /* Offset from the start of the   */
                                    /* MPC_TH to the first (or only)  */
@@ -311,8 +257,8 @@ struct _MPC_PUS                    /*                                */
 /*01C*/      BYTE   unknown1C[16]; /* ???, only seen nulls.          */
            } b;                    /*                                */
 #define SIZE_PUS_02_B  0x002C      /* Size of MPC_PUS_02_B           */
-           struct _c {             /* PUS_02_A contents              */
-/*004*/      BYTE   userdata[8];   /* User data                      */
+           struct _c {             /* PUS_02_C contents              */
+/*004*/      BYTE   nulls[8];      /* Nulls                          */
            } c;                    /*                                */
 #define SIZE_PUS_02_C  0x000C      /* Size of MPC_PUS_02_C           */
          } pus_02;                 /* PUS_02 contents end            */
@@ -376,9 +322,10 @@ struct _MPC_PUS                    /*                                */
 // fine PUS_LINK_TYPE_LANE_ETH1000  0x83   /*                        */
 // fine PUS_LINK_TYPE_LANE          0x88   /*                        */
 // fine PUS_LINK_TYPE_ATM_NATIVE    0x90   /*                        */
+/*015*/      BYTE   unknown15[3];  /* ???                            */
          } pus_0A;                 /*                                */
 #define SIZE_PUS_0A_A  0x0014      /* Size of MPC_PUS_0A             */
-#define SIZE_PUS_0A_B  0x0015      /* Size of MPC_PUS_0A             */
+#define SIZE_PUS_0A_B  0x0018      /* Size of MPC_PUS_0A             */
 
          struct _pus_0B {          /* PUS_0B contents                */
 /*004*/      BYTE   cua[2];        /*                                */
@@ -424,40 +371,43 @@ typedef struct _MPC_PUS MPC_PUS, *PMPC_PUS;
 /*===================================================================*/
 
 /*-------------------------------------------------------------------*/
-/* Header for MPC command frames                                     */
+/* Identification Exchange Activate                                  */
 /*-------------------------------------------------------------------*/
-typedef struct _MPC_HDR {
+typedef struct _MPC_IEA {
 /*000*/ HWORD   resv000;        /*                                   */
 /*002*/ HWORD   ddc;            /* Device Directed Command           */
 #define IDX_ACT_DDC     0x8000
 /*004*/ FWORD   thsn;           /* Transport Header Sequence Number  */
-    } MPC_HDR;
-
-
-/*-------------------------------------------------------------------*/
-/* Identification Exchange Activate                                  */
-/*-------------------------------------------------------------------*/
-typedef struct _MPC_IEA {
-/*000*/ MPC_HDR hdr;
+/* The following 2-bytes are almost certainly not a half word.
+   The first byte is probably 2 or more bit fields. If there are
+   2 bit fields, the first field is 6-bits long, the second field
+   is 2-bits long. If there are 3 (or more!) bit fields, things
+   are less certain. The last 2 bits (bits  6-7) are a field,
+   and the preceeding 2 bits (bits 4-5) are probably a field,
+   10 indicating read and 01 indicating write. What the first
+   4 bits (bits 0-3, only seen 0001) signify is unknown. What
+   the second byte (only seen 0x01) signifies is also unknown.       */
 /*008*/ HWORD   type;           /* IDX_ACT type (read or write)      */
 #define IDX_ACT_TYPE_READ       0x1901
 #define IDX_ACT_TYPE_WRITE      0x1501
-/*00A*/ BYTE    resv00a;        /*                                   */
-#define IDX_ACT_RESV00A  0x01
+/*00A*/ BYTE    datapath;       /* Number of data paths              */
 /*00B*/ BYTE    port;           /* Port number (bit 0 set)           */
-#define IDX_ACT_PORT_MASK       0x3F
 #define IDX_ACT_PORT_ACTIVATE   0x80
 #define IDX_ACT_PORT_STANDBY    0x40
+#define IDX_ACT_PORT_MASK       0x3F
 /*00C*/ FWORD   token;          /* Issuer token                      */
 /*010*/ HWORD   flevel;         /* Function level                    */
 #define IDX_ACT_FLEVEL_READ     0x0000
 #define IDX_ACT_FLEVEL_WRITE    0xFFFF
 /*012*/ FWORD   uclevel;        /* Microcode level                   */
-/*016*/ BYTE    dataset[8];     /* Portname                          */
-/*01E*/ HWORD   datadev;        /* Data Device Number                */
-/*020*/ BYTE    ddcua;          /* Data Device Control Unit Address  */
-/*021*/ BYTE    ddua;           /* Data Device Unit Address          */
-    } MPC_IEA;
+/*016*/ BYTE    dataset[8];     /* Name                              */
+/* The following 4-bytes are repeated for each data path */
+/*01E*/ struct {
+/*01E*/     HWORD   ddev;       /* Data Device Number                */
+/*020*/     BYTE    ddcua;      /* Data Device Control Unit Address  */
+/*021*/     BYTE    ddua;       /* Data Device Unit Address          */
+/*022*/   } data;
+/*var*/ } MPC_IEA;
 #define MPC_IEA_FIRST4 0x00008000  /*                                */
 
 
@@ -466,10 +416,10 @@ typedef struct _MPC_IEA {
 /*-------------------------------------------------------------------*/
 typedef struct _MPC_IEAR {
 /*000*/ HWORD   resv000;        /*                                   */
-/*002*/ BYTE    cmd;            /* Response code                     */
-#define IDX_RSP_CMD_MASK        0xC0
-#define IDX_RSP_CMD_TERM        0xC0 /* IDX_TERMINATE received       */
-/*003*/ BYTE    resv003;        /*                                   */
+/*002*/ HWORD   ddc;            /* Device Directed Command           */
+#define IDX_RSP_DDC             0x8000
+#define IDX_RSP_CMD_MASK        0xC000
+#define IDX_RSP_CMD_TERM        0xC000 /* IDX_TERMINATE received     */
 /*004*/ BYTE    reason;         /* Reason code                       */
 #define IDX_RSP_REASON_INVPORT  0x22
 /*005*/ BYTE    resv005[3];     /*                                   */
@@ -478,13 +428,22 @@ typedef struct _MPC_IEAR {
 #define IDX_RSP_RESP_OK         0x02
 /*009*/ BYTE    cause;          /* Negative response cause code      */
 #define IDX_RSP_CAUSE_INUSE     0x19
-/*00A*/ BYTE    resv010;        /*                                   */
+/*00A*/ BYTE    datapath;       /* Number of data paths              */
 /*00B*/ BYTE    flags;          /* Flags                             */
 #define IDX_RSP_FLAGS_NOPORTREQ 0x80
-/*00C*/ FWORD   token;          /* Issues rm_r token                 */
-/*010*/ HWORD   flevel;         /* Funtion level                     */
+#define IDX_RSP_FLAGS_40        0x40  /* Significance unknown */
+/*00C*/ FWORD   token;          /* QETHs Issuer token                */
+/*010*/ HWORD   flevel;         /* Function level                    */
+#define IDX_RSP_FLEVEL_0201     0x0201
 /*012*/ FWORD   uclevel;        /* Microcode level                   */
-    } MPC_IEAR;
+/*016*/ BYTE    dataset[8];     /* Name                              */
+/* The following 4-bytes are repeated for each data path */
+/*01E*/ struct {
+/*01E*/     HWORD   ddev;       /* Data Device Number                */
+/*020*/     BYTE    ddcua;      /* Data Device Control Unit Address  */
+/*021*/     BYTE    ddua;       /* Data Device Unit Address          */
+/*022*/   } data;
+/*var*/ } MPC_IEAR;
 
 
 /*-------------------------------------------------------------------*/
@@ -512,7 +471,9 @@ typedef struct _MPC_IPA {
 #define IPA_PROTO_IPV6  0x0006
 /*00C*/ FWORD   ipas;           /* Supported IP Assist mask          */
 /*010*/ FWORD   ipae;           /* Enabled IP Assist mask            */
-    } MPC_IPA;
+/*014*/ } MPC_IPA;
+#define SIZE_IPA        0x0014  /* Size of MPC_IPA                   */
+#define SIZE_IPA_SHORT  0x0010  /* Size of short (16-byte) MPC_IPA   */
 
 
 #define IPA_ARP_PROCESSING      0x00000001L  /*  *  *                */
@@ -530,7 +491,7 @@ typedef struct _MPC_IPA {
 #define IPA_PASSTHRU            0x00001000L  /*  *  *                */
 #define IPA_FLUSH_ARP_SUPPORT   0x00002000L  /*     *                */
 #define IPA_FULL_VLAN           0x00004000L  /*     *                */
-#define IPA_INBOUND_PASSTHRU    0x00008000L  /*                      */
+#define IPA_INBOUND_PASSTHRU    0x00008000L  /*  *  *                */
 #define IPA_SOURCE_MAC          0x00010000L  /*  *  *                */
 #define IPA_OSA_MC_ROUTER       0x00020000L  /*     *                */
 #define IPA_QUERY_ARP_ASSIST    0x00040000L  /*     *                */
@@ -544,6 +505,7 @@ typedef struct _MPC_IPA {
                  | IPA_MULTICASTING \
                  | IPA_SETADAPTERPARMS \
                  | IPA_PASSTHRU \
+                 | IPA_INBOUND_PASSTHRU \
                  | IPA_SOURCE_MAC \
                  )
 
@@ -802,22 +764,22 @@ typedef struct _PTPHX0 PTPHX0, *PPTPHX0;
 typedef struct _PTPHX2 PTPHX2, *PPTPHX2;
 typedef struct _PTPHSV PTPHSV, *PPTPHSV;
 
-struct _PTPHX0                     // PTP Handshake
-{
-/*000*/  BYTE   TH_seg;            // Only seen 0x00
-/*001*/  BYTE   TH_ch_flag;        // Only seen 0x00 or 0x01
-#define TH_CH_0x00  0x00
-#define TH_CH_0x01  0x01
-#define TH_IS_XID   0x01
-/*002*/  BYTE   TH_blk_flag;       // Only seen 0x80 or 0xC0
-#define TH_DATA_IS_XID  0x80
-#define TH_RETRY  0x40
-#define TH_DISCONTACT 0xC0
-/*003*/  BYTE   TH_is_xid;         // Only seen 0x01
-#define TH_IS_0x01  0x01
-/*004*/  BYTE   TH_SeqNum[4];      // Only seen 0x00050010
-} ATTRIBUTE_PACKED;
-#define SizeHX0  0x0008            // Size of PTPHX0
+struct _PTPHX0                     /* PTP Handshake                  */
+{                                  /*                                */
+/*000*/  BYTE   TH_seg;            /* Only seen 0x00                 */
+/*001*/  BYTE   TH_ch_flag;        /* Only seen 0x00 or 0x01         */
+#define TH_CH_0x00  0x00           /*                                */
+#define TH_CH_0x01  0x01           /*                                */
+#define TH_IS_XID   0x01           /*                                */
+/*002*/  BYTE   TH_blk_flag;       /* Only seen 0x80 or 0xC0         */
+#define TH_DATA_IS_XID  0x80       /*                                */
+#define TH_RETRY  0x40             /*                                */
+#define TH_DISCONTACT 0xC0         /*                                */
+/*003*/  BYTE   TH_is_xid;         /* Only seen 0x01                 */
+#define TH_IS_0x01  0x01           /*                                */
+/*004*/  BYTE   TH_SeqNum[4];      /* Only seen 0x00050010           */
+} ATTRIBUTE_PACKED;                /*                                */
+#define SIZE_HX0  0x0008           /* Size of PTPHX0                 */
 
 struct _PTPHX2                     /* PTP Handshake XID2             */
 {                                  /*                                */
@@ -825,39 +787,41 @@ struct _PTPHX2                     /* PTP Handshake XID2             */
                                    /* of the PTPHX2 are an XID2,     */
                                    /* defined in SNA Formats.        */
                                    /*                                */
-/*000*/  BYTE   Ft;                // Format of XID (4-bits),
-                                   // Type of XID-sending node (4-bits)
-#define XID2_FORMAT_MASK  0xF0     // Mask out Format from Ft
-/*001*/  BYTE   Length;            // Length of the XID2
-/*002*/  BYTE   NodeID[4];         // Node identification:
-                                   // Block number (12 bits),
-                                   // ID number (20-bits)
+/*000*/  BYTE   Ft;                /* Format of XID (4-bits),        */
+                                   /* Type XID-sending node (4-bits) */
+#define XID2_FORMAT_MASK  0xF0     /* Mask out Format from Ft        */
+/*001*/  BYTE   Length;            /* Length of the XID2             */
+/*002*/  BYTE   NodeID[4];         /* Node identification:           */
+                                   /* Block number (12 bits),        */
+                                   /* ID number (20-bits)            */
                                    /* Note: the block number is      */
                                    /* always 0xFFF, the ID number is */
                                    /* the high order 5-digits of the */
                                    /* CPU serial number, i.e. if the */
                                    /* serial number is 123456, the   */
                                    /* nodeid will be 0xFFF12345.     */
-/*006*/  BYTE   LenXcv;            // Length of the XID2 exclusive
-                                   // of any control vectors
-/*007*/  BYTE   MiscFlags;         // Miscellaneous flags
-/*008*/  BYTE   TGstatus;          // TG status
-/*009*/  BYTE   FIDtypes;          // FID types supported
-/*00A*/  BYTE   ULPuse;            // Upper-layer protocol use
-/*00B*/  BYTE   LenMaxPIU[2];      // Length of the maximum PIU that
-                                   // the XID sender can receive
-/*00D*/  BYTE   TGNumber;          // Transmission group number (TGN)
-/*00E*/  BYTE   SAaddress[4];      // Subarea address of the XID sender
-                                   // (right-justified with leading 0's)
-/*012*/  BYTE   Flags;             // Flags
-/*013*/  BYTE   CLstatus;          // CONTACT or load status of XID sender
-/*014*/  BYTE   IPLname[8];        // IPL load module name
-/*01C*/  BYTE   ESAsupp;           // Extended Subarea Address support
-/*01D*/  BYTE   Reserved1D;        // Reserved
-/*01E*/  BYTE   DLCtype;           // DLC type
-#define DLCTYPE_WRITE 0x04         // DLC type: write path from sender
-#define DLCTYPE_READ  0x05         // DLC type: read path from sender
-
+/*006*/  BYTE   LenXcv;            /* Length of the XID2 exclusive   */
+                                   /* of any control vectors         */
+/*007*/  BYTE   MiscFlags;         /* Miscellaneous flags            */
+/*008*/  BYTE   TGstatus;          /* TG status                      */
+/*009*/  BYTE   FIDtypes;          /* FID types supported            */
+/*00A*/  BYTE   ULPuse;            /* Upper-layer protocol use       */
+/*00B*/  BYTE   LenMaxPIU[2];      /* Length of the maximum PIU that */
+                                   /* the XID sender can receive     */
+/*00D*/  BYTE   TGNumber;          /* Transmission group number      */
+/*00E*/  BYTE   SAaddress[4];      /* Subarea address of the XID     */
+                                   /* sender (right-justified        */
+                                   /* with leading 0's)              */
+/*012*/  BYTE   Flags;             /* Flags                          */
+/*013*/  BYTE   CLstatus;          /* CONTACT or load status of      */
+                                   /* XID sender                     */
+/*014*/  BYTE   IPLname[8];        /* IPL load module name           */
+/*01C*/  BYTE   ESAsupp;           /* Extended Subarea Address supp. */
+/*01D*/  BYTE   Reserved1D;        /* Reserved                       */
+/*01E*/  BYTE   DLCtype;           /* DLC type                       */
+#define DLCTYPE_WRITE 0x04         /*   Write path from sender       */
+#define DLCTYPE_READ  0x05         /*   Read path from sender        */
+                                   /*                                */
                                    /* Note: SNA Formats defines the  */
                                    /* first 31-bytes of an XID2, any */
                                    /* following bytes are DLC type   */
@@ -869,34 +833,36 @@ struct _PTPHX2                     /* PTP Handshake XID2             */
                                    /* write path from sender' and    */
                                    /* 'Multipath channel to channel; */
                                    /* read path from sender'.        */
-
-/*01F*/  BYTE   DataLen1[2];       // ?  Data length?
-/*021*/  BYTE   MpcFlag;           // Always contains 0x27
-/*022*/  BYTE   Unknown22;         // ?, only seen nulls
-/*023*/  BYTE   MaxReadLen[2];     // Maximum read length
+                                   /*                                */
+/*01F*/  BYTE   DataLen1[2];       /* ?  Data length?                */
+/*021*/  BYTE   MpcFlag;           /* Always contains 0x27           */
+/*022*/  BYTE   Unknown22;         /* ?, only seen nulls             */
+/*023*/  BYTE   MaxReadLen[2];     /* Maximum read length            */
 /*025*/  BYTE   TokenX5;           /* Token length or type or ...    */
-/*026*/  BYTE   Token[4];          // Token
-/*02A*/  BYTE   Unknown2A[7];      // ?, only seen nulls
-} ATTRIBUTE_PACKED;
-#define SizeHX2  0x0031            // Size of PTPHX2
+/*026*/  BYTE   Token[4];          /* Token                          */
+/*02A*/  BYTE   Unknown2A[7];      /* ?, only seen nulls             */
+} ATTRIBUTE_PACKED;                /*                                */
+#define SIZE_HX2  0x0031           /* Size of PTPHX2                 */
 
 // Call Security Verification (x'56') Control Vector
-struct _PTPHSV                             // PTP Handshake CSVcv
-{
-/*000*/  BYTE   Length;            // Vector length
-                                   // (including this length field)
-/*001*/  BYTE   Key;               // Vector key
-#define CSV_KEY 0x56               // CSVcv key
-/*002*/  BYTE   reserved02;        // Reserved
-/*003*/  BYTE   LenSIDs;           // Length of Security IDs
-                                   // (including this length field)
-/*004*/  BYTE   SID1[8];           // First 8-byte Security ID
-                                   // (random data or enciphered random data)
-/*00C*/  BYTE   SID2[8];           // Second 8-byte Security ID
-                                   // (random data or enciphered random data
-                                   //  or space characters)
-} ATTRIBUTE_PACKED;
-#define SizeHSV  0x0014            // Size of PTPHSV
+struct _PTPHSV                     /* PTP Handshake CSVcv            */
+{                                  /*                                */
+/*000*/  BYTE   Length;            /* Vector length                  */
+                                   /* (including this length field)  */
+/*001*/  BYTE   Key;               /* Vector key                     */
+#define CSV_KEY 0x56               /* CSVcv key                      */
+/*002*/  BYTE   reserved02;        /* Reserved                       */
+/*003*/  BYTE   LenSIDs;           /* Length of Security IDs         */
+                                   /* (including this length field)  */
+/*004*/  BYTE   SID1[8];           /* First 8-byte Security ID       */
+                                   /* (random data or                */
+                                   /* enciphered random data)        */
+/*00C*/  BYTE   SID2[8];           /* Second 8-byte Security ID      */
+                                   /* (random data or                */
+                                   /* enciphered random data or      */
+                                   /* space characters)              */
+} ATTRIBUTE_PACKED;                /*                                */
+#define SIZE_HSV  0x0014           /* Size of PTPHSV                 */
 
 
 /*********************************************************************/
@@ -916,8 +882,8 @@ MPC_DLL_IMPORT void  mpc_display_rrh_and_pix( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, 
 MPC_DLL_IMPORT void  mpc_display_rrh_and_ipa( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_RRH* pMPC_RRH, BYTE bDir );
 MPC_DLL_IMPORT void  mpc_display_rrh_and_pkt( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_RRH* pMPC_RRH, BYTE bDir, int iLimit );
 MPC_DLL_IMPORT void  mpc_display_rrh_and_pdu( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_RRH* pMPC_RRH, BYTE bDir, int iLimit );
-MPC_DLL_IMPORT void  mpc_display_osa_iea( DEVBLK* pDEVBLK, MPC_IEA* pMPC_IEA, BYTE bDir );
-MPC_DLL_IMPORT void  mpc_display_osa_iear( DEVBLK* pDEVBLK, MPC_IEAR* pMPC_IEAR, BYTE bDir );
+MPC_DLL_IMPORT void  mpc_display_osa_iea( DEVBLK* pDEVBLK, MPC_IEA* pMPC_IEA, BYTE bDir, int iSize );
+MPC_DLL_IMPORT void  mpc_display_osa_iear( DEVBLK* pDEVBLK, MPC_IEAR* pMPC_IEAR, BYTE bDir, int iSize );
 MPC_DLL_IMPORT void  mpc_display_osa_th_etc( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, BYTE bDir, int iLimit );
 MPC_DLL_IMPORT void  mpc_display_ptp_th_etc( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, BYTE bDir, int iLimit );
 

@@ -1,12 +1,12 @@
-/* PTTRACE.C    (c) Copyright Greg Smith, 2003-2012                  */
-/*              pthreads trace debugger                              */
+/* PTTRACE.C    (C) Copyright Greg Smith, 2003-2013                  */
+/*              Threading and locking trace debugger                 */
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
 /*   Hercules.                                                       */
 
 /*-------------------------------------------------------------------*/
-/* Trace threading calls                                             */
+/* Pthread tracing functions                                         */
 /*-------------------------------------------------------------------*/
 
 #include "hstdinc.h"
@@ -16,57 +16,100 @@
 
 #include "hercules.h"
 
-#ifdef OPTION_PTTRACE
-
-PTT_TRACE *pttrace;                     /* Pthreads trace table      */
-int        pttracex;                    /* Pthreads trace index      */
-int        pttracen;                    /* Pthreads trace entries    */
-LOCK       pttlock;                     /* Pthreads trace lock       */
-int        pttnolock;                   /* 1=no PTT locking          */
-int        pttnotod;                    /* 1=don't call gettimeofday */
-int        pttnowrap;                   /* 1=don't wrap              */
-int        pttto;                       /* timeout in seconds        */
-TID        ptttotid;                    /* timeout thread id         */
-LOCK       ptttolock;                   /* timeout thread lock       */
-COND       ptttocond;                   /* timeout thread condition  */
-int        pttmadethread;               /* pthreads is active        */
-
-DLL_EXPORT void ptt_trace_init (int n, int init)
+/*-------------------------------------------------------------------*/
+/* Trace Table Entry                                                 */
+/*-------------------------------------------------------------------*/
+struct PTT_TRACE
 {
-    if (n > 0)
-        pttrace = calloc (n, PTT_TRACE_SIZE);
-    else
-        pttrace = NULL;
+    TID             tid;                /* Thread id                 */
+    U32             trclass;            /* Trace class (see header)  */
+    const char*     msg;                /* Trace message             */
+    const void*     data1;              /* Data 1                    */
+    const void*     data2;              /* Data 2                    */
+    const char*     loc;                /* File name:line number     */
+    struct timeval  tv;                 /* Time of day               */
+    int             rc;                 /* Return code               */
+};
+typedef struct PTT_TRACE PTT_TRACE;
 
-    if (pttrace)
-        pttracen = n;
-    else
-        pttracen = 0;
+/*-------------------------------------------------------------------*/
+/* Global variables                                                  */
+/*-------------------------------------------------------------------*/
+HLOCK      pttlock;                     /* Pthreads trace lock       */
+DLL_EXPORT U32 pttclass  = 0;           /* Pthreads trace class      */
+DLL_EXPORT int pttthread = 0;           /* pthreads is active        */
+int        pttracen      = 0;           /* Number of table entries   */
+int        pttracex      = 0;           /* Index of current entry    */
+PTT_TRACE *pttrace       = NULL;        /* Pointer to current entry  */
+int        pttnolock     = 0;           /* 1=no table locking        */
+int        pttnotod      = 0;           /* 1=don't call gettimeofday */
+int        pttnowrap     = 0;           /* 1=don't wrap              */
+int        pttto         = 0;           /* timeout in seconds        */
+COND       ptttocond;                   /* timeout thread condition  */
+HLOCK      ptttolock;                   /* timeout thread lock       */
+TID        ptttotid;                    /* timeout thread id         */
 
-    pttracex = 0;
+/*-------------------------------------------------------------------*/
+/* Internal helper macros                                            */
+/*-------------------------------------------------------------------*/
+#define PTT_TRACE_SIZE          sizeof(PTT_TRACE)
 
-    if (init)
+#define OBTAIN_PTTLOCK                                               \
+  do if (!pttnolock) {                                               \
+    int rc = hthread_mutex_lock( &pttlock );                         \
+    if (rc)                                                          \
+      BREAK_INTO_DEBUGGER();                                         \
+  }                                                                  \
+  while (0)
+
+#define RELEASE_PTTLOCK                                              \
+  do if (!pttnolock) {                                               \
+    int rc = hthread_mutex_unlock( &pttlock );                       \
+    if (rc)                                                          \
+      BREAK_INTO_DEBUGGER();                                         \
+  }                                                                  \
+  while (0)
+
+/*-------------------------------------------------------------------*/
+/* Thread to print trace after timeout                               */
+/*-------------------------------------------------------------------*/
+static void* ptt_timeout( void* arg )
+{
+    struct timeval  now;
+    struct timespec tm;
+
+    UNREFERENCED( arg );
+
+    // "Thread id "TIDPAT", prio %2d, name %s started"
+    WRMSG( HHC00100, "I", (u_long)hthread_self(), getpriority(PRIO_PROCESS,0),"PTT timeout timer");
+
+    hthread_mutex_lock( &ptttolock );
+
+    /* Wait for timeout period to expire */
+    gettimeofday( &now, NULL );
+    tm.tv_sec = now.tv_sec + pttto;
+    tm.tv_nsec = now.tv_usec * 1000;
+    hthread_cond_timedwait( &ptttocond, &ptttolock, &tm );
+
+    /* Print the trace table automatically */
+    if (hthread_equal( hthread_self(), ptttotid ))
     {
-#if defined(OPTION_FTHREADS)
-        fthread_mutex_init (&pttlock, NULL);
-#else
-        pthread_mutex_init (&pttlock, NULL);
-#endif
-        pttnolock = 0;
-        pttnotod = 0;
-        pttnowrap = 0;
+        ptt_pthread_print();
         pttto = 0;
         ptttotid = 0;
-#if defined(OPTION_FTHREADS)
-        fthread_mutex_init (&ptttolock, NULL);
-        fthread_cond_init (&ptttocond);
-#else
-        pthread_mutex_init (&ptttolock, NULL);
-        pthread_cond_init (&ptttocond, NULL);
-#endif
     }
+
+    hthread_mutex_unlock( &ptttolock );
+
+    // "Thread id "TIDPAT", prio %2d, name %s ended"
+    WRMSG( HHC00101, "I", (u_long) hthread_self(), getpriority( PRIO_PROCESS, 0 ), "PTT timeout timer");
+
+    return NULL;
 }
 
+/*-------------------------------------------------------------------*/
+/* Process 'ptt' tracing command                                     */
+/*-------------------------------------------------------------------*/
 DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
 {
     int  rc = 0;
@@ -253,21 +296,21 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
         /* wakeup timeout thread if to= specified */
         if (to >= 0 && ptttotid)
         {
-            obtain_lock (&ptttolock);
+            hthread_mutex_lock (&ptttolock);
             ptttotid = 0;
-            signal_condition (&ptttocond);
-            release_lock (&ptttolock);
+            hthread_cond_signal (&ptttocond);
+            hthread_mutex_unlock (&ptttolock);
         }
 
         /* start timeout thread if positive to= specified */
         if (to > 0)
         {
-            obtain_lock (&ptttolock);
+            hthread_mutex_lock (&ptttolock);
             ptttotid = 0;
-            rc = create_thread (&ptttotid, NULL, ptt_timeout, NULL, "ptt_timeout");
+            rc = hthread_create (&ptttotid, NULL, ptt_timeout, NULL, "ptt_timeout");
         if (rc)
             WRMSG(HHC00102, "E", strerror(rc));
-            release_lock (&ptttolock);
+            hthread_mutex_unlock (&ptttolock);
         }
     }
     else
@@ -296,402 +339,67 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
     return rc;
 }
 
-/* thread to print trace after timeout */
-void *ptt_timeout()
+/*-------------------------------------------------------------------*/
+/* Initialize PTT tracing                                            */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT void ptt_trace_init( int n, int init )
 {
-    struct timeval  now;
-    struct timespec tm;
-
-    WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0),"PTT timeout timer");
-    obtain_lock (&ptttolock);
-    gettimeofday (&now, NULL);
-    tm.tv_sec = now.tv_sec + pttto;
-    tm.tv_nsec = now.tv_usec * 1000;
-    timed_wait_condition (&ptttocond, &ptttolock, &tm);
-    if (thread_id() == ptttotid)
-    {
-        ptt_pthread_print();
-        pttto = 0;
-        ptttotid = 0;
-    }
-    release_lock (&ptttolock);
-    WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "PTT timeout timer");
-    return NULL;
-}
-
-#ifndef OPTION_FTHREADS
-DLL_EXPORT int ptt_pthread_mutex_init(LOCK *mutex, pthread_mutexattr_t *attr, char *loc)
-{
-    PTTRACE ("lock init", mutex, attr, loc, PTT_MAGIC);
-    return pthread_mutex_init(mutex, attr);
-}
-
-DLL_EXPORT int ptt_pthread_mutex_lock(LOCK *mutex, char *loc)
-{
-int result;
-U64 s;
-    PTTRACE ("lock before", mutex, NULL, loc, PTT_MAGIC);
-    result = pthread_mutex_trylock(mutex);
-    if(result)
-    {
-        s = host_tod();
-        result = pthread_mutex_lock(mutex);
-        s = host_tod() - s;
-        if (result == EDEADLK)
-            logmsg("\n          ++++++++++++++++ DEADLOCK! %s ++++++++++++++++\n\n",loc);
-    }
+    if (n > 0)
+        pttrace = calloc( n, PTT_TRACE_SIZE );
     else
-        s = 0;
-    PTTRACE ("lock after", mutex, (void *) s, loc, result);
-    return result;
-}
+        pttrace = NULL;
 
-DLL_EXPORT int ptt_pthread_mutex_trylock(LOCK *mutex, char *loc)
-{
-int result;
-    PTTRACE ("try before", mutex, NULL, loc, PTT_MAGIC);
-    result = pthread_mutex_trylock(mutex);
-    PTTRACE ("try after", mutex, NULL, loc, result);
-    return result;
-}
+    pttracen = pttrace ? n : 0;
+    pttracex = 0;
 
-DLL_EXPORT int ptt_pthread_mutex_unlock(LOCK *mutex, char *loc)
-{
-int result;
-    result = pthread_mutex_unlock(mutex);
-    PTTRACE ("unlock", mutex, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_init(RWLOCK *rwlock, pthread_rwlockattr_t *attr, char *loc)
-{
-    PTTRACE ("rwlock init", rwlock, attr, loc, PTT_MAGIC);
-    return pthread_rwlock_init(rwlock, attr);
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_rdlock(RWLOCK *rwlock, char *loc)
-{
-int result;
-U64 s;
-    PTTRACE ("rdlock before", rwlock, NULL, loc, PTT_MAGIC);
-    result = pthread_rwlock_tryrdlock(rwlock);
-    if(result)
+    if (init)       /* First time? */
     {
-        s = host_tod();
-        result = pthread_rwlock_rdlock(rwlock);
-        s = host_tod() - s;
-        if (result == EDEADLK)
-            logmsg("\n          ++++++++++++++++ DEADLOCK! %s ++++++++++++++++\n\n",loc);
+        int rc;
+        MATTR attr;
+        if ((rc = hthread_mutexattr_init( &attr )) != 0)
+            BREAK_INTO_DEBUGGER();
+        if ((rc = hthread_mutexattr_settype( &attr, HTHREAD_MUTEX_DEFAULT )) != 0)
+            BREAK_INTO_DEBUGGER();
+        if ((rc = hthread_mutex_init( &pttlock, &attr )) != 0)
+            BREAK_INTO_DEBUGGER();
+        if ((rc = hthread_mutex_init( &ptttolock, &attr )) != 0)
+            BREAK_INTO_DEBUGGER();
+        if ((rc = hthread_cond_init( &ptttocond )) != 0)
+            BREAK_INTO_DEBUGGER();
+        if ((rc = hthread_mutexattr_destroy( &attr )) != 0)
+            BREAK_INTO_DEBUGGER();
+        pttnolock = 0;
+        pttnotod  = 0;
+        pttnowrap = 0;
+        pttto     = 0;
+        ptttotid  = 0;
     }
-    else
-        s = 0;
-    PTTRACE ("rdlock after", rwlock, (void *) s, loc, result);
-    return result;
 }
 
-DLL_EXPORT int ptt_pthread_rwlock_wrlock(RWLOCK *rwlock, char *loc)
-{
-int result;
-U64 s;
-    PTTRACE ("wrlock before", rwlock, NULL, loc, PTT_MAGIC);
-    result = pthread_rwlock_trywrlock(rwlock);
-    if(result)
-    {
-        s = host_tod();
-        result = pthread_rwlock_wrlock(rwlock);
-        s = host_tod() - s;
-        if (result == EDEADLK)
-            logmsg("\n          ++++++++++++++++ DEADLOCK! %s ++++++++++++++++\n\n",loc);
-    }
-    else
-        s = 0;
-    PTTRACE ("wrlock after", rwlock, (void *) s, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_tryrdlock(RWLOCK *rwlock, char *loc)
-{
-int result;
-    PTTRACE ("tryrd before", rwlock, NULL, loc, PTT_MAGIC);
-    result = pthread_rwlock_tryrdlock(rwlock);
-    PTTRACE ("tryrd after", rwlock, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_trywrlock(RWLOCK *rwlock, char *loc)
-{
-int result;
-    PTTRACE ("trywr before", rwlock, NULL, loc, PTT_MAGIC);
-    result = pthread_rwlock_trywrlock(rwlock);
-    PTTRACE ("trywr after", rwlock, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_unlock(RWLOCK *rwlock, char *loc)
-{
-int result;
-    result = pthread_rwlock_unlock(rwlock);
-    PTTRACE ("rwunlock", rwlock, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_init(COND *cond, pthread_condattr_t *attr, char *loc)
-{
-    PTTRACE ("cond init", NULL, cond, loc, PTT_MAGIC);
-    return pthread_cond_init(cond, attr);
-}
-
-DLL_EXPORT int ptt_pthread_cond_signal(COND *cond, char *loc)
-{
-int result;
-    result = pthread_cond_signal(cond);
-    PTTRACE ("signal", NULL, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_broadcast(COND *cond, char *loc)
-{
-int result;
-    result = pthread_cond_broadcast(cond);
-    PTTRACE ("broadcast", NULL, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_wait(COND *cond, LOCK *mutex, char *loc)
-{
-int result;
-    PTTRACE ("wait before", mutex, cond, loc, PTT_MAGIC);
-    result = pthread_cond_wait(cond, mutex);
-    PTTRACE ("wait after", mutex, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_timedwait(COND *cond, LOCK *mutex,
-                          const struct timespec *time, char *loc)
-{
-int result;
-    PTTRACE ("tw before", mutex, cond, loc, PTT_MAGIC);
-    result = pthread_cond_timedwait(cond, mutex, time);
-    PTTRACE ("tw after", mutex, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_create(pthread_t *tid, ATTR *attr,
-                       void *(*start)(), void *arg, char *nm, char *loc)
-{
-int result;
-    UNREFERENCED(nm);
-    result = pthread_create(tid, attr, start, arg);
-    PTTRACE ("create", (void *)*tid, NULL, loc, result);
-    pttmadethread = 1;                /* Set a mark on the wall      */
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_join(pthread_t tid, void **value, char *loc)
-{
-int result;
-    PTTRACE ("join before", (void *)tid, value ? *value : NULL, loc, PTT_MAGIC);
-    result = pthread_join(tid,value);
-    PTTRACE ("join after", (void *)tid, value ? *value : NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_detach(pthread_t tid, char *loc)
-{
-int result;
-    PTTRACE ("dtch before", (void *)tid, NULL, loc, PTT_MAGIC);
-    result = pthread_detach(tid);
-    PTTRACE ("dtch after", (void *)tid, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_kill(pthread_t tid, int sig, char *loc)
-{
-    PTTRACE ("kill", (void *)tid, (void *)(long)sig, loc, PTT_MAGIC);
-    return pthread_kill(tid, sig);
-}
-#else /* OPTION_FTHREADS */
-DLL_EXPORT int ptt_pthread_rwlock_init(RWLOCK *rwlock, void *attr, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_init(mutex, attr, loc);
-}
-
-DLL_EXPORT int ptt_pthread_mutex_init(LOCK *mutex, void *attr, char *loc)
-{
-    PTTRACE ("lock init", mutex, attr, loc, PTT_MAGIC);
-    return fthread_mutex_init(mutex,attr);
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_rdlock(RWLOCK *rwlock, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_lock(mutex, loc);
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_wrlock(RWLOCK *rwlock, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_lock(mutex, loc);
-}
-
-DLL_EXPORT int ptt_pthread_mutex_lock(LOCK *mutex, char *loc)
-{
-int result;
-
-    PTTRACE ("lock before", mutex, NULL, loc, PTT_MAGIC);
-    result = fthread_mutex_lock(mutex);
-    if (result == EDEADLK)
-        logmsg("\n          ++++++++++++++++ DEADLOCK! %s ++++++++++++++++\n\n",loc);
-    PTTRACE ("lock after", mutex, NULL, loc, result);
-    return result;
-}
-DLL_EXPORT int ptt_pthread_rwlock_tryrdlock(RWLOCK *rwlock, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_trylock(mutex, loc);
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_trywrlock(RWLOCK *rwlock, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_trylock(mutex, loc);
-}
-
-DLL_EXPORT int ptt_pthread_mutex_trylock(LOCK *mutex, char *loc)
-{
-int result;
-    PTTRACE ("try before", mutex, NULL, loc, PTT_MAGIC);
-    result = fthread_mutex_trylock(mutex);
-    PTTRACE ("try after", mutex, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_rwlock_unlock(RWLOCK *rwlock, char *loc)
-{
-    LOCK *mutex = (LOCK*)rwlock;
-    return ptt_pthread_mutex_unlock(mutex, loc);
-}
-
-DLL_EXPORT int ptt_pthread_mutex_unlock(LOCK *mutex, char *loc)
-{
-int result;
-    result = fthread_mutex_unlock(mutex);
-    PTTRACE ("unlock", mutex, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_init(COND *cond, void *attr, char *loc)
-{
-    UNREFERENCED(attr);
-    PTTRACE ("cond init", NULL, cond, loc, PTT_MAGIC);
-    return fthread_cond_init(cond);
-}
-
-DLL_EXPORT int ptt_pthread_cond_signal(COND *cond, char *loc)
-{
-int result;
-    result = fthread_cond_signal(cond);
-    PTTRACE ("signal", NULL, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_broadcast(COND *cond, char *loc)
-{
-int result;
-    result = fthread_cond_broadcast(cond);
-    PTTRACE ("broadcast", NULL, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_wait(COND *cond, LOCK *mutex, char *loc)
-{
-int result;
-    PTTRACE ("wait before", mutex, cond, loc, PTT_MAGIC);
-    result = fthread_cond_wait(cond, mutex);
-    PTTRACE ("wait after", mutex, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_cond_timedwait(COND *cond, LOCK *mutex,
-                                struct timespec *time, char *loc)
-{
-int result;
-    PTTRACE ("tw before", mutex, cond, loc, PTT_MAGIC);
-    result = fthread_cond_timedwait(cond, mutex, time);
-    PTTRACE ("tw after", mutex, cond, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_create(fthread_t *tid, ATTR *attr,
-                       PFT_THREAD_FUNC start, void *arg, char *nm, char *loc)
-{
-int result;
-    result = fthread_create(tid, attr, start, arg, nm);
-    PTTRACE ("create", (void *)(uintptr_t)(*tid), NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_join(fthread_t tid, void **value, char *loc)
-{
-int result;
-    PTTRACE ("join before", (void *)(uintptr_t)tid, value ? *value : NULL, loc, PTT_MAGIC);
-    result = fthread_join(tid,value);
-    PTTRACE ("join after", (void *)(uintptr_t)tid, value ? *value : NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_detach(fthread_t tid, char *loc)
-{
-int result;
-    PTTRACE ("dtch before", (void *)(uintptr_t)tid, NULL, loc, PTT_MAGIC);
-    result = fthread_detach(tid);
-    PTTRACE ("dtch after", (void *)(uintptr_t)tid, NULL, loc, result);
-    return result;
-}
-
-DLL_EXPORT int ptt_pthread_kill(fthread_t tid, int sig, char *loc)
-{
-    PTTRACE ("kill", (void *)(uintptr_t)tid, (void *)(uintptr_t)sig, loc, PTT_MAGIC);
-    return fthread_kill(tid, sig);
-}
-#endif
-
-DLL_EXPORT void ptt_pthread_trace (int trclass, char * type, void *data1, void *data2,
-                        char *loc, int result)
+/*-------------------------------------------------------------------*/
+/* Primary PTT tracing function to fill in a PTT_TRACE table entry.  */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT void ptt_pthread_trace (int trclass, const char *msg,
+                                   const void *data1, const void *data2,
+                                   const char *loc, int rc, TIMEVAL* pTV)
 {
 int i, n;
 
-    if (pttrace == NULL || pttracen == 0 || !(pttclass & trclass) ) return;
-
-    /*
-    ** Fish debug: it appears MSVC sometimes sets the __FILE__ macro
-    ** to a full path filename (rather than just the filename only)
-    ** under certain circumstances. (I think maybe it's only for .h
-    ** files since vstore.h is the one that's messing up). Therefore
-    ** for MSVC we need to convert it to just the filename. ((sigh))
-    */
-#if defined( _MSVC_ )   // fish debug; appears to be vstore.h
-                        // maybe all *.h files are this way??
-    {
-        char* p = strrchr( loc, '\\' );
-        if (!p) p = strrchr( loc, '/' );
-        if (p)
-            loc = p+1;
-    }
-#endif
+    if (pttrace == NULL || pttracen == 0 || !(pttclass & trclass)) return;
     /*
      * Messages from timer.c, clock.c and/or logger.c are not usually
      * that interesting and take up table space.  Check the flags to
      * see if we want to trace them.
      */
-    if (!strncasecmp(loc, "timer.c:", 8)  && !(pttclass & PTT_CL_TMR)) return;
-    if (!strncasecmp(loc, "clock.c:", 8)  && !(pttclass & PTT_CL_TMR)) return;
-    if (!strncasecmp(loc, "logger.c:", 9) && !(pttclass & PTT_CL_LOG)) return;
+    loc = TRIMLOC( loc );
+    if (!(pttclass & PTT_CL_TMR) && !strncasecmp( loc, "timer.c:",  8)) return;
+    if (!(pttclass & PTT_CL_TMR) && !strncasecmp( loc, "clock.c:",  8)) return;
+    if (!(pttclass & PTT_CL_LOG) && !strncasecmp( loc, "logger.c:", 9)) return;
 
-    /* check for `nowrap' */
+    /* Check for 'nowrap' */
     if (pttnowrap && pttracex + 1 >= pttracen) return;
 
+    /* Consume another trace table entry */
     OBTAIN_PTTLOCK;
     if (pttrace == NULL || (n = pttracen) == 0)
     {
@@ -699,73 +407,93 @@ int i, n;
         return;
     }
     i = pttracex++;
-    if (pttracex >= n) pttracex = 0;
+    if (pttracex >= n)
+        pttracex = 0;
     RELEASE_PTTLOCK;
-    pttrace[i].tid   = thread_id();
-    pttrace[i].trclass = trclass;
-    pttrace[i].type  = type;
-    pttrace[i].data1 = data1;
-    pttrace[i].data2 = data2;
-    pttrace[i].loc  = loc;
+
+    /* Fill in the trace table entry */
     if (pttnotod == 0)
-        gettimeofday(&pttrace[i].tv,NULL);
-    pttrace[i].result = result;
+    {
+        if (pTV)
+            memcpy( &pttrace[i].tv, pTV, sizeof( TIMEVAL ));
+        else
+            gettimeofday( &pttrace[i].tv, NULL );
+    }
+    pttrace[i].tid     = hthread_self();
+    pttrace[i].trclass = trclass;
+    pttrace[i].msg     = msg;
+    pttrace[i].data1   = data1;
+    pttrace[i].data2   = data2;
+    pttrace[i].loc     = loc;
+    pttrace[i].rc      = rc;
 }
 
+/*-------------------------------------------------------------------*/
+/* Function to print all PTT_TRACE table entries                     */
+/*-------------------------------------------------------------------*/
 DLL_EXPORT int ptt_pthread_print ()
 {
 int   i, n, count = 0;
-char  result[32]; // (result is 'int'; if 64-bits, 19 digits or more!)
-char  tbuf[256];
-time_t tt;
+char  retcode[32]; // (retcode is 'int'; if x64, 19 digits or more!)
+char  tod[27];     // "YYYY-MM-DD HH:MM:SS.uuuuuu"
 
-    if (pttrace == NULL || pttracen == 0) return count;
-    OBTAIN_PTTLOCK;
-    n = pttracen;
-    pttracen = 0;
-    RELEASE_PTTLOCK;
-
-    i = pttracex;
-    do
+    if (pttrace && pttracen)
     {
-        if (pttrace[i].tid)
+        /* Temporarily disable tracing by indicating an empty table */
+        OBTAIN_PTTLOCK;
+        n = pttracen;       /* save number of trace table entries   */
+        pttracen = 0;       /* indicate empty table to stop tracing */
+        RELEASE_PTTLOCK;
+
+        /* Print the trace table */
+        i = pttracex;
+        do
         {
-            tt = pttrace[i].tv.tv_sec; strlcpy(tbuf, ctime(&tt),sizeof(tbuf)); tbuf[19] = '\0';
+            if (pttrace[i].tid)
+            {
+                FormatTIMEVAL( &pttrace[i].tv, tod, sizeof( tod ));
 
-            if (pttrace[i].result == PTT_MAGIC && (pttrace[i].trclass & PTT_CL_THR))
-                result[0] = '\0';
-            else
-                if((pttrace[i].trclass & ~PTT_CL_THR))
-                    MSGBUF(result, "%8.8x", pttrace[i].result);
+                if (pttrace[i].rc == PTT_MAGIC && (pttrace[i].trclass & PTT_CL_THR))
+                    retcode[0] = '\0';
                 else
-                    MSGBUF(result, "%d", pttrace[i].result);
-            logmsg
-            (
-                "%-18s "                           // File name
-                "%s.%6.6ld "                       // Time of day (HH:MM:SS.usecs)
-                I32_FMTX" "                        // Thread id (low 32 bits)
-                "%-12s "                           // Trace type (string; 12 chars)
-                PTR_FMTx" "                        // Data value 1
-                PTR_FMTx" "                        // Data value 2
-                "%s\n"                             // Numeric result (or empty string)
+                    if((pttrace[i].trclass & ~PTT_CL_THR))
+                        MSGBUF(retcode, "%8.8x", pttrace[i].rc);
+                    else
+                        MSGBUF(retcode, "%d", pttrace[i].rc);
+                logmsg
+                (
+                    "%-18s "                           // File name
+                    "%s "                              // Time of day (HH:MM:SS.usecs)
+                    I32_FMTX" "                        // Thread id (low 32 bits)
+                    "%-12s "                           // Trace message (string; 12 chars)
+                    PTR_FMTx" "                        // Data value 1
+                    PTR_FMTx" "                        // Data value 2
+                    "%s\n"                             // Return code (or empty string)
 
-                ,pttrace[i].loc                    // File name
-                ,tbuf + 11                         // Time of day (HH:MM:SS)
-                ,pttrace[i].tv.tv_usec             // Time of day (usecs)
-                ,(U32)(uintptr_t)(pttrace[i].tid)  // Thread id (low 32 bits)
-                ,pttrace[i].type                   // Trace type (string; 12 chars)
-                ,(uintptr_t)pttrace[i].data1       // Data value 1
-                ,(uintptr_t)pttrace[i].data2       // Data value 2
-                ,result                            // Numeric result (or empty string)
-            );
-            count++;
-        }
-        if (++i >= n) i = 0;
-    } while (i != pttracex);
-    memset( pttrace, 0, PTT_TRACE_SIZE * n );
-    pttracex = 0;
-    pttracen = n;
+                    ,pttrace[i].loc                    // File name
+                    ,&tod[11]                          // Time of day (HH:MM:SS.usecs)
+                    ,(U32)(uintptr_t)(pttrace[i].tid)  // Thread id (low 32 bits)
+                    ,pttrace[i].msg                    // Trace message (string; 12 chars)
+                    ,(uintptr_t)pttrace[i].data1       // Data value 1
+                    ,(uintptr_t)pttrace[i].data2       // Data value 2
+                    ,retcode                           // Return code (or empty string)
+                );
+                count++;
+            }
+            if (++i >= n) i = 0;
+        } while (i != pttracex);
+
+        /* Clear all the table entries we just printed and
+           enable tracing again starting at entry number 0.
+           NOTE: there is no need to obtain the lock since:
+           a) pttracex is never accessed unless pttracen is
+           non-zero, b) because pttracen is an int, setting
+           it to non-zero again should be atomic.
+        */
+        memset( pttrace, 0, PTT_TRACE_SIZE * n );
+        pttracex = 0;
+        pttracen = n;
+    }
+
     return count;
 }
-
-#endif

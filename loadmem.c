@@ -1,5 +1,7 @@
-/* LOADMEM.C    (c) Copyright TurboHercules, SAS 2010-2012           */
-/*              load memory functions                                */
+/* LOADMEM.C    (c) Copyright Roger Bowler, 1999                     */
+/*              (c) Copyright Paul Leisy, 2001                       */
+/*              (c) Copyright TurboHercules SAS, 2010-2012           */
+/*              Load memory functions                                */
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
@@ -21,7 +23,8 @@ REGS *regs;
     char   *fname;                      /* -> File name (ASCIIZ)     */
     struct stat statbuff;               /* Buffer for file status    */
     char   *loadaddr;                   /* loadcore memory address   */
-    U32     aaddr;                      /* Absolute storage address  */
+    U64     work64;                     /* 64-bit work variable      */
+    RADR    aaddr;                      /* Absolute storage address  */
     char    pathname[MAX_PATH];         /* file in host path format  */
 
     UNREFERENCED(cmdline);
@@ -46,11 +49,12 @@ REGS *regs;
     {
         loadaddr = argv[2];
 
-        if (sscanf(loadaddr, "%x", &aaddr) !=1)
+        if (sscanf(loadaddr, "%"I64_FMT"x", &work64) !=1)
         {
             WRMSG(HHC02205, "E", loadaddr, ": invalid address" );
             return -1;
         }
+        aaddr = (RADR) work64;
     }
 
     obtain_lock(&sysblk.cpulock[sysblk.pcpu]);
@@ -71,13 +75,18 @@ REGS *regs;
         return -1;
     }
 
-    /* Read the file into absolute storage */
-    WRMSG(HHC02250, "I", fname, aaddr );
+    // "Loading file %s to location %s"
+    {
+        char buf1[32];
+        MSGBUF( buf1, "%"I64_FMT"X", (U64) aaddr );
+        WRMSG(HHC02250, "I", fname, buf1 );
+    }
 
-    (void)load_main(fname, aaddr);
+    (void)load_main(fname, aaddr, 1);
 
     release_lock(&sysblk.cpulock[sysblk.pcpu]);
 
+    // "Operation complete"
     WRMSG(HHC02249, "I");
 
     return 0;
@@ -168,8 +177,9 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
 
     char   *fname;                      /* -> File name (ASCIIZ)     */
     char   *loadaddr;                   /* loadcore memory address   */
-    U32     aaddr;                      /* Absolute storage address  */
-    U32     ahighaddr;                  /* Absolute high address     */
+    U64     work64;                     /* 64-bit work variable      */
+    RADR    aaddr;                      /* Absolute storage address  */
+    RADR    ahighaddr;                  /* Absolute high address     */
     int     fd;                         /* File descriptor           */
     BYTE    buf[80];                    /* Read buffer               */
     int     recno;                      /* Record number             */
@@ -194,11 +204,12 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
     {
         loadaddr = argv[2];
 
-        if (sscanf(loadaddr, "%x", &aaddr) !=1)
+        if (sscanf(loadaddr, "%"I64_FMT"x", &work64) !=1)
         {
             WRMSG(HHC02205, "E", loadaddr, ": invalid address" );
             return -1;
         }
+        aaddr = (RADR) work64;
 
         if (aaddr >= sysblk.mainsize)
         {
@@ -492,7 +503,7 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
 
                     if (aaddr >= sysblk.mainsize)
                     {
-                        WRMSG(HHC02307,"W", argv[0], recno, (RADR)aaddr);
+                        WRMSG(HHC02307,"W", argv[0], recno, aaddr);
                         rc = 4;
                     }
                 }
@@ -609,6 +620,7 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
     {
         if (rc > 0)
             WRMSG(HHC02308, "W", argv[0] );
+        // "Operation complete"
         WRMSG(HHC02249, "I");
     }
 

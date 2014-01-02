@@ -410,9 +410,9 @@ main( int argc, char *argv[] )
             off_t curpos;
             /* Report progress every nnnK */
             if ( i_faketape )
-                curpos = ftell( fetb->fd );
+                curpos = ftell( fetb->fh );
             else
-                curpos = ftell( hetb->fd );
+                curpos = ftell( hetb->fh );
             if( ( curpos & PROGRESS_MASK ) != ( prevpos & PROGRESS_MASK ) )
             {
                 prevpos = curpos;
@@ -526,12 +526,12 @@ main( int argc, char *argv[] )
             Print_Dataset( rc, fileno );
         }
 
-    if( opts & O_SLANAL_OUT )
+        if( opts & O_SLANAL_OUT )
         {
-        gLength = rc;
+            gLength = rc;
 
             if ( gLength == 80 )
-    {
+            {
                 if ( 0
                     || memcmp ( gStdLblBuffer, "HDR", 3 ) == 0
                     || memcmp ( gStdLblBuffer, "EOF", 3 ) == 0
@@ -569,9 +569,7 @@ main( int argc, char *argv[] )
                     lResidue -= Print_Block_Data ( gLenPrtd );
                 }
             }
-
         }
-
     }
 
     if( opts & O_FILES )

@@ -4,7 +4,7 @@
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
-/*   Hercules.                                                       */      
+/*   Hercules.                                                       */
 
 /*
 || ----------------------------------------------------------------------------
@@ -22,12 +22,19 @@
 #include "hstdinc.h"
 
 #include "hercules.h"
+#include "tapedev.h"
 #include "hetlib.h"
 #include "ftlib.h"
 #include "sllib.h"
 #include "herc_getopt.h"
 
 #define UTILITY_NAME    "hetupd"
+
+/*-------------------------------------------------------------------*/
+/* Maximum sized tape I/O buffer...                                  */
+/*-------------------------------------------------------------------*/
+static BYTE buf[ MAX_BLKLEN ];
+
 /*
 || Local volatile data
 */
@@ -53,6 +60,50 @@ static off_t prevpos = 0;
 /* Report progress every this many bytes */
 #define PROGRESS_MASK (~0x3FFFF /* 256K */)
 #endif /*EXTERNALGUI*/
+
+/*-------------------------------------------------------------------*/
+/*  Define logmsg for WRMSG common macro use in local utility        */
+/*-------------------------------------------------------------------*/
+#define logmsg(_msg,...) _logmsg((_msg), ## __VA_ARGS__)
+void _logmsg(char *msg,...)
+{
+    char   *bfr =   NULL;
+    int     rc;
+    int     siz =   1024;
+    va_list vl;
+
+    bfr = (char *)calloc(1, siz);
+    rc = -1;
+    while (bfr != NULL && rc < 0)
+    {
+        va_start(vl, msg);
+#if defined(_MSVC_)
+        rc = _vsnprintf_s(bfr, siz, siz-1, msg, vl);
+#else
+        rc = vsnprintf(bfr, siz, msg, vl);
+#endif
+        va_end(vl);
+        if (rc >= 0 && rc < siz)
+            break;
+        rc = -1;
+        siz += 1024;
+        if (siz > 65536)
+            break;
+        bfr = realloc(bfr, siz);
+    }
+    if (bfr != NULL)
+    {
+        if (strlen(bfr) == 0)
+        {
+            if (strlen(msg) != 0)
+                fputs(msg, stdout);
+        }
+        else
+            fputs(bfr, stdout);
+        free(bfr);
+    }
+}
+
 
 /*
 || Prints usage information
@@ -124,7 +175,6 @@ static int
 copytape( void )
 {
     int rc;
-    char buf[ HETMAX_BLOCKSIZE ];
 
     while( TRUE )
     {
@@ -134,9 +184,9 @@ copytape( void )
             off_t curpos;
             /* Report progress every nnnK */
             if ( i_faketape )
-                curpos = ftell( s_fetb->fd );
+                curpos = ftell( s_fetb->fh );
             else
-                curpos = ftell( s_hetb->fd );
+                curpos = ftell( s_hetb->fh );
             if( ( curpos & PROGRESS_MASK ) != ( prevpos & PROGRESS_MASK ) )
             {
                 prevpos = curpos;
@@ -206,7 +256,7 @@ opentapes( void )
 {
     int rc;
 
-    if ( ( rc = (int)strlen( o_sname ) ) > 4 && 
+    if ( ( rc = (int)strlen( o_sname ) ) > 4 &&
         ( rc = strcasecmp( &o_sname[rc-4], ".fkt" ) ) == 0 )
     {
         i_faketape = TRUE;
@@ -218,23 +268,25 @@ opentapes( void )
         rc = het_open( &s_hetb, o_sname, HETOPEN_READONLY );
     if( rc < 0 )
     {
+        dorename = FALSE;
         if ( o_verbose )
             WRMSG( HHC02720, "E", o_sname, rc, het_error( rc ) );
         goto exit;
     }
 
-    if ( ( rc = (int)strlen( o_dname ) ) > 4 && 
+    if ( ( rc = (int)strlen( o_dname ) ) > 4 &&
         ( rc = strcasecmp( &o_dname[rc-4], ".fkt" ) ) == 0 )
     {
         o_faketape = TRUE;
     }
-    
+
     if ( o_faketape )
         rc = fet_open( &d_fetb, o_dname, FETOPEN_CREATE );
     else
         rc = het_open( &d_hetb, o_dname, HETOPEN_CREATE );
     if( rc < 0 )
     {
+        dorename = FALSE;
         if ( o_verbose )
             WRMSG( HHC02720, "E", o_dname, rc, het_error( rc ) );
         goto exit;

@@ -95,7 +95,7 @@ static BYTE CTCI_Immed_Commands[256]=
 // Declarations
 // ====================================================================
 
-static void*    CTCI_ReadThread( PCTCBLK pCTCBLK );
+static void*    CTCI_ReadThread( void* arg /*PCTCBLK pCTCBLK */ );
 
 static int      CTCI_EnqueueIPFrame( DEVBLK* pDEVBLK,
                                      BYTE*   pData, size_t iSize );
@@ -239,29 +239,24 @@ int  CTCI_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
     /* would appear that the bit is permanent so that hercifc cannot */
     /* configure the interface.                                      */
     rc = TUNTAP_CreateInterface( pDevCTCBLK->szTUNCharDevName,
+#if defined(BUILD_HERCIFC)
                                  (pDevCTCBLK->fPreconfigured ? IFF_NO_HERCIFC : 0) |
+#endif // __HERCIFC_H_
                                  IFF_TUN | IFF_NO_PI,
                                  &pDevCTCBLK->fd,
                                  pDevCTCBLK->szTUNIfName );
 
     if( rc < 0 ) return -1;
 
-    // "%1d:%04X CTC: device '%s', type '%s' opened"
+    // HHC00901 "%1d:%04X %s: interface %s, type %s opened"
     WRMSG(HHC00901, "I", SSID_TO_LCSS(pDevCTCBLK->pDEVBLK[0]->ssid), pDevCTCBLK->pDEVBLK[0]->devnum,
-              pDevCTCBLK->szTUNIfName, "TUN");
+                         pDevCTCBLK->pDEVBLK[0]->typname,
+                         pDevCTCBLK->szTUNIfName, "TUN");
 
-    if (pDevCTCBLK->fPreconfigured)
-    {
-#if !defined( OPTION_W32_CTCI ) && 0
-        /* Trying  to determine whether the device is persistent did */
-        /* not pan out as the query returns only the IFF flags.      */
-#endif
-    }
-    else                              /* Needs configuring           */
+    if (!pDevCTCBLK->fPreconfigured)
     {
 
 #if defined(OPTION_W32_CTCI)
-
         // Set the specified driver/dll i/o buffer sizes..
         {
             struct tt32ctl tt32ctl;
@@ -272,27 +267,23 @@ int  CTCI_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
             tt32ctl.tt32ctl_devbuffsize = pDevCTCBLK->iKernBuff;
             if( TUNTAP_IOCtl( pDevCTCBLK->fd, TT32SDEVBUFF, (char*)&tt32ctl ) != 0  )
             {
-                // "%1d:%04X CTC: ioctl '%s' failed for device '%s': '%s'"
+                // "%1d:%04X %s: ioctl '%s' failed for device '%s': '%s'"
                 WRMSG(HHC00902, "W", SSID_TO_LCSS(pDevCTCBLK->pDEVBLK[0]->ssid), pDevCTCBLK->pDEVBLK[0]->devnum,
+                      pDevCTCBLK->pDEVBLK[0]->typname,
                       "TT32SDEVBUFF", pDevCTCBLK->szTUNIfName, strerror( errno ) );
             }
 
             tt32ctl.tt32ctl_iobuffsize = pDevCTCBLK->iIOBuff;
             if( TUNTAP_IOCtl( pDevCTCBLK->fd, TT32SIOBUFF, (char*)&tt32ctl ) != 0  )
             {
-                // "%1d:%04X CTC: ioctl '%s' failed for device '%s': '%s'"
+                // "%1d:%04X %s: ioctl '%s' failed for device '%s': '%s'"
                 WRMSG(HHC00902, "W", SSID_TO_LCSS(pDevCTCBLK->pDEVBLK[0]->ssid), pDevCTCBLK->pDEVBLK[0]->devnum,
+                      pDevCTCBLK->pDEVBLK[0]->typname,
                       "TT32SIOBUFF", pDevCTCBLK->szTUNIfName, strerror( errno ) );
             }
         }
-#endif
-
-#ifdef OPTION_TUNTAP_CLRIPADDR
-        VERIFY( TUNTAP_ClrIPAddr ( pDevCTCBLK->szTUNIfName ) == 0 );
-#endif
 
 #ifdef OPTION_TUNTAP_SETMACADDR
-
         if( !pDevCTCBLK->szMACAddress[0] )   // (if MAC address unspecified)
         {
             in_addr_t  wrk_guest_ip_addr;
@@ -324,6 +315,11 @@ int  CTCI_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
         );
 
         VERIFY( TUNTAP_SetMACAddr ( pDevCTCBLK->szTUNIfName, pDevCTCBLK->szMACAddress  ) == 0 );
+#endif
+
+#ifdef OPTION_TUNTAP_CLRIPADDR
+        VERIFY( TUNTAP_ClrIPAddr  ( pDevCTCBLK->szTUNIfName ) == 0 );
+#endif
 #endif
 
         VERIFY( TUNTAP_SetIPAddr  ( pDevCTCBLK->szTUNIfName, pDevCTCBLK->szDriveIPAddr ) == 0 );
@@ -364,10 +360,10 @@ int  CTCI_Init( DEVBLK* pDEVBLK, int argc, char *argv[] )
 //
 void  CTCI_ExecuteCCW( DEVBLK* pDEVBLK, BYTE  bCode,
                        BYTE    bFlags,  BYTE  bChained,
-                       U16     sCount,  BYTE  bPrevCode,
+                       U32     sCount,  BYTE  bPrevCode,
                        int     iCCWSeq, BYTE* pIOBuf,
                        BYTE*   pMore,   BYTE* pUnitStat,
-                       U16*    pResidual )
+                       U32*    pResidual )
 {
     int             iNum;               // Number of bytes to move
     BYTE            bOpCode;            // CCW opcode with modifier
@@ -678,9 +674,9 @@ void  CTCI_Query( DEVBLK* pDEVBLK, char** ppszClass,
 //      pMore     Set to 1 if packet data exceeds CCW count
 //
 
-void  CTCI_Read( DEVBLK* pDEVBLK,   U16   sCount,
+void  CTCI_Read( DEVBLK* pDEVBLK,   U32   sCount,
                  BYTE*   pIOBuf,    BYTE* pUnitStat,
-                 U16*    pResidual, BYTE* pMore )
+                 U32*    pResidual, BYTE* pMore )
 {
     PCTCBLK     pCTCBLK  = (PCTCBLK)pDEVBLK->dev_data;
     PCTCIHDR    pFrame   = NULL;
@@ -695,15 +691,6 @@ void  CTCI_Read( DEVBLK* pDEVBLK,   U16   sCount,
         {
             release_lock( &pCTCBLK->Lock );
 
-#if defined( OPTION_WTHREADS )
-// Use a straight relative wait rather than the calculated wait of the POSIX
-// based threading.
-            obtain_lock( &pCTCBLK->EventLock );
-            rc = timed_wait_condition( &pCTCBLK->Event,
-                                       &pCTCBLK->EventLock,
-                                       CTC_READ_TIMEOUT_SECS * 1000 );
-
-#else //!defined( OPTION_WTHREADS )
             {
                 struct timespec waittime;
                 struct timeval  now;
@@ -718,7 +705,6 @@ void  CTCI_Read( DEVBLK* pDEVBLK,   U16   sCount,
                                            &pCTCBLK->EventLock,
                                            &waittime );
             }
-#endif // defined( OPTION_WTHREADS)
 
             release_lock( &pCTCBLK->EventLock );
 
@@ -805,9 +791,9 @@ void  CTCI_Read( DEVBLK* pDEVBLK,   U16   sCount,
 // the comments preceding the CTCI_ReadThread function.
 //
 
-void  CTCI_Write( DEVBLK* pDEVBLK,   U16   sCount,
+void  CTCI_Write( DEVBLK* pDEVBLK,   U32   sCount,
                   BYTE*   pIOBuf,    BYTE* pUnitStat,
-                  U16*    pResidual )
+                  U32*    pResidual )
 {
     PCTCBLK    pCTCBLK  = (PCTCBLK)pDEVBLK->dev_data;
     PCTCIHDR   pFrame;                  // -> Frame header
@@ -918,8 +904,8 @@ void  CTCI_Write( DEVBLK* pDEVBLK,   U16   sCount,
 
         // Check that the segment length is valid
         if( ( sSegLen        < sizeof( CTCISEG ) ) ||
-            ( iPos + sSegLen > sOffset           ) ||
-            ( iPos + sSegLen > sCount            ) )
+            ( (U32)iPos + sSegLen > sOffset      ) ||
+            ( (U32)iPos + sSegLen > sCount       ) )
         {
             // "%1d:%04X CTC: invalid write buffer segment length %u at offset %4.4X"
             WRMSG(HHC00909, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum, sSegLen, iPos );
@@ -958,7 +944,7 @@ void  CTCI_Write( DEVBLK* pDEVBLK,   U16   sCount,
         *pResidual -= sSegLen;
 
         // We are done if current segment satisfies CCW count
-        if( iPos + sSegLen == sCount )
+        if( (U32)iPos + sSegLen == sCount )
         {
             *pResidual -= sSegLen;
             *pUnitStat = CSW_CE | CSW_DE;
@@ -1005,8 +991,9 @@ void  CTCI_Write( DEVBLK* pDEVBLK,   U16   sCount,
 // all of the queued CTCISEG's hwLength fields added together.
 //
 
-static void*  CTCI_ReadThread( PCTCBLK pCTCBLK )
+static void*  CTCI_ReadThread( void* arg )
 {
+    PCTCBLK  pCTCBLK = (PCTCBLK) arg;
     DEVBLK*  pDEVBLK = pCTCBLK->pDEVBLK[0];
     int      iLength;
     BYTE     szBuff[2048];
@@ -1247,9 +1234,9 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
         int     c;
 
 #if defined( OPTION_W32_CTCI )
-  #define  CTCI_OPTSTRING  "n:x:k:i:t:s:m:d"
+  #define  CTCI_OPTSTRING  "n:x:k:i:m:t:s:d"
 #else
-  #define  CTCI_OPTSTRING  "n:x:t:s:m:d"
+  #define  CTCI_OPTSTRING  "n:x:t:s:d"
 #endif
 
 #if defined(HAVE_GETOPT_LONG)
@@ -1263,10 +1250,10 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
 #if defined( OPTION_W32_CTCI )
             { "kbuff",   required_argument, NULL, 'k' },
             { "ibuff",   required_argument, NULL, 'i' },
+            { "mac",     required_argument, NULL, 'm' },
 #endif
             { "mtu",     required_argument, NULL, 't' },
             { "netmask", required_argument, NULL, 's' },
-            { "mac",     required_argument, NULL, 'm' },
             { "debug",   no_argument,       NULL, 'd' },
             { NULL,      0,                 NULL,  0  }
         };
@@ -1350,6 +1337,20 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
 
             pCTCBLK->iIOBuff = iIOBuff * 1024;
             break;
+
+        case 'm':
+            if( ParseMAC( optarg, mac ) != 0 )
+            {
+                // "%1d:%04X CTC: option '%s' value '%s' invalid"
+                WRMSG(HHC00916, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum,
+                      "MAC address", optarg );
+                return -1;
+            }
+
+            strlcpy( pCTCBLK->szMACAddress, optarg, sizeof(pCTCBLK->szMACAddress) );
+            saw_conf = 1;
+
+            break;
 #endif // defined( OPTION_W32_CTCI )
 
         case 't':     // MTU of point-to-point link (ignored if Windows)
@@ -1380,20 +1381,6 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
             saw_conf = 1;
             break;
 
-        case 'm':
-            if( ParseMAC( optarg, mac ) != 0 )
-            {
-                // "%1d:%04X CTC: option '%s' value '%s' invalid"
-                WRMSG(HHC00916, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum,
-                      "MAC address", optarg );
-                return -1;
-            }
-
-            strlcpy( pCTCBLK->szMACAddress, optarg, sizeof(pCTCBLK->szMACAddress) );
-            saw_conf = 1;
-
-            break;
-
         case 'd':     // Diagnostics
             pCTCBLK->fDebug = TRUE;
             break;
@@ -1409,34 +1396,12 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
 
     i = 0;
 
-    // Check for correct number of arguments
-    if( argc == 0 && !saw_if)
-    {
-        // "%1d:%04X CTC: incorrect number of parameters"
-        WRMSG(HHC00915, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum );
-        return -1;
-    }
-
     if( !pCTCBLK->fOldFormat )
     {
-        if (!argc && saw_if && !saw_conf)
-            pCTCBLK->fPreconfigured = TRUE;
-        else if (1 == argc && !saw_if && !saw_conf) /* Pre-configured net device */
+        // New format has 2 and only 2 parameters (though several options), or
+        // it has 1 or 0 parameters if using pre-configured TUN device (*nix only).
+        if (argc == 2 ) /* Not pre-configured */
         {
-            strlcpy(pCTCBLK->szTUNIfName, argv[0], sizeof(pCTCBLK->szTUNIfName));
-            pCTCBLK->fPreconfigured = TRUE;
-            argc--; argv++;
-        }
-        else
-        {
-            // New format has 2 and only 2 parameters (Though several options).
-            if( argc != 2 )
-            {
-                // "%1d:%04X CTC: incorrect number of parameters"
-                WRMSG(HHC00915, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum );
-                return -1;
-            }
-
             // Guest IP Address
             if( inet_aton( *argv, &addr ) == 0 )
             {
@@ -1445,9 +1410,7 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
                       "IP address", *argv );
                 return -1;
             }
-
             strlcpy( pCTCBLK->szGuestIPAddr, *argv, sizeof(pCTCBLK->szGuestIPAddr) );
-
             argc--; argv++;
 
             // Driver IP Address
@@ -1458,10 +1421,36 @@ static int  ParseArgs( DEVBLK* pDEVBLK, PCTCBLK pCTCBLK,
                       "IP address", *argv );
                 return -1;
             }
-
             strlcpy( pCTCBLK->szDriveIPAddr, *argv, sizeof(pCTCBLK->szDriveIPAddr) );
-
             argc--; argv++;
+
+            pCTCBLK->fPreconfigured = FALSE;
+        }
+#if !defined( OPTION_W32_CTCI )
+        else if (argc == 1 && !saw_if && !saw_conf) /* Pre-configured using name */
+        {
+            if( strlen( *argv ) > sizeof(pCTCBLK->szTUNIfName)-1 )
+            {
+                // HHC00916 "%1d:%04X CTC: option '%s' value '%s' invalid"
+                WRMSG(HHC00916, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum,
+                      "TUN device name", optarg );
+                return -1;
+            }
+            strlcpy( pCTCBLK->szTUNIfName, *argv, sizeof(pCTCBLK->szTUNIfName) );
+            argc--; argv++;
+
+            pCTCBLK->fPreconfigured = TRUE;
+        }
+        else if (argc == 0 && saw_if && !saw_conf) /* Pre-configured using -x option */
+        {
+            pCTCBLK->fPreconfigured = TRUE;
+        }
+#endif /* !defined( OPTION_W32_CTCI ) */
+        else
+        {
+            // "%1d:%04X CTC: incorrect number of parameters"
+            WRMSG(HHC00915, "E", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum );
+            return -1;
         }
     }
     else // if( pCTCBLK->fOldFormat )

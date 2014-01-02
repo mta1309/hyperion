@@ -77,7 +77,8 @@ typedef struct _hethdr
 */
 typedef struct _hetb
 {
-    FILE           *fd;                 /* Tape file descriptor             */
+    FILE           *fh;                 /* Tape file handle                 */
+    int             fd;                 /* Tape file descriptor             */
     uint32_t        chksize;            /* Size of output chunks            */
     uint32_t        ublksize;           /* Current block compressed size    */
     uint32_t        cblksize;           /* Current block uncompressed size  */
@@ -113,7 +114,7 @@ typedef struct _hetb
 #define HETMIN_CHUNKSIZE        4096    /* Minimum chunksize                */
 #define HETMAX_CHUNKSIZE        65535   /* Maximum chunksize                */
 #define HETMIN_BLOCKSIZE        1       /* Minimum blocksize                */
-#define HETMAX_BLOCKSIZE        65535   /* Maximum blocksize                */
+#define HETMAX_BLOCKSIZE        2097152 /* Maximum blocksize = 2MB          */
 
 /*
 || Default settings
@@ -122,7 +123,7 @@ typedef struct _hetb
 #define HETDFLT_DECOMPRESS      TRUE    /* Decompress read data             */
 #define HETDFLT_METHOD          HETMETH_ZLIB /* Use ZLIB compression        */
 #define HETDFLT_LEVEL           4       /* Middle of the road               */
-#define HETDFLT_CHKSIZE         HETMAX_BLOCKSIZE /* As big as it gets       */
+#define HETDFLT_CHKSIZE         HETMAX_CHUNKSIZE /* As big as it gets       */
 
 /*
 || Flags for het_open()
@@ -161,7 +162,7 @@ typedef struct _hetb
 #define HETE_DECERR             -10     /* Decompression error              */
 #define HETE_UNKMETH            -11     /* Unknown compression method       */
 #define HETE_COMPERR            -12     /* Compression error                */
-#define HETE_BADLEN             -13     /* Specified length to big          */
+#define HETE_BADLEN             -13     /* Specified length too big         */
 #define HETE_PROTECTED          -14     /* Write protected                  */
 #define HETE_BADFUNC            -15     /* Bad function code passed         */
 #define HETE_BADMETHOD          -16     /* Bad compression method           */

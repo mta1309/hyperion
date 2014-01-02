@@ -63,6 +63,16 @@
 #define HCMD_DLL_IMPORT DLL_EXPORT
 #endif
 
+#ifndef _HSCMISC_C_
+#ifndef _HENGINE_DLL_
+#define HMISC_DLL_IMPORT DLL_IMPORT
+#else   /* _HENGINE_DLL_ */
+#define HMISC_DLL_IMPORT extern
+#endif  /* _HENGINE_DLL_ */
+#else
+#define HMISC_DLL_IMPORT DLL_EXPORT
+#endif
+
 #ifndef _HSCEMODE_C_
 #ifndef _HENGINE_DLL_
 #define HCEM_DLL_IMPORT DLL_IMPORT
@@ -213,7 +223,7 @@
 #define OPCD_DLL_IMPORT DLL_EXPORT
 #endif
 
-#if defined( _MSC_VER ) && (_MSC_VER >= 1300) && (_MSC_VER < 1400)
+#if defined( _MSC_VER ) && (_MSC_VER < VS2005)
 //  '_ftol'   is defined in MSVCRT.DLL
 //  '_ftol2'  we define ourselves in "w32ftol2.c"
 extern long _ftol ( double dblSource );
@@ -262,7 +272,12 @@ SCRI_DLL_IMPORT int parse_args (char* p, int maxargc, char** pargv, int* pargc);
 void release_config ();
 CONF_DLL_IMPORT DEVBLK *find_device_by_devnum (U16 lcss, U16 devnum);
 DEVBLK *find_device_by_subchan (U32 ioid);
-CONF_DLL_IMPORT REGS *devregs(DEVBLK *dev);
+#ifdef OPTION_SYNCIO
+  #define DEVREGS(_dev) devregs(_dev)
+  CONF_DLL_IMPORT REGS *devregs(DEVBLK *dev);
+#else // OPTION_NOSYNCIO
+  #define DEVREGS(_dev) NULL
+#endif // OPTION_SYNCIO
 int  attach_device (U16 lcss, U16 devnum, const char *devtype, int addargc,
         char *addargv[]);
 int  detach_device (U16 lcss, U16 devnum);
@@ -284,7 +299,7 @@ int  configure_tod_priority(int prio);
 int  configure_srv_priority(int prio);
 
 int  configure_shrdport(U16 shrdport);
-#define MAX_ARGS  12                    /* Max argv[] array size     */
+#define MAX_ARGS  1024                  /* Max argv[] array size     */
 int parse_and_attach_devices(const char *devnums,const char *devtype,int ac,char **av);
 CONF_DLL_IMPORT int parse_single_devnum(const char *spec, U16 *lcss, U16 *devnum);
 int parse_single_devnum_silent(const char *spec, U16 *lcss, U16 *devnum);
@@ -416,6 +431,7 @@ void get_model(BYTE *name);
 void get_modelcapa(BYTE *name);
 void get_modelperm(BYTE *name);
 void get_modeltemp(BYTE *name);
+unsigned int get_RealCPCount();
 void get_sysname(BYTE *name);
 void get_systype(BYTE *name);
 void get_sysplex(BYTE *name);
@@ -468,8 +484,8 @@ int servc_hresume(void *file);
 void ckd_build_sense ( DEVBLK *, BYTE, BYTE, BYTE, BYTE, BYTE);
 int ckddasd_init_handler ( DEVBLK *dev, int argc, char *argv[]);
 void ckddasd_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual );
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual );
 int ckddasd_close_device ( DEVBLK *dev );
 void ckddasd_query_device (DEVBLK *dev, char **devclass,
                 int buflen, char *buffer);
@@ -478,17 +494,17 @@ int ckddasd_hresume  ( DEVBLK *dev, void *file );
 
 /* Functions in module fbadasd.c */
 FBA_DLL_IMPORT void fbadasd_syncblk_io (DEVBLK *dev, BYTE type, int blknum,
-        int blksize, BYTE *iobuf, BYTE *unitstat, U16 *residual);
+        int blksize, BYTE *iobuf, BYTE *unitstat, U32 *residual);
 FBA_DLL_IMPORT void fbadasd_read_block
       ( DEVBLK *dev, int blknum, int blksize, int blkfactor,
-        BYTE *iobuf, BYTE *unitstat, U16 *residual );
+        BYTE *iobuf, BYTE *unitstat, U32 *residual );
 FBA_DLL_IMPORT void fbadasd_write_block
       ( DEVBLK *dev, int blknum, int blksize, int blkfactor,
-        BYTE *iobuf, BYTE *unitstat, U16 *residual );
+        BYTE *iobuf, BYTE *unitstat, U32 *residual );
 int fbadasd_init_handler ( DEVBLK *dev, int argc, char *argv[]);
 void fbadasd_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual );
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual );
 int fbadasd_close_device ( DEVBLK *dev );
 void fbadasd_query_device (DEVBLK *dev, char **devclass,
                 int buflen, char *buffer);
@@ -536,6 +552,9 @@ const char* FormatORB( ORB* orb, char* buf, size_t bufsz );
 const char* FormatSCL( ESW* esw, char* buf, size_t bufsz );
 const char* FormatERW( ESW* esw, char* buf, size_t bufsz );
 const char* FormatESW( ESW* esw, char* buf, size_t bufsz );
+HMISC_DLL_IMPORT const char* FormatSID( BYTE* iobuf, int num, char* buf, size_t bufsz );
+HMISC_DLL_IMPORT const char* FormatRCD( BYTE* iobuf, int num, char* buf, size_t bufsz );
+HMISC_DLL_IMPORT const char* FormatRNI( BYTE* iobuf, int num, char* buf, size_t bufsz );
 void get_connected_client (DEVBLK* dev, char** pclientip, char** pclientname);
 void alter_display_real (REGS *regs, int argc, char *argv[], char *cmdline);
 void alter_display_virt (REGS *regs, int argc, char *argv[], char *cmdline);

@@ -10,6 +10,8 @@
 /* prototypes required by Hercules in the MSVC environment           */
 /*-------------------------------------------------------------------*/
 
+#include "hstdinc.h"        /* Standard header file includes         */
+
 #if !defined(_HERCWIND_H)
 #define _HERCWIND_H
 
@@ -22,8 +24,8 @@
   #error This file is only for building Hercules with MSVC
 #endif
 
-#if defined( _MSC_VER ) && (_MSC_VER < 1300)
-  #error MSVC compiler versions less than 13.0 not supported.
+#if defined( _MSC_VER ) && (_MSC_VER < VS2002)
+  #error MSVC compiler versions less than 13.0 (Visual Studio 2002) not supported.
 #endif
 
 #pragma intrinsic( memset, memcmp, memcpy )
@@ -136,10 +138,7 @@ typedef u_int32_t           in_addr_t;
 #define OPTION_ENHANCED_CONFIG_INCLUDE
 #endif
 
-#if !( defined( OPTION_FTHREADS ) || defined( OPTION_WTHREADS ) )
 #define OPTION_FTHREADS
-#endif
-
 #define HAVE_STRSIGNAL
 
 #if !defined(OPTION_NO_EXTERNAL_GUI)
@@ -167,13 +166,15 @@ typedef u_int32_t           in_addr_t;
 #define HAVE_FMODL
 #define HAVE_FREXPL
 
-// The following are needed by hostopts.h...
+// The following are needed by 'hostopts.h'...
 
-#define HAVE_DECL_SIOCSIFNETMASK  1     // (manually defined in tuntap.h)
-#define HAVE_DECL_SIOCSIFHWADDR   1     // (manually defined in tuntap.h)
-#define HAVE_DECL_SIOCADDRT       0     // (unsupported by CTCI-W32)
-#define HAVE_DECL_SIOCDELRT       0     // (unsupported by CTCI-W32)
-#define HAVE_DECL_SIOCDIFADDR     0     // (unsupported by CTCI-W32)
+#define HAVE_DECL_SIOCSIFNETMASK  1     // (  supported by CTCI-W32)
+#define HAVE_DECL_SIOCSIFBRDADDR  1     // (  supported by CTCI-W32)
+#define HAVE_DECL_SIOCGIFHWADDR   1     // (  supported by CTCI-W32)
+#define HAVE_DECL_SIOCSIFHWADDR   1     // (  supported by CTCI-W32)
+#define HAVE_DECL_SIOCADDRT       0     // (UNsupported by CTCI-W32)
+#define HAVE_DECL_SIOCDELRT       0     // (UNsupported by CTCI-W32)
+#define HAVE_DECL_SIOCDIFADDR     0     // (UNsupported by CTCI-W32)
 
 // SCSI tape handling transparency/portability
 

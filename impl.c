@@ -282,10 +282,9 @@ DLL_EXPORT  COMMANDHANDLER getCommandHandler(void)
 /*-------------------------------------------------------------------*/
 /* Process .RC file thread                                           */
 /*-------------------------------------------------------------------*/
-
+static char *rcname = NULL;             /* hercules.rc name pointer  */
 static void* process_rc_file (void* dummy)
 {
-char   *rcname;                         /* hercules.rc name pointer  */
 int     is_default_rc  = 0;             /* 1 == default name used    */
 char    pathname[MAX_PATH];             /* (work)                    */
 
@@ -293,10 +292,13 @@ char    pathname[MAX_PATH];             /* (work)                    */
 
     /* Obtain the name of the hercules.rc file or default */
 
-    if (!(rcname = getenv("HERCULES_RC")))
+    if (!rcname)
     {
-        rcname = "hercules.rc";
-        is_default_rc = 1;
+        if (!(rcname = getenv("HERCULES_RC")))
+        {
+            rcname = "hercules.rc";
+            is_default_rc = 1;
+        }
     }
 
     if(!strcasecmp(rcname,"None"))
@@ -350,16 +352,6 @@ int     e_gui = FALSE;                  /* EXTERNALGUI parm          */
 char   *dll_load[MAX_DLL_TO_LOAD];      /* Pointers to modnames      */
 int     dll_count;                      /* index into array          */
 #endif
-
-    /* Initialize/verify locking model (see
-      initialize_lock macro in hthreads.h) */
-    {
-        LOCK               dummy;
-        initialize_lock ( &dummy );
-        obtain_lock     ( &dummy );
-        release_lock    ( &dummy );
-        destroy_lock    ( &dummy );
-    }
 
     /* Seed the pseudo-random number generator */
     srand( time(NULL) );
@@ -545,10 +537,18 @@ int     dll_count;                      /* index into array          */
     /* Save TOD of when we were first IMPL'ed */
     time( &sysblk.impltime );
 
+    /* Set to LPAR mode with LPAR 1, LPAR ID of 01, and CPUIDFMT 0   */
+    sysblk.lparmode = 1;                /* LPARNUM 1    # LPAR ID 01 */
+    sysblk.lparnum = 1;                 /* ...                       */
+    sysblk.cpuidfmt = 0;                /* CPUIDFMT 0                */
+    sysblk.operation_mode = om_mif;     /* Default to MIF operaitons */
+
     /* set default CPU identifier */
-    sysblk.cpuid = ((U64)     0x00 << 56)
-                 | ((U64) 0x000001 << 32)
-                 | ((U64)   0x0586 << 16);
+    sysblk.cpumodel = 0x0586;
+    sysblk.cpuversion = 0xFD;
+    sysblk.cpuserial = 0x000001;
+    sysblk.cpuid = createCpuId(sysblk.cpumodel, sysblk.cpuversion,
+                               sysblk.cpuserial, 0);
 
     /* set default Program Interrupt Trace to NONE */
     sysblk.pgminttr = OS_NONE;
@@ -614,15 +614,14 @@ int     dll_count;                      /* index into array          */
     {
         char buf[8];
 
-        set_symbol("LPARNAME", str_lparname() );
+        set_symbol("LPARNAME", str_lparname());
+        set_symbol("LPARNUM", "1");
+        set_symbol("CPUIDFMT", "0");
 
-        MSGBUF( buf, "%02X", sysblk.lparnum );
-        set_symbol("LPARNUM", buf );
-
-        MSGBUF( buf, "%06X", (unsigned int) ((sysblk.cpuid & 0x00FFFFFF00000000ULL) >> 32) );
+        MSGBUF( buf, "%06X", sysblk.cpuserial );
         set_symbol( "CPUSERIAL", buf );
 
-        MSGBUF( buf, "%04X", (unsigned int) ((sysblk.cpuid & 0x00000000FFFF0000ULL) >> 16) );
+        MSGBUF( buf, "%04X", sysblk.cpumodel );
         set_symbol( "CPUMODEL", buf );
 
     }
@@ -643,6 +642,9 @@ int     dll_count;                      /* index into array          */
     initialize_lock (&sysblk.sigplock);
     initialize_lock (&sysblk.mntlock);
     initialize_lock (&sysblk.scrlock);
+    initialize_lock (&sysblk.crwlock);
+    initialize_lock (&sysblk.ioqlock);
+    initialize_condition (&sysblk.ioqcond);
 #if defined(OPTION_CMDSER)
     initialize_lock      (&sysblk.cmdlock);
     initialize_condition (&sysblk.cmdcond);
@@ -667,12 +669,6 @@ int     dll_count;                      /* index into array          */
     }
     initialize_condition (&sysblk.sync_cond);
     initialize_condition (&sysblk.sync_bc_cond);
-
-#if !defined(OPTION_FISHIO)
-    initialize_lock (&sysblk.ioqlock);
-    initialize_condition (&sysblk.ioqcond);
-#endif
-
 
     /* Copy length for regs */
     sysblk.regs_copy_len = (int)((uintptr_t)&sysblk.dummyregs.regs_copy_end
@@ -713,12 +709,6 @@ int     dll_count;                      /* index into array          */
     */
     display_version (stdout, "Hercules", TRUE);
 
-#if defined(ENABLE_NLS)
-    setlocale(LC_ALL, "");
-    bindtextdomain(PACKAGE, HERC_LOCALEDIR);
-    textdomain(PACKAGE);
-#endif
-
 #ifdef EXTERNALGUI
     if (argc >= 1 && strncmp(argv[argc-1],"EXTERNALGUI",11) == 0)
     {
@@ -744,7 +734,7 @@ int     dll_count;                      /* index into array          */
 
     /* Process the command line options */
     {
-#define  HERCULES_BASE_OPTS     "hf:db:v"
+#define  HERCULES_BASE_OPTS     "hf:r:db:v"
 #define  HERCULES_SYM_OPTS      ""
 #define  HERCULES_HDL_OPTS      ""
 #if defined(OPTION_CONFIG_SYMBOLS)
@@ -762,6 +752,7 @@ int     dll_count;                      /* index into array          */
     {
         { "help",     no_argument,       NULL, 'h' },
         { "config",   required_argument, NULL, 'f' },
+        { "rcfile",   required_argument, NULL, 'r' },
         { "daemon",   no_argument,       NULL, 'd' },
         { "herclogo", required_argument, NULL, 'b' },
         { "verbose",  no_argument,       NULL, 'v' },
@@ -785,6 +776,9 @@ int     dll_count;                      /* index into array          */
             break;
         case 'f':
             cfgfile = optarg;
+            break;
+        case 'r':
+            rcname = optarg;
             break;
 #if defined(OPTION_CONFIG_SYMBOLS)
         case 's':
@@ -980,7 +974,6 @@ int     dll_count;                      /* index into array          */
     }
 #endif
 
-#if defined( OPTION_WAKEUP_SELECT_VIA_PIPE )
     {
         int fds[2];
         initialize_lock(&sysblk.cnslpipe_lock);
@@ -994,7 +987,6 @@ int     dll_count;                      /* index into array          */
         sysblk.sockwpipe=fds[1];
         sysblk.sockrpipe=fds[0];
     }
-#endif // defined( OPTION_WAKEUP_SELECT_VIA_PIPE )
 
 #if !defined(NO_SIGABEND_HANDLER)
     {

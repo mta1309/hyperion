@@ -34,11 +34,27 @@
 #include "chsc.h"
 #include "zfcp.h"
 
-#define ZFCP_DEBUG
+/*-------------------------------------------------------------------*/
+/* ZFCP Debugging                                                    */
+/*-------------------------------------------------------------------*/
 
-#if defined(DEBUG) && !defined(ZFCP_DEBUG)
+#define ENABLE_ZFCP_DEBUG   1    // 1:always, 0:never, #undef:maybe
+
+#if (!defined(ENABLE_ZFCP_DEBUG) && defined(DEBUG)) || \
+    (defined(ENABLE_ZFCP_DEBUG) && ENABLE_ZFCP_DEBUG)
  #define ZFCP_DEBUG
 #endif
+
+#if defined(ZFCP_DEBUG)
+ #define  ENABLE_TRACING_STMTS   1       // (Fish: DEBUGGING)
+ #include "dbgtrace.h"                   // (Fish: DEBUGGING)
+ #define  NO_ZFCP_OPTIMIZE               // (Fish: DEBUGGING) (MSVC only)
+#endif
+
+#if defined( _MSVC_ ) && defined( NO_ZFCP_OPTIMIZE )
+  #pragma optimize( "", off )           // disable optimizations for reliable breakpoints
+#endif
+
 
 
 #if defined( OPTION_DYNAMIC_LOAD )
@@ -49,70 +65,34 @@
 #endif /*defined( OPTION_DYNAMIC_LOAD )*/
 
 
-static const NED configuration_data[] = {
-    { /* .code     = */ NODE_NED + NODE_SNIND,
-      /* .type     = */ NODE_TIODV,
-      /* .class    = */ NODE_CDASD,
-      /* (.ua)     = */ 0,
-      /* .devtype  = */ _001742,
-      /* .model    = */ _90M,
-      /* .manufact = */ _HRC,
-      /* .plant    = */ _ZZ,
-      /* .seq.code = */ _SERIAL },
+/*-------------------------------------------------------------------*/
+/* Configuration Data Constants                                      */
+/*-------------------------------------------------------------------*/
+static const NED  zfcp_device_ned[]  = {ZFCP_DEVICE_NED};
+static const NED  zfcp_ctlunit_ned[] = {ZFCP_CTLUNIT_NED};
+static const NED  zfcp_token_ned[]   = {ZFCP_TOKEN_NED};
+static const NEQ  zfcp_general_neq[] = {ZFCP_GENERAL_NEQ};
 
-    { /* .code     = */ NODE_NED + NODE_SNIND,
-      /* .type     = */ NODE_TCU,
-      /* (.class)  = */ 0,
-      /* (.ua)     = */ 0,
-      /* .devtype  = */ _001741,
-      /* .model    = */ _90M,
-      /* .manufact = */ _HRC,
-      /* .plant    = */ _ZZ,
-      /* .seq.code = */ _SERIAL },
+static NED  configuration_data[4]; // (initialized by HDL_DEPENDENCY_SECTION)
 
-    { /* .code     = */ NODE_NED + NODE_TOKEN + NODE_SNIND,
-      /* (.type)   = */ 0,
-      /* .class    = */ NODE_CCOMM,
-      /* (.ua)     = */ 0,
-      /* .devtype  = */ _001740,
-      /* .model    = */ _90M,
-      /* .manufact = */ _HRC,
-      /* .plant    = */ _ZZ,
-      /* .seq.code = */ _SERIAL },
+static const ND  zfcp_nd[] = {ZFCP_ND};
+static const NQ  zfcp_nq[] = {ZFCP_NQ};
 
-    { /* .code     = */ NODE_GNEQ }
-};
+static ND  node_data[2]; // (initialized by HDL_DEPENDENCY_SECTION)
 
+#define SII_SIZE    sizeof(U32)
 
-static const NED node_data[] = {
-    { /* .code     = */ NODE_NED,
-      /* (.type)   = */ 0,
-      /* .class    = */ NODE_CDASD,
-      /* (.ua)     = */ 0,
-      /* .devtype  = */ _001740,
-      /* .model    = */ _90M,
-      /* .manufact = */ _HRC,
-      /* .plant    = */ _ZZ,
-      /* .seq.code = */ _SERIAL },
-
-    { /* .code     = */ NODE_GNEQ }
-};
-       
-
-#define SII_SIZE 4
-
-static const BYTE sense_id_bytes[] = {
-    0xFF,
-    0x17, 0x31, 0x03,                   // Control Unit Type
-    0x17, 0x32, 0x03,                   // Device Type  0x04 for priv model
-    0x00,
-    0x40, ZFCP_RCD,0x00,                // Read Configuration Data CIW
-                        sizeof(configuration_data),
-    0x41, ZFCP_SII,0x00, SII_SIZE,      // Set Interface Identifier CIW
-    0x42, ZFCP_RNI,0x00,                // Read Node Identifier CIW
-                        sizeof(node_data),
-    0x43, ZFCP_EQ, 0x10, 0x00,          // Establish Queues CIW
-    0x44, ZFCP_AQ, 0x00, 0x00           // Activate Queues CIW
+static const BYTE sense_id_bytes[] =
+{
+    0xFF,                               /* Always 0xFF               */
+    ZFCP_SNSID_1731_03,                 /* Control Unit type/model   */
+    ZFCP_SNSID_1732_03,                 /* I/O Device   type/model   */
+    0x00,                               /* Always 0x00               */
+    ZFCP_RCD_CIW,                       /* Read Config. Data CIW     */
+    ZFCP_SII_CIW,                       /* Set Interface Id. CIW     */
+    ZFCP_RNI_CIW,                       /* Read Node Identifier CIW  */
+    ZFCP_EQ_CIW,                        /* Establish Queues CIW      */
+    ZFCP_AQ_CIW,                        /* Activate Queues CIW       */
 };
 
 
@@ -139,7 +119,9 @@ static BYTE zfcp_immed_commands [256] =
 
 
 /*-------------------------------------------------------------------*/
-/* STORCHK macro: check storage access & update ref & change bits    */
+/* STORCHK macro: check storage access & update ref & change bits.   */
+/* Returns 0 if successful or CSW_PROGC or CSW_PROTC if error.       */
+/* Storage key ref & change bits are only updated if successful.     */
 /*-------------------------------------------------------------------*/
 #define STORCHK(_addr,_len,_key,_acc,_dev) \
   (((((_addr) + (_len)) > (_dev)->mainlim) \
@@ -175,7 +157,7 @@ int i;
 do {                                               \
   if(((ZFCP_GRP*)((_dev)->group->grp_data))->debug) \
         TRACE(__VA_ARGS__);                        \
-} while(0) 
+} while(0)
 #else
  #define DBGTRC(_dev, ...)
  #define DUMP(_dev, _name, _ptr, _len)
@@ -271,9 +253,9 @@ static void raise_adapter_interrupt(DEVBLK *dev)
     release_lock (&dev->lock);
 
     /* Update interrupt status */
-    OBTAIN_INTLOCK(devregs(dev));
+    OBTAIN_INTLOCK( DEVREGS(dev) );
     UPDATE_IC_IOPENDING();
-    RELEASE_INTLOCK(devregs(dev));
+    RELEASE_INTLOCK( DEVREGS(dev) );
 }
 
 
@@ -380,11 +362,11 @@ int nobuff = 1;
                     else
                     {
                         if(ns)
-                            sbal->sbale[ns-1].flags[0] = SBAL_FLAGS0_LAST_ENTRY;
+                            sbal->sbale[ns-1].flags[0] = SBALE_FLAG0_LAST_ENTRY;
                         return;
                     }
                     if(ns)
-                        sbal->sbale[ns-1].flags[0] = SBAL_FLAGS0_LAST_ENTRY;
+                        sbal->sbale[ns-1].flags[0] = SBALE_FLAG0_LAST_ENTRY;
                 }
                 else /* Buffer not empty */
                 {
@@ -471,7 +453,7 @@ int mq = dev->qdio.o_qcnt;
                         // ADD CODE TO TAKE BLOCKS OF THE QUEUE AND WRITE
 #endif
 
-                        if((sbal->sbale[ns].flags[1] & SBAL_FLAGS1_PCI_REQ))
+                        if((sbal->sbale[ns].flags[3] & SBALE_FLAG3_PCI_REQ))
                         {
 #if defined(_FEATURE_QDIO_THININT)
                             set_dsci(dev,DSCI_IOCOMP);
@@ -697,7 +679,7 @@ ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
 /* QDIO Set Subchannel Indicator                                     */
 /*-------------------------------------------------------------------*/
 static int zfcp_set_sci ( DEVBLK *dev, void *desc )
-{ 
+{
 CHSC_REQ21 *req21 = (void *)desc;
 RADR alsi, dsci;
 BYTE ks, kc;
@@ -708,15 +690,15 @@ U16 opc;
     if(opc)
         return 3; // Invalid operation code
 
-    FETCH_DW(alsi, req21->alsi); 
+    FETCH_DW(alsi, req21->alsi);
     ks = req21->sk & CHSC_REQ21_KS;
 
-    FETCH_DW(dsci, req21->dsci); 
+    FETCH_DW(dsci, req21->dsci);
     kc = (req21->sk & CHSC_REQ21_KC) << 4;
 
     if(alsi && dsci)
     {
-        if(STORCHK(alsi,0,ks,STORKEY_CHANGE,dev) 
+        if(STORCHK(alsi,0,ks,STORKEY_CHANGE,dev)
           || STORCHK(dsci,0,kc,STORKEY_CHANGE,dev))
         {
             dev->qdio.thinint = 0;
@@ -724,7 +706,7 @@ U16 opc;
         }
         else
             dev->qdio.thinint = 1;
-        
+
     }
     else
         dev->qdio.thinint = 0;
@@ -796,11 +778,11 @@ rsp24->ocnt = 0x20;
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 static void zfcp_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual )
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual )
 {
 ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
-int num;                                /* Number of bytes to move   */
+U32 num;                                /* Number of bytes to move   */
 
     UNREFERENCED(flags);
     UNREFERENCED(prevcode);
@@ -852,7 +834,7 @@ int num;                                /* Number of bytes to move   */
     /* READ                                                          */
     /*---------------------------------------------------------------*/
     {
-        int rd_size = 0;
+        U32 rd_size = 0;
 
         obtain_lock(&grp->qlock);
         if(grp->rspsz)
@@ -906,7 +888,49 @@ int num;                                /* Number of bytes to move   */
         break;
 
 
-    case 0x14: // SENSE COMMAND BYTE - BASIC MODE
+    case 0x14:
+    /*---------------------------------------------------------------*/
+    /* SENSE COMMAND BYTE                                            */
+    /*---------------------------------------------------------------*/
+    {
+        // PROGRAMMING NOTE: I'm still not sure about this. The
+        // Sense Command Byte command is known to be a 3088 CTCA
+        // command, so I suspect we should never be seeing this
+        // command because we don't support CTCA emulation mode.
+
+        // I suspect the reason we're currently seeing it MAY be
+        // because we still don't have something right and z/OS
+        // is thus getting confused into thinking the OSA device
+        // is currently configured to emulate a 3088 CTCA device.
+
+        // However, since rejecting it causes z/OS to go into a
+        // disabled wait, we are going to temporarily treat it
+        // as a valid command until we can positively determine
+        // whether or not it is a bona fide valid OSA command.
+#if 0
+        /* We currently do not support emulated 3088 CTCA mode */
+        dev->sense[0] = SENSE_CR;
+        *unitstat = CSW_CE | CSW_DE | CSW_UC;
+#else
+        /* The Sense Command Byte command returns a single byte
+           being the CCW opcode from the other end of the CTCA */
+        static const U32 len = 1;               /* cmd length */
+        static const BYTE opcode = 0x03;        /* CCW opcode */
+
+        /* Calculate residual byte count */
+        num = (count < len) ? count : len;
+        *residual = count - num;
+        if (count < len) *more = 1;
+
+        /* Copy the CTCA command byte to channel I/O buffer */
+        *iobuf = opcode;
+
+        /* Return normal i/o completion status */
+        *unitstat = CSW_CE | CSW_DE;
+#endif
+        break;
+    }
+
     case 0x04:
     /*---------------------------------------------------------------*/
     /* SENSE                                                         */
@@ -943,6 +967,15 @@ int num;                                /* Number of bytes to move   */
 
         /* Return unit status */
         *unitstat = CSW_CE | CSW_DE;
+
+        /* Display formatted Sense Id information, maybe */
+        if( grp->debug )
+        {
+            char buf[1024];
+            // HHC03995 "%1d:%04X %s: %s:\n%s"
+            WRMSG(HHC03995, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
+                dev->typname, "SID", FormatSID( iobuf, num, buf, sizeof( buf )));
+        }
         break;
 
 
@@ -951,31 +984,47 @@ int num;                                /* Number of bytes to move   */
     /* READ CONFIGURATION DATA                                       */
     /*---------------------------------------------------------------*/
     {
-        NED *rcd = (NED*)iobuf;
+        U32 len = sizeof(configuration_data);
+        NED *dev_ned = (NED*)iobuf;     /* Device NED is first       */
+        NED *ctl_ned = dev_ned + 1;     /* Control Unit NED is next  */
+        NED *tkn_ned = ctl_ned + 1;     /* Token NED is last NED     */
+        NEQ *gen_neq = (NEQ*)tkn_ned+1; /* General NEQ always last   */
+        DEVBLK *cua;                    /* Our Control Unit device   */
 
         /* Copy configuration data from tempate */
-        memcpy (iobuf, configuration_data, sizeof(configuration_data));
+        memcpy (iobuf, configuration_data, len);
 
-        /* Insert chpid & unit address in the device ned */
-        STORE_HW((rcd+0)->tag,dev->devnum);
-        
-        /* Use unit address of first ZFCP device as control unit address */
-        STORE_HW((rcd+1)->tag,dev->group->memdev[0]->devnum);
+        /* The first device in the group is the control unit */
+        cua = dev->group->memdev[0];
 
-        /* Use unit address of first ZFCP device as control unit address */
-        STORE_HW((rcd+2)->tag,dev->group->memdev[0]->devnum);
+        /* Insert the Channel Path ID (CHPID) into all of the NEDs */
+        dev_ned->tag[0] = dev->pmcw.chpid[0];
+        ctl_ned->tag[0] = cua->pmcw.chpid[0];
+        tkn_ned->tag[0] = cua->pmcw.chpid[0];
 
-        /* Use unit address of first ZFCP device as control unit address */
-        (rcd+3)->class = (dev->group->memdev[0]->devnum >> 8) & 0xFF;
-        (rcd+3)->ua = dev->group->memdev[0]->devnum & 0xFF;
+        /* Insert the device's device number into its device NED. */
+        dev_ned->tag[1] = dev->devnum & 0xFF;
+
+        /* Insert the control unit address into the General NEQ */
+        gen_neq->iid[0] = cua->pmcw.chpid[0];
+        gen_neq->iid[1] = cua->devnum & 0xFF;
 
         /* Calculate residual byte count */
-        num = (count < sizeof(configuration_data) ? count : sizeof(configuration_data));
+        num = (count < len ? count : len);
         *residual = count - num;
-        if (count < sizeof(configuration_data)) *more = 1;
+        if (count < len) *more = 1;
 
         /* Return unit status */
         *unitstat = CSW_CE | CSW_DE;
+
+        /* Display formatted Read Configuration Data records, maybe */
+        if( grp->debug )
+        {
+            char buf[1024];
+            // HHC03995 "%1d:%04X %s: %s:\n%s"
+            WRMSG(HHC03995, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
+                dev->typname, "RCD", FormatRCD( iobuf, num, buf, sizeof( buf )));
+        }
         break;
     }
 
@@ -984,9 +1033,24 @@ int num;                                /* Number of bytes to move   */
     /*---------------------------------------------------------------*/
     /* SET INTERFACE IDENTIFIER                                      */
     /*---------------------------------------------------------------*/
-// DUMP(dev, "SID",iobuf,count);
     {
-        FETCH_FW(grp->iid,iobuf);
+        U32 iir;                    /* Work area to validate IIR     */
+        FETCH_FW(iir,iobuf);        /* Fetch IIR into work area      */
+
+        /* Command Reject if the Interface ID Record is invalid.
+           Note: we only support one interface with an ID of 0. */
+        if ((iir & 0xFFFCFFFF) != 0xB0000000 ||
+            (iir & 0x00030000) == 0x00030000)
+        {
+            dev->sense[0] = SENSE_CR;
+            *unitstat = CSW_CE | CSW_DE | CSW_UC;
+            break;
+        }
+
+        /* Save the requested Interface ID for later unless it's
+           not chained (to a presumably following RNI command) */
+        if (chained)
+            grp->iir = iir;
 
         /* Calculate residual byte count */
         num = (count < SII_SIZE) ? count : SII_SIZE;
@@ -995,34 +1059,74 @@ int num;                                /* Number of bytes to move   */
 
         /* Return unit status */
         *unitstat = CSW_CE | CSW_DE;
+
+//!     /* Display various information, maybe */
+//!     if( grp->debug )
+//!     {
+//!         mpc_display_stuff( dev, "SII", iobuf, num, ' ' );
+//!     }
+
         break;
     }
 
 
-    case ZFCP_RNI:   
+    case ZFCP_RNI:
     /*---------------------------------------------------------------*/
     /* READ NODE IDENTIFIER                                          */
     /*---------------------------------------------------------------*/
     {
-        NED *rni = (NED*)iobuf;
+        U32 len = sizeof(node_data);
+        ND *nd = (ND*)iobuf;            /* Node Descriptor pointer   */
+        DEVBLK *cua;                    /* Our Control Unit device   */
+
+        /* Command Reject if not chained from Set Interface ID */
+        if (!chained || prevcode != OSA_SII)
+        {
+            dev->sense[0] = SENSE_CR;
+            *unitstat = CSW_CE | CSW_DE | CSW_UC;
+            break;
+        }
+
+        /* The first device in the group is the control unit */
+        cua = dev->group->memdev[0];
+
+        /* If the Node Selector was zero an ND and one or more
+           NQs are returned. Otherwise just the ND is returned. */
+        if ((grp->iir & 0x00030000) != 0)
+            len = sizeof(ND);
 
         /* Copy configuration data from tempate */
-        memcpy (iobuf, node_data, sizeof(node_data));
+        memcpy (iobuf, node_data, len);
 
-        /* Insert chpid & unit address in the device ned */
-        STORE_HW((rni+0)->tag,dev->devnum);
+        /* Insert the CHPID of the node into the Node Descriptor ND */
+        nd->tag[0] = dev->pmcw.chpid[0];
 
-        /* Use unit address of first ZFCP device as control unit address */
-        (rni+1)->class = (dev->group->memdev[0]->devnum >> 8) & 0xFF;
-        (rni+1)->ua = dev->group->memdev[0]->devnum & 0xFF;
+        /* Update the Node Qualifier information if they want it */
+        if (len > sizeof(ND))
+        {
+            NQ *nq = (NQ*)nd + 1;       /* Point to Node Qualifier */
+
+            /* Insert the CULA CHPID and device number into the NQ */
+            nq->rsrvd[1] = cua->pmcw.chpid[0];
+            nq->rsrvd[2] = cua->devnum & 0xFF;
+        }
 
         /* Calculate residual byte count */
-        num = (count < sizeof(node_data) ? count : sizeof(node_data));
+        num = (count < len ? count : len);
         *residual = count - num;
-        if (count < sizeof(node_data)) *more = 1;
+        if (count < len) *more = 1;
 
         /* Return unit status */
         *unitstat = CSW_CE | CSW_DE;
+
+        /* Display formatted Read Node Information, maybe */
+        if( grp->debug )
+        {
+            char buf[1024];
+            // HHC03995 "%1d:%04X %s: %s:\n%s"
+            WRMSG(HHC03995, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
+                dev->typname, "RNI", FormatRNI( iobuf, num, buf, sizeof( buf )));
+        }
         break;
     }
 
@@ -1049,7 +1153,7 @@ int num;                                /* Number of bytes to move   */
             qib->ac |= QIB_AC_PCI; // Incidate PCI on output is supported
 #if defined(_FEATURE_QEBSM)
             if(FACILITY_ENABLED_DEV(QEBSM))
-                qib->rflags |= QIB_RFLAGS_QEBSM; 
+                qib->rflags |= QIB_RFLAGS_QEBSM;
 #endif /*defined(_FEATURE_QEBSM)*/
         }
 
@@ -1270,12 +1374,14 @@ ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
 /*-------------------------------------------------------------------*/
 /* Signal Adapter Sync                                               */
 /*-------------------------------------------------------------------*/
-static int zfcp_do_sync(DEVBLK *dev, U32 qmask)
+static int zfcp_do_sync(DEVBLK *dev, U32 oqmask, U32 iqmask)
 {
     UNREFERENCED(dev);          /* unreferenced for non-DEBUG builds */
-    UNREFERENCED(qmask);        /* unreferenced for non-DEBUG builds */
+    UNREFERENCED(oqmask);       /* unreferenced for non-DEBUG builds */
+    UNREFERENCED(iqmask);       /* unreferenced for non-DEBUG builds */
 
-    DBGTRC(dev, _("SIGA-s dev(%4.4x) qmask(%8.8x)\n"),dev->devnum,qmask);
+    DBGTRC(dev, _("SIGA-s dev(%4.4x) oqmask(%8.8x) iqmask(%8.8x)\n"),
+        dev->devnum, oqmask, iqmask );
 
     return 0;
 }
@@ -1342,9 +1448,17 @@ DEVHND zfcp_device_hndinfo =
 
 HDL_DEPENDENCY_SECTION;
 {
-     HDL_DEPENDENCY( HERCULES );
-     HDL_DEPENDENCY( DEVBLK );
-     HDL_DEPENDENCY( SYSBLK );
+    HDL_DEPENDENCY( HERCULES );
+    HDL_DEPENDENCY( DEVBLK );
+    HDL_DEPENDENCY( SYSBLK );
+
+    memcpy( (NED*)&configuration_data[0], &zfcp_device_ned [0], sizeof( NED ));
+    memcpy( (NED*)&configuration_data[1], &zfcp_ctlunit_ned[0], sizeof( NED ));
+    memcpy( (NED*)&configuration_data[2], &zfcp_token_ned  [0], sizeof( NED ));
+    memcpy( (NED*)&configuration_data[3], &zfcp_general_neq[0], sizeof( NEQ ));
+
+    memcpy( (ND*)&node_data[0], &zfcp_nd[0], sizeof( ND ));
+    memcpy( (ND*)&node_data[1], &zfcp_nq[0], sizeof( NQ ));
 }
 END_DEPENDENCY_SECTION
 

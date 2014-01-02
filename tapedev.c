@@ -455,7 +455,18 @@ DEVINITTAB      DevInitTab[]  =         /* Initialization table      */
 //
 // PROGRAMMING NOTE: the bit values of the 'sctlfeat' field are:
 //
+//     RDC Byte
+//     6.7.8.9.
+//     ..80....   RBL Format-30 media information available
+//     ..40....   (unknown)
+//     ..20....   (unknown)
+//     ....80..   Device or media emulation active; emulated media
+//                information available in RBL Format-30 data. Set to
+//                zero when normal 3490E or earlier, or real device.
 //     ....40..   (unknown)
+//     ....20..   Set when bits 0-9 of the Block ID are zero for Locate
+//                Block on select device types
+//     ....10..   (unknown)
 //     ....08..   Set Special Intercept Condition (SIC) supported
 //     ....04..   Channel Path No-Operation supported (always
 //                on if Library Attachment Facility installed)
@@ -464,12 +475,14 @@ DEVINITTAB      DevInitTab[]  =         /* Initialization table      */
 //     ....01..   Extended Buffered Log support enabled (if 64
 //                bytes of buffered log data, else 32 bytes)
 //     ......80   Automatic Cartridge Loader installed/enabled
-//     ......40   Improved Data Recording Capability (i.e.
-//                compression support) installed/enabled
+//     ......40   Improved Data Recording Capability (compression
+//                support) installed/enabled
 //     ......20   Suppress Volume Fencing
 //     ......10   Library Interface online/enabled
 //     ......08   Library Attachment Facility installed
 //     ......04   (unknown)
+//     ......02   (unknown)
+//     ......01   (unknown)
 //
 // PROGRAMMING NOTE: the below "0x00004EC4" value for the 'sctlfeat'
 // field for Model 3590 was determined empirically on a real machine.
@@ -652,9 +665,8 @@ int             attn = 0;
     dev->SIC_active          = 0;   // (always, initially)
     dev->SIC_supported       = 0;   // (until we're sure)
     dev->forced_logging      = 0;   // (always, initially)
-#if defined( OPTION_TAPE_AUTOMOUNT )
     dev->noautomount         = 0;   // (always, initially)
-#endif
+
     /* Initialize SCSI tape control fields */
 #if defined(OPTION_SCSI_TAPE)
     dev->sstat = GMT_DR_OPEN(-1);
@@ -668,10 +680,8 @@ int             attn = 0;
        a single buffer before passing data to the device handler */
     dev->cdwmerge = 1;
 
-#if 0 // (defer syncio until 'tapedevt' is known!)
-    /* Tape is a syncio type 2 device */
-    dev->syncio = 2;
-#endif
+    /* Request a maximum sized device I/O buffer */
+    dev->bufsize = MAX_BLKLEN;
 
     /* ISW */
     /* Build a 'clear' sense */
@@ -720,10 +730,12 @@ int             attn = 0;
     if (dev->devchar[8] & 0x08)     // SIC supported?
         dev->SIC_supported = 1;     // remember that fact
 
+#ifdef OPTION_SYNCIO
     if (dev->tapedevt == TAPEDEVT_SCSITAPE)
         dev->syncio = 0;  // (SCSI i/o too slow; causes Machine checks)
     else
         dev->syncio = 2;  // (aws/het/etc are fast; syncio likely safe)
+#endif // OPTION_SYNCIO
 
     /* Make attention pending if necessary */
     if(attn)
@@ -1101,9 +1113,7 @@ PARSER  ptab  [] =
     { "rw",         NULL },
     { "ring",       NULL },
     { "deonirq",    "%d" },
-#if defined( OPTION_TAPE_AUTOMOUNT )
     { "noautomount",NULL },
-#endif
     { "--blkid-22", NULL },
     { "--blkid-24", NULL },   /* (synonym for --blkid-22) */
     { "--blkid-32", NULL },
@@ -1136,9 +1146,7 @@ enum
     TDPARM_RW,
     TDPARM_RING,
     TDPARM_DEONIRQ,
-#if defined( OPTION_TAPE_AUTOMOUNT )
     TDPARM_NOAUTOMOUNT,
-#endif
     TDPARM_BLKID22,
     TDPARM_BLKID24,
     TDPARM_BLKID32,
@@ -1228,9 +1236,7 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
     dev->tdparms.maxsize   = 0;        // no max size     (default)
     dev->eotmargin         = 128*1024; // 128K EOT margin (default)
     dev->tdparms.logical_readonly = 0; // read/write      (default)
-#if defined( OPTION_TAPE_AUTOMOUNT )
     dev->noautomount       = 0;
-#endif
 
 #if defined(OPTION_SCSI_TAPE)
     // Real 3590's support Erase Gap and use 32-bit blockids.
@@ -1503,8 +1509,6 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
             dev->tdparms.deonirq=(res.num ? 1 : 0 );
             break;
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
-
         case TDPARM_NOAUTOMOUNT:
             if (TAPEDEVT_SCSITAPE == dev->tapedevt)
             {
@@ -1513,8 +1517,6 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
             }
             dev->noautomount = 1;
             break;
-
-#endif /* OPTION_TAPE_AUTOMOUNT */
 
 #if defined(OPTION_SCSI_TAPE)
         case TDPARM_BLKID22:
@@ -1604,7 +1606,7 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
 static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, char *buffer )
 {
     char devparms[ MAX_PATH+1 + 128 ];
-    char dispmsg [ 256 ];    
+    char dispmsg [ 256 ];
     char fmt_mem [ 128 ];    // Max of 21 bytes used for U64
     char fmt_eot [ 128 ];    // Max of 21 bytes used for U64
 
@@ -1623,12 +1625,8 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
                                    strlcat( devparms, dev->filename, sizeof(devparms));
     if (strchr(dev->filename,' ')) strlcat( devparms, "\"",          sizeof(devparms));
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
-
     if (dev->noautomount)
         strlcat( devparms, " noautomount", sizeof(devparms));
-
-#endif /* OPTION_TAPE_AUTOMOUNT */
 
 #if defined(OPTION_SCSI_TAPE)
     if ( TAPEDEVT_SCSITAPE != dev->tapedevt )
@@ -2585,7 +2583,7 @@ int write_READONLY ( DEVBLK *dev, BYTE *unitstat, BYTE code )
 /*-------------------------------------------------------------------*/
 /* write_READONLY5                                                   */
 /*-------------------------------------------------------------------*/
-int write_READONLY5 ( DEVBLK *dev, BYTE *bfr, U16 blklen, BYTE *unitstat, BYTE code )
+int write_READONLY5 ( DEVBLK *dev, BYTE *bfr, U32 blklen, BYTE *unitstat, BYTE code )
 {
     UNREFERENCED(bfr);
     UNREFERENCED(blklen);

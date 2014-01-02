@@ -1740,7 +1740,6 @@ static void NP_update(REGS *regs)
                 NPcpugraphpct[i] = sysblk.regs[i]->cpupct;
             }
 
-#ifdef OPTION_CAPPING
             if(sysblk.capvalue)
             {
               if(sysblk.ptyp[i] == SCCB_PTYP_CP)
@@ -1754,7 +1753,6 @@ static void NP_update(REGS *regs)
                 draw_text(buf);
               }
             }
-#endif // OPTION_CAPPING
 
             set_color (COLOR_LIGHT_GREY, COLOR_BLACK);
         }
@@ -2043,6 +2041,7 @@ int     prvcpupct = 0;                  /* Previous cpu percentage    */
 U32     prvscount = 0;                  /* Previous shrdcount         */
 #endif // defined(OPTION_SHARED_DEVICES)
 int     prvpcpu = 0;                    /* Previous pcpu              */
+int     prvparch = 0;                   /* Previous primary arch.     */
 char    readbuf[MSG_SIZE];              /* Message read buffer        */
 int     readoff = 0;                    /* Number of bytes in readbuf */
 BYTE    c;                              /* Character work area        */
@@ -3493,11 +3492,19 @@ FinishShutdown:
                 cur_cons_col = saved_cons_col;
             } /* end if(redraw_cmd) */
 
-            if (sysblk.pcpu != prvpcpu)
+            /* Determine if redraw required for CPU or architecture
+             * change.
+             */
+            if ((sysblk.pcpu != prvpcpu &&
+                 (regs = sysblk.regs[sysblk.pcpu]) != NULL) ||
+                ((regs = sysblk.regs[prvpcpu]) != NULL &&
+                 regs->arch_mode != prvparch))
             {
                 redraw_status = 1;
                 prvpcpu = sysblk.pcpu;
+                prvparch = regs->arch_mode;
             }
+
             if (redraw_status && !npquiet)
             {
                 char    ibuf[64];       /* Rate buffer                */

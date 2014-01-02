@@ -36,6 +36,16 @@ hdt3420_OBJ = \
     $(O)omatape.obj  \
     $(O)scsitape.obj
 
+tuntap_OBJ = \
+    $(O)tuntap.obj  \
+    $(O)w32ctca.obj \
+    $(O)resolve.obj
+
+ctc_OBJ = \
+    $(O)ctc_lcs.obj  \
+    $(O)ctc_ctci.obj \
+    $(O)ctcadpt.obj
+
 hutil_OBJ = \
     $(O)codepage.obj \
     $(O)fthreads.obj \
@@ -48,10 +58,10 @@ hutil_OBJ = \
     $(O)logmsg.obj   \
     $(O)memrchr.obj  \
     $(O)parser.obj   \
+    $(O)hthreads.obj \
     $(O)pttrace.obj  \
     $(O)version.obj  \
     $(O)hsocket.obj  \
-    $(O)wthreads.obj \
     $(O)w32util.obj
 
 !IFNDEF NOCRYPTO
@@ -78,16 +88,6 @@ altcmpsc_OBJ = \
     $(O)cmpscget.obj \
     $(O)cmpscmem.obj \
     $(O)cmpscput.obj
-
-cmpsctst_OBJ =                  \
-    $(O)cmpsctst.obj            \
-    $(O)cmpsctst_cmpsc.obj      \
-    $(O)cmpsctst_cmpsc_2012.obj \
-    $(O)cmpsctst_cmpscdbg.obj   \
-    $(O)cmpsctst_cmpscdct.obj   \
-    $(O)cmpsctst_cmpscget.obj   \
-    $(O)cmpsctst_cmpscmem.obj   \
-    $(O)cmpsctst_cmpscput.obj
 
 hengine_OBJ = \
     $(O)archlvl.obj  \
@@ -158,6 +158,5 @@ hengine_OBJ = \
     $(O)vm.obj       \
     $(O)vmd250.obj   \
     $(O)vstore.obj   \
-    $(O)w32chan.obj  \
     $(O)xstore.obj   \
     $(O)s37x.obj

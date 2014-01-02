@@ -11,6 +11,13 @@
 /*-------------------------------------------------------------------*/
 
 /*-------------------------------------------------------------------*/
+/* Reference information:                                            */
+/* GA32-0099 IBM 3990 Storage Control Reference (Models 1, 2, and 3) */
+/* GA32-0274 IBM 3990,9390 Storage Control Reference                 */
+/* GC26-7006 IBM RAMAC Array Subsystem Reference                     */
+/*-------------------------------------------------------------------*/
+
+/*-------------------------------------------------------------------*/
 /* Additional credits:                                               */
 /*      Write Update Key and Data CCW by Jan Jaeger                  */
 /*      Track overflow support added by Jay Maynard                  */
@@ -270,8 +277,10 @@ char           *strtok_str = NULL;      /* save last position        */
             return rc;
     }
 
+#ifdef OPTION_SYNCIO
     /* Default to synchronous I/O */
     dev->syncio = 1;
+#endif // OPTION_SYNCIO
 
     /* No active track or cache entry */
     dev->bufcur = dev->cache = -1;
@@ -351,18 +360,24 @@ char           *strtok_str = NULL;      /* save last position        */
             cu = strtok_r (NULL, " \t", &strtok_str);
             continue;
         }
+#if 1 /*#ifdef OPTION_SYNCIO -- remove completely once syncio deprecation lifespan expires*/
         if (strcasecmp ("nosyncio", argv[i]) == 0 ||
             strcasecmp ("nosyio",   argv[i]) == 0)
         {
+#ifdef OPTION_SYNCIO
             dev->syncio = 0;
+#endif // OPTION_SYNCIO
             continue;
         }
         if (strcasecmp ("syncio", argv[i]) == 0 ||
             strcasecmp ("syio",   argv[i]) == 0)
         {
+#ifdef OPTION_SYNCIO
             dev->syncio = 1;
+#endif // OPTION_SYNCIO
             continue;
         }
+#endif // OPTION_SYNCIO
 
         WRMSG (HHC00402, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[i], i + 1);
         return -1;
@@ -859,7 +874,9 @@ int             cyl;                    /* Cylinder                  */
 int             head;                   /* Head                      */
 off_t           offset;                 /* File offsets              */
 int             i,o,f;                  /* Indexes                   */
+#ifdef OPTION_SYNCIO
 int             active;                 /* 1=Synchronous I/O active  */
+#endif // OPTION_SYNCIO
 CKDDASD_TRKHDR *trkhdr;                 /* -> New track header       */
 
     logdevtr (dev, MSG(HHC00424, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, trk, dev->bufcur));
@@ -876,20 +893,24 @@ CKDDASD_TRKHDR *trkhdr;                 /* -> New track header       */
     if (trk >= 0 && trk == dev->bufcur)
         return 0;
 
+#ifdef OPTION_SYNCIO
     /* Turn off the synchronous I/O bit if trk overflow or trk 0 */
     active = dev->syncio_active;
     if (dev->ckdtrkof || trk <= 0)
         dev->syncio_active = 0;
+#endif // OPTION_SYNCIO
 
     /* Write the previous track image if modified */
     if (dev->bufupd)
     {
+#ifdef OPTION_SYNCIO
         /* Retry if synchronous I/O */
         if (dev->syncio_active)
         {
             dev->syncio_retry = 1;
             return -1;
         }
+#endif // OPTION_SYNCIO
 
         logdevtr (dev, MSG(HHC00425, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, dev->bufcur));
 
@@ -980,11 +1001,14 @@ ckd_read_track_retry:
         dev->ckdtrkoff = CKDDASD_DEVHDR_SIZE +
              (off_t)(trk - (f ? dev->ckdhitrk[f-1] : 0)) * dev->ckdtrksz;
 
+#ifdef OPTION_SYNCIO
         dev->syncio_active = active;
+#endif // OPTION_SYNCIO
 
         return 0;
      }
 
+#ifdef OPTION_SYNCIO
     /* Retry if synchronous I/O */
     if (dev->syncio_active)
     {
@@ -992,6 +1016,7 @@ ckd_read_track_retry:
         dev->syncio_retry = 1;
         return -1;
     }
+#endif // OPTION_SYNCIO
 
     /* Wait if no available cache entry */
     if (o < 0)
@@ -1023,7 +1048,9 @@ ckd_read_track_retry:
     dev->ckdtrkoff = CKDDASD_DEVHDR_SIZE +
          (off_t)(trk - (f ? dev->ckdhitrk[f-1] : 0)) * dev->ckdtrksz;
 
+#ifdef OPTION_SYNCIO
     dev->syncio_active = active;
+#endif // OPTION_SYNCIO
 
     logdevtr (dev, MSG(HHC00429, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, trk, f+1,
         dev->ckdtrkoff, dev->ckdtrksz));
@@ -2146,16 +2173,16 @@ int             rc;                     /* Return code               */
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 void ckddasd_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual )
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual )
 {
 int             rc;                     /* Return code               */
 int             i, j;                   /* Loop index                */
 CKDDASD_TRKHDR  trkhdr;                 /* CKD track header (HA)     */
 CKDDASD_RECHDR  rechdr;                 /* CKD record header (count) */
-int             size;                   /* Number of bytes available */
-int             num;                    /* Number of bytes to move   */
-int             offset;                 /* Offset into buf for I/O   */
+U32             size;                   /* Number of bytes available */
+U32             num;                    /* Number of bytes to move   */
+U32             offset;                 /* Offset into buf for I/O   */
 int             bin;                    /* Bin number                */
 int             cyl;                    /* Cylinder number           */
 int             head;                   /* Head number               */
@@ -2192,7 +2219,11 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
     }
 
     /* Reset flags at start of CCW chain */
+#ifdef OPTION_SYNCIO
     if (chained == 0 && !dev->syncio_retry)
+#else // OPTION_NOSYNCIO
+    if (chained == 0)
+#endif // OPTION_SYNCIO
     {
         dev->ckdlocat = 0;
         dev->ckdspcnt = 0;
@@ -2224,10 +2255,12 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
         dev->ckdxecyl = dev->ckdcyls - 1;
         dev->ckdxehead = dev->ckdheads - 1;
     }
+#ifdef OPTION_SYNCIO
     /* Reset ckdlmask on retry of LRE */
     else if (dev->syncio_retry && code == 0x4B)
         dev->ckdlmask = 0;
     dev->syncio_retry = 0;
+#endif // OPTION_SYNCIO
 
     /* Reset index marker flag if sense or control command,
        or any write command (other search ID or search key),
@@ -3206,15 +3239,34 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
                 iobuf[95] = myssid & 0xff;
                 break;
             case 0x03:  /* Read attention message for this path-group for
-                          the addressed device Return a "no message"
+                           the addressed device Return a "No Message"
                            message */
-                iobuf[0] = 0x00;                     // Message length
-                iobuf[1] = 0x09;                    // ...
-                iobuf[2] = 0x00;                    // Format: "No message"
-                iobuf[3] = 0x00;                    // Message code: n/a
-                memcpy (iobuf+4, iobuf+8, 4);       // Copy message identifier from bytes 8-11
-                iobuf[8] = 0x00;                    // Flags
-                dev->ckdssdlen = 9;                 // Indicate length of subsystem data prepared
+                /*------------------------------------------------------*/
+                /* PROGRAMMING NOTE: 2013/01/09 Fish                    */
+                /* According to GA32-0274 IBM 3990,9390 Storage Control */
+                /* Reference the Read Attention Message response should */
+                /* be 11 bytes for a 3990-6 with Message Format byte 2  */
+                /* being 0x02 (3990-6/ESS message) with byte 9 and 10   */
+                /* containing additional response information such as a */
+                /* bit map indicating which physical subsystem SPs are  */
+                /* caching. Since Hercules doesn't support a compatible */
+                /* form of caching and an equivalent SP caching bit map */
+                /* isn't maintained we return a 9 byte response instead */
+                /* with byte 2 = 0x00 (No Message) since an 11 byte re- */
+                /* sponse with zeros in bytes 9 and 10 causes problems  */
+                /* with certain operating systems. Returning a 9-byte   */
+                /* response with byte 2 = 0x00 instead is therefore the */
+                /* safest approach to take since most operating systems */
+                /* seem to accept such a response without complaint.    */
+                /*------------------------------------------------------*/
+                iobuf[0] = 0x00;               /* Message...            */
+                iobuf[1] = 0x09;               /* ...Length             */
+                iobuf[2] = 0x00;               /* Format: "No message"  */
+                iobuf[3] = 0x00;               /* Message code: n/a     */
+                memcpy (iobuf+4, iobuf+8, 4);  /* Copy same message Id
+                                                  from bytes 8-11       */
+                iobuf[8] = 0x00;               /* Flags = 00            */
+                dev->ckdssdlen = 9;            /* Len of prepared data  */
                 break;
             case 0x0E: /* Unit address configuration */
                 /* Prepare unit address configuration record */
@@ -3657,7 +3709,8 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
         if (rc < 0) break;
 
         /* Calculate number of compare bytes and set residual count */
-        num = (count < dev->ckdcurkl) ? count : dev->ckdcurkl;
+        num = (count < (U32)dev->ckdcurkl) ?
+               count : (U32)dev->ckdcurkl;
         *residual = count - num;
 
         /* Nothing to compare if key length is zero */
@@ -4688,7 +4741,9 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
         rc = ckd_seek (dev, cyl, head, &trkhdr, unitstat);
         if (rc < 0)
         {
+#ifdef OPTION_SYNCIO
             if (dev->syncio_retry) dev->ckdlcount = 0;
+#endif // OPTION_SYNCIO
             break;
         }
 
@@ -4771,8 +4826,9 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
     /* LOCATE RECORD EXTENDED                                        */
     /*---------------------------------------------------------------*/
 
-    /* LRE only valid for 3990-6 */
-    if (dev->ckdcu->devt != 0x3990 || dev->ckdcu->model != 0xe9)
+    /* LRE only valid for 3990-3 or 3990-6 (or greater) */
+    if (dev->ckdcu->devt != 0x3990 ||
+        !(MODEL3( dev->ckdcu ) || MODEL6( dev->ckdcu )))
     {
         /* Set command reject sense byte, and unit check status */
         ckd_build_sense (dev, SENSE_CR, 0, 0, FORMAT_0, MESSAGE_1);
@@ -5231,7 +5287,9 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
     rc = ckd_seek (dev, cyl, head, &trkhdr, unitstat);
     if (rc < 0)
     {
+#ifdef OPTION_SYNCIO
         if (dev->syncio_retry) dev->ckdlcount = 0;
+#endif // OPTION_SYNCIO
         break;
     }
 
@@ -5948,8 +6006,10 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
 
     } /* end switch(code) */
 
+#ifdef OPTION_SYNCIO
     /* Return if synchronous I/O needs to be retried asynchronously */
     if (dev->syncio_retry) return;
+#endif // OPTION_SYNCIO
 
     /* Reset the flags which ensure correct positioning for write
        commands */

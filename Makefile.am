@@ -1,9 +1,6 @@
 # ***************************************************************************
 # Makefile for Hercules S/370, ESA/390 and z/Architecture emulator
 # Process this file with 'automake' to produce Makefile.in
-#
-# $Id$
-#
 # ***************************************************************************
 
 AUTOMAKE_OPTIONS = foreign 1.5
@@ -11,11 +8,11 @@ ACLOCAL_AMFLAGS  = -I m4 -I autoconf
 
 lns=@LN_S@
 
-SUBDIRS = decNumber m4 po util html man . crypto
+SUBDIRS = decNumber m4 util html man . crypto
 
-LDADD = @LTLIBICONV@ @LTLIBINTL@ @LIBS@
+LDADD = @LIBS@
 
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/decNumber
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/decNumber -I@HQA_INC@
 
 if BUILD_HERCIFC
   HERCIFC = hercifc
@@ -30,14 +27,11 @@ else
 endif
 
 fthreads_SRC  = fthreads.c
-fishio_SRC    = w32chan.c
 
 if BUILD_FTHREADS
   FTHREADS    = $(fthreads_SRC)
-  FISHIO      = $(fishio_SRC)
 else
   FTHREADS    =
-  FISHIO      =
 endif
 
 # We need to still include the source for the dynamic modules
@@ -125,8 +119,6 @@ if OPTION_DYNAMIC_LOAD
                    $(XSTATIC)        \
                    -no-undefined     \
                    -avoid-version
-
-  CMPSCTST = cmpsctst
 else
   DYNSRC         = $(dyndev_SRC)
   LTDL           =
@@ -135,7 +127,6 @@ else
   LIB_LD_FLAGS    = $(XSTATIC)    \
                    -no-undefined  \
                    -avoid-version
-  CMPSCTST =
 endif
 
 #
@@ -188,8 +179,7 @@ bin_PROGRAMS = hercules \
                dmap2hrc \
                vmfplc2 \
                $(HERCIFC) \
-               $(HERCLIN) \
-               $(CMPSCTST)
+               $(HERCLIN)
 
 EXTRA_PROGRAMS = hercifc
 
@@ -255,7 +245,7 @@ if OPTION_DYNAMIC_LOAD
   hdt3525_la_LDFLAGS = $(DYNMOD_LD_FLAGS)
   hdt3525_la_LIBADD  = $(DYNMOD_LD_ADD)
 
-  hdtqeth_la_SOURCES = qeth.c mpc.c tuntap.c
+  hdtqeth_la_SOURCES = qeth.c mpc.c resolve.c tuntap.c
   hdtqeth_la_LDFLAGS = $(DYNMOD_LD_FLAGS)
   hdtqeth_la_LIBADD  = $(DYNMOD_LD_ADD)
 
@@ -330,6 +320,7 @@ endif
                         hsocket.c    \
                         memrchr.c    \
                         parser.c     \
+                        hthreads.c   \
                         pttrace.c    \
                         $(FTHREADS)  \
                         $(LTDL)
@@ -409,7 +400,6 @@ endif
                        hao.c        \
                        hscmisc.c    \
                        sr.c         \
-                       $(FISHIO)    \
                        $(DYNSRC)    \
                        ecpsvm.c     \
                        hRexx.c      \
@@ -417,7 +407,6 @@ endif
                        hRexx_r.c
 
   EXTRA_libherc_la_SOURCES = $(fthreads_SRC)  \
-                             $(fishio_SRC)    \
                              memrchr.c        \
                              $(dynamic_SRC)   \
                              $(extra_SRC)     \
@@ -615,18 +604,6 @@ vmfplc2_SOURCES       = vmfplc2.c
 vmfplc2_LDADD         = $(tools_ADDLIBS)
 vmfplc2_LDFLAGS       = $(tools_LD_FLAGS)
 
-if OPTION_DYNAMIC_LOAD
-cmpsctst_SOURCES      = cmpsctst.c             \
-                        cmpsctst_cmpsc.c       \
-                        cmpsctst_cmpsc_2012.c  \
-                        cmpsctst_cmpscdbg.c    \
-                        cmpsctst_cmpscdct.c    \
-                        cmpsctst_cmpscget.c    \
-                        cmpsctst_cmpscmem.c    \
-                        cmpsctst_cmpscput.c
-cmpsctst_LDADD        = $(tools_ADDLIBS)
-cmpsctst_LDFLAGS      = $(tools_LD_FLAGS)
-endif
 #
 # files that are not 'built' per-se
 #
@@ -644,7 +621,8 @@ EXTRA_DIST = autoconf/config.rpath \
              cckdfix.c             \
              license_dyn76.txt     \
              README.COMMADPT       \
-             README.CMPSCTST       \
+             README.APL360         \
+             README.RXVT4APL       \
              README.SVN            \
              README.DYNMOD         \
              README.ECPSVM         \
@@ -671,6 +649,8 @@ EXTRA_DIST = autoconf/config.rpath \
              msvc.makefile.includes/CONFIG.msvc       \
              msvc.makefile.includes/DEBUG_RETAIL.msvc \
              msvc.makefile.includes/HERC_FLAGS.msvc   \
+             msvc.makefile.includes/HQA_DIR.msvc      \
+             msvc.makefile.includes/HQA_FLAGS.msvc    \
              msvc.makefile.includes/MOD_RULES1.msvc   \
              msvc.makefile.includes/MOD_RULES2.msvc   \
              msvc.makefile.includes/MODULES.msvc      \
@@ -681,7 +661,7 @@ EXTRA_DIST = autoconf/config.rpath \
              msvc.makefile.includes/PCRE_FLAGS.msvc   \
              msvc.makefile.includes/PCRE_RULES.msvc   \
              msvc.makefile.includes/PRIM_RULES.msvc   \
-             msvc.makefile.includes/REXX_DIRS.msvc     \
+             msvc.makefile.includes/REXX_DIRS.msvc    \
              msvc.makefile.includes/REXX_FLAGS.msvc   \
              msvc.makefile.includes/REXX_RULES.msvc   \
              msvc.makefile.includes/VERSION.msvc      \
@@ -698,11 +678,9 @@ EXTRA_DIST = autoconf/config.rpath \
              build_pch.c           \
              conspawn.c            \
              getopt.c              \
-             wthreads.c            \
              herclogo.txt          \
              hercules.ico          \
-             cmpsctst.cmd          \
-             cmpsctst.rexx
+             targetver.h
 
 #
 # Source Header files. No 'build' for those
@@ -733,8 +711,9 @@ noinst_HEADERS = hostinfo.h     \
                  sllib.h        \
                  htypes.h       \
                  fthreads.h     \
-                 w32chan.h      \
                  w32ctca.h      \
+                 hifr.h         \
+                 tt32if.h       \
                  tt32api.h      \
                  resolve.h      \
                  ctc_ptp.h      \
@@ -794,7 +773,6 @@ noinst_HEADERS = hostinfo.h     \
                  w32mtio.h      \
                  vmd250.h       \
                  msgenu.h       \
-                 wthreads.h     \
                  hdiagf18.h     \
                  dbgtrace.h     \
                  chain.h        \
@@ -808,8 +786,8 @@ noinst_HEADERS = hostinfo.h     \
                  cmpscget.h     \
                  cmpscmem.h     \
                  cmpscput.h     \
-                 cmpsctst.h         \
-                 cmpsctst_stdinc.h  \
+                 hqainc.h       \
+                 hqadefs.h      \
                  $(extra_dynamic_SRC)
 
 cckd: cckd2ckd$(EXEEXT)  \

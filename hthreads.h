@@ -1,5 +1,6 @@
-/*  HTHREADS.H  (c) Copyright Roger Bowler, 1999-2012                */
-/*              Hercules Threading Macros and Functions              */
+/* HTHREADS.H   (C) Copyright Roger Bowler, 1999-2013                */
+/*              (C) Copyright "Fish" (David B. Trout), 2013          */
+/*              Hercules locking and threading                       */
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
@@ -10,421 +11,320 @@
 
 #include "hercules.h"
 
-#if defined(HAVE_SYS_SYSCALL_H) && !defined(HAVE_GETTID)
- #include <sys/syscall.h>
- #define gettid() ((pid_t)(syscall(SYS_gettid)))
- #define USE_GETTID
-#endif
-
-#if !defined(THREAD_STACK_SIZE)
- #define THREAD_STACK_SIZE 0x100000
-#endif
-
-#if defined( OPTION_WTHREADS )
-    #if defined( OPTION_FTHREADS )
-        #undef OPTION_FTHREADS
-        #undef OPTION_FISHIO
-        #undef OPTION_PTTRACE
-    #endif
-
-#include "wthreads.h"
-
-#if        OPTION_MUTEX_DEFAULT == OPTION_MUTEX_NORMAL
-  #define HTHREAD_MUTEX_DEFAULT   WTHREAD_MUTEX_NORMAL
-#elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_ERRORCHECK
-  #define HTHREAD_MUTEX_DEFAULT   WTHREAD_MUTEX_ERRORCHECK
-#elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_RECURSIVE
-  #define HTHREAD_MUTEX_DEFAULT   WTHREAD_MUTEX_RECURSIVE
+/*-------------------------------------------------------------------*/
+/*           Standard Module Import/Export Definitions               */
+/*-------------------------------------------------------------------*/
+#ifndef _HTHREAD_C_
+  #ifndef _HUTIL_DLL_
+    #define HT_DLL_IMPORT       DLL_IMPORT
+  #else
+    #define HT_DLL_IMPORT       extern
+  #endif
 #else
-  #error Invalid or Usupported 'OPTION_MUTEX_DEFAULT' setting
+  #define   HT_DLL_IMPORT       DLL_EXPORT
 #endif
 
-typedef fthread_t              TID;
-typedef CRITICAL_SECTION       LOCK;
-typedef CONDITION_VARIABLE     COND;
-typedef fthread_attr_t         ATTR;
-typedef int                    MATTR;
-#define waitdelta              DWORD;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// The thread object of Hercules threading is translated into a Windows thread
-// Would like to make this a macro expansion, but we have to maintain both the thread ID, the handle and
-// a thread name (for debugging).  This information is retained in a linked list of structures that is
-// created and added to by win_create_thread.  The other functions use the information as necessary.
-#define create_thread(ptid,pat,fn,arg,nm)      winthread_create((ptid),(pat),(PWIN_THREAD_FUNC)&(fn),(arg),nm)
-#define join_thread(tid,pcode)                 winthread_join((tid),(pcode))
-#define detach_thread(tid)                     winthread_detach((tid))
-#define signal_thread(tid,signo)               winthread_kill((tid),(signo))
-#define thread_id()                            winthread_self()
-#define exit_thread(exitvar_ptr)               winthread_exit((exitvar_ptr))
-#define equal_threads(tid1,tid2)               winthread_equal((tid1),(tid2))
-#define initialize_detach_attr(pat)            winthread_attr_init((pat)) 
-#define initialize_join_attr(pat)              winthread_attr_init((pat))
-#define win_thread_handle(tid)                 winthread_get_handle(tid)
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// The lock object of Hercules threading is translated into a Windows critical section
-#define hthread_mutexattr_init(pla)            ((*(pla)=HTHREAD_MUTEX_DEFAULT),0)
-#define hthread_mutexattr_destroy(pla)         ((*(pla)=0),0)
-#define hthread_mutexattr_settype(pla,typ)     ((*(pla)=(typ)),0)
-#define hthread_mutex_init(plk,pla)            ((InitializeCriticalSectionAndSpinCount((CRITICAL_SECTION*)(plk),3000)),0)
-#define destroy_lock(plk)                      (DeleteCriticalSection((CRITICAL_SECTION*)(plk)))
-#define obtain_lock(plk)                       (EnterCriticalSection((CRITICAL_SECTION*)(plk)))
-#define release_lock(plk)                      (LeaveCriticalSection((CRITICAL_SECTION*)(plk)))
-#define try_obtain_lock(plk)                   ((TryEnterCriticalSection((CRITICAL_SECTION*)(plk))) ? (0) : (EBUSY))
-#define test_lock(plk) \
-    ((TryEnterCriticalSection((CRITICAL_SECTION*)(plk))) ? (LeaveCriticalSection((CRITICAL_SECTION*)(plk)),0) : (EBUSY)) 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// The read/write lock object of Hercules. TODO: To be filled in, mutex locks for now
-#define RWLOCK                                 LOCK
-#define initialize_rwlock(plk)                 initialize_lock((plk))
-#define destroy_rwlock(plk)                    destroy_lock((plk))
-#define obtain_rdlock(plk)                     obtain_lock((plk))
-#define obtain_wrlock(plk)                     obtain_lock((plk))
-#define release_rwlock(plk)                    release_lock((plk))
-#define try_obtain_rdlock(plk)                 try_obtain_lock((plk))
-#define try_obtain_wrlock(plk)                 try_obtain_lock((plk))
-#define test_rdlock(plk)                       test_lock((plk))
-#define test_wrlock(plk)                       test_lock((plk))
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// The condition object of Hercules threading is translated into a Windows condition variable
-#if defined(DEBUG)
-#define initialize_condition(pcond)            DBGInitializeConditionVariable( __FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond))
-#define destroy_condition(pcond)               DBGwinthread_cond_destroy( __FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond)) // Dummy function
-#define signal_condition(pcond)                DBGWakeConditionVariable( __FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond))
-#define broadcast_condition(pcond)             DBGWakeAllConditionVariable( __FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond))
-#define wait_condition(pcond,plk)              DBGSleepConditionVariableCS( __FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond),(plk),INFINITE)
-#define timed_wait_condition(pcond,plk,waitdelta) \
-    ((DBGSleepConditionVariableCS(__FILE__, __LINE__, __FUNCTION__,(CONDITION_VARIABLE*)(pcond),(plk),(waitdelta))) ? (0) : (ETIMEDOUT))
-#else
-#define initialize_condition(pcond)            InitializeConditionVariable((CONDITION_VARIABLE*)(pcond))
-#define destroy_condition(pcond)               winthread_cond_destroy((CONDITION_VARIABLE*)(pcond)) // Dummy function
-#define signal_condition(pcond)                WakeConditionVariable((CONDITION_VARIABLE*)(pcond))
-#define broadcast_condition(pcond)             WakeAllConditionVariable((CONDITION_VARIABLE*)(pcond))
-#define wait_condition(pcond,plk)              SleepConditionVariableCS((CONDITION_VARIABLE*)(pcond),(plk),INFINITE)
-#define timed_wait_condition(pcond,plk,waitdelta) \
-    ((SleepConditionVariableCS((CONDITION_VARIABLE*)(pcond),(plk),(waitdelta))) ? (0) : (ETIMEDOUT))
-#endif
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#endif // defined( OPTION_WTHREADS )
+/*-------------------------------------------------------------------*/
+/*                 Locking/Threading Models                          */
+/*-------------------------------------------------------------------*/
 
 #if defined( OPTION_FTHREADS )
-
-///////////////////////////////////////////////////////////////////////
-// FTHREADS
-///////////////////////////////////////////////////////////////////////
-
 #include "fthreads.h"
+#define HTHREAD_MUTEX_NORMAL            FTHREAD_MUTEX_NORMAL
+#define HTHREAD_MUTEX_ERRORCHECK        FTHREAD_MUTEX_ERRORCHECK
+#define HTHREAD_MUTEX_RECURSIVE         FTHREAD_MUTEX_RECURSIVE
+#define HTHREAD_RWLOCK_SHARED           0  /* fthreads doesn't have r/w locks (yet) */
+#define HTHREAD_RWLOCK_PRIVATE          0  /* fthreads doesn't have r/w locks (yet) */
+#define HTHREAD_CREATE_DETACHED         FTHREAD_CREATE_DETACHED
+#define HTHREAD_CREATE_JOINABLE         FTHREAD_CREATE_JOINABLE
+#endif /* defined( OPTION_FTHREADS ) */
 
-#if        OPTION_MUTEX_DEFAULT == OPTION_MUTEX_NORMAL
-  #define HTHREAD_MUTEX_DEFAULT   FTHREAD_MUTEX_NORMAL
-#elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_ERRORCHECK
-  #define HTHREAD_MUTEX_DEFAULT   FTHREAD_MUTEX_ERRORCHECK
-#elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_RECURSIVE
-  #define HTHREAD_MUTEX_DEFAULT   FTHREAD_MUTEX_RECURSIVE
-#else
-  #error Invalid or Usupported 'OPTION_MUTEX_DEFAULT' setting
-#endif
-
-typedef fthread_t            TID;
-typedef fthread_mutex_t      LOCK;
-typedef fthread_cond_t       COND;
-typedef fthread_attr_t       ATTR;
-typedef fthread_mutexattr_t  MATTR;
-
-#define hthread_mutexattr_init(pla)            fthread_mutexattr_init((pla))
-#define hthread_mutexattr_destroy(pla)         fthread_mutexattr_destroy((pla))
-#define hthread_mutexattr_settype(pla,typ)     fthread_mutexattr_settype((pla),(typ))
-
-#define hthread_mutex_init(plk,pla)            fthread_mutex_init((plk),(pla))
-
-#define create_thread(ptid,pat,fn,arg,nm)      fthread_create((ptid),(pat),(PFT_THREAD_FUNC)&(fn),(arg),nm)
-#define join_thread(tid,pcode)                 fthread_join((tid),(pcode))
-#define destroy_lock(plk)                      fthread_mutex_destroy((plk))
-#define obtain_lock(plk)                       fthread_mutex_lock((plk))
-#define try_obtain_lock(plk)                   fthread_mutex_trylock((plk))
-#define test_lock(plk) \
-        (fthread_mutex_trylock((plk)) ? 1 : fthread_mutex_unlock((plk)) )
-#define release_lock(plk)                      fthread_mutex_unlock((plk))
-
-// The read/write lock object of Hercules. TODO: To be filled in, mutex locks for now
-#define RWLOCK                                 LOCK
-#define initialize_rwlock(plk)                 initialize_lock((plk))
-#define destroy_rwlock(plk)                    destroy_lock((plk))
-#define obtain_rdlock(plk)                     obtain_lock((plk))
-#define obtain_wrlock(plk)                     obtain_lock((plk))
-#define release_rwlock(plk)                    release_lock((plk))
-#define try_obtain_rdlock(plk)                 try_obtain_lock((plk))
-#define try_obtain_wrlock(plk)                 try_obtain_lock((plk))
-#define test_rdlock(plk)                       test_lock((plk))
-#define test_wrlock(plk)                       test_lock((plk))
-
-#define initialize_condition(pcond)            fthread_cond_init((pcond))
-#define destroy_condition(pcond)               fthread_cond_destroy((pcond))
-#define signal_condition(pcond)                fthread_cond_signal((pcond))
-#define broadcast_condition(pcond)             fthread_cond_broadcast((pcond))
-#define wait_condition(pcond,plk)              fthread_cond_wait((pcond),(plk))
-#define timed_wait_condition(pcond,plk,tm)     fthread_cond_timedwait((pcond),(plk),(tm))
-
-#define initialize_detach_attr(pat) \
-    do { \
-        fthread_attr_init((pat)); \
-        fthread_attr_setstacksize((pat),THREAD_STACK_SIZE); \
-        fthread_attr_setdetachstate((pat),FTHREAD_CREATE_DETACHED); \
-    } while (0)
-
-#define initialize_join_attr(pat) \
-    do { \
-        fthread_attr_init((pat)); \
-        fthread_attr_setstacksize((pat),THREAD_STACK_SIZE); \
-        fthread_attr_setdetachstate((pat),FTHREAD_CREATE_JOINABLE); \
-    } while (0)
-
-#define detach_thread(tid)                     fthread_detach((tid))
-#define signal_thread(tid,signo)               fthread_kill((tid),(signo))
-#define thread_id()                            fthread_self()
-#define win_thread_handle(tid)                 fthread_get_handle(tid)
-#define exit_thread(exitvar_ptr)               fthread_exit((exitvar_ptr))
-#define equal_threads(tid1,tid2)               fthread_equal((tid1),(tid2))
-
-#endif // defined(OPTION_FTHREADS)
-
-#if !( defined( OPTION_FTHREADS ) || defined( OPTION_WTHREADS ) ) 
-///////////////////////////////////////////////////////////////////////
-// PTHREADS
-///////////////////////////////////////////////////////////////////////
-
+#if !defined( OPTION_FTHREADS )
 #include <pthread.h>
+#define HTHREAD_MUTEX_NORMAL            PTHREAD_MUTEX_NORMAL
+#define HTHREAD_MUTEX_ERRORCHECK        PTHREAD_MUTEX_ERRORCHECK
+#define HTHREAD_MUTEX_RECURSIVE         PTHREAD_MUTEX_RECURSIVE
+#define HTHREAD_RWLOCK_SHARED           PTHREAD_PROCESS_SHARED
+#define HTHREAD_RWLOCK_PRIVATE          PTHREAD_PROCESS_PRIVATE
+#define HTHREAD_CREATE_DETACHED         PTHREAD_CREATE_DETACHED
+#define HTHREAD_CREATE_JOINABLE         PTHREAD_CREATE_JOINABLE
+#endif /* !defined( OPTION_FTHREADS ) */
+
+/*-------------------------------------------------------------------*/
+/*              Hercules default locking model                       */
+/*-------------------------------------------------------------------*/
 
 #if        OPTION_MUTEX_DEFAULT == OPTION_MUTEX_NORMAL
-  #define HTHREAD_MUTEX_DEFAULT   PTHREAD_MUTEX_NORMAL
+  #define HTHREAD_MUTEX_DEFAULT   HTHREAD_MUTEX_NORMAL
 #elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_ERRORCHECK
-  #define HTHREAD_MUTEX_DEFAULT   PTHREAD_MUTEX_ERRORCHECK
+  #define HTHREAD_MUTEX_DEFAULT   HTHREAD_MUTEX_ERRORCHECK
 #elif      OPTION_MUTEX_DEFAULT == OPTION_MUTEX_RECURSIVE
-  #define HTHREAD_MUTEX_DEFAULT   PTHREAD_MUTEX_RECURSIVE
+  #define HTHREAD_MUTEX_DEFAULT   HTHREAD_MUTEX_RECURSIVE
 #else
   #error Invalid or Usupported 'OPTION_MUTEX_DEFAULT' setting
 #endif
 
-typedef pthread_t                   TID;
-typedef pthread_mutex_t             LOCK;
-typedef pthread_rwlock_t            RWLOCK;
-typedef pthread_cond_t              COND;
-typedef pthread_attr_t              ATTR;
-typedef pthread_mutexattr_t         MATTR;
-
-#define hthread_mutexattr_init(pla)             pthread_mutexattr_init((pla))
-#define hthread_mutexattr_destroy(pla)          pthread_mutexattr_destroy((pla))
-#define hthread_mutexattr_settype(pla,typ)      pthread_mutexattr_settype((pla),(typ))
-#define hthread_mutex_init(plk,pla)             pthread_mutex_init((plk),(pla))
-
-#define destroy_lock(plk)                       pthread_mutex_destroy((plk))
-#define obtain_lock(plk)                        pthread_mutex_lock((plk))
-#define try_obtain_lock(plk)                    pthread_mutex_trylock((plk))
-#define release_lock(plk)                       pthread_mutex_unlock((plk))
-#define test_lock(plk)                          (pthread_mutex_trylock((plk)) ? 1 : pthread_mutex_unlock((plk)))
-
-#define initialize_rwlock(plk)                  pthread_rwlock_init((plk),NULL)
-#define destroy_rwlock(plk)                     pthread_rwlock_destroy((plk))
-#define obtain_rdlock(plk)                      pthread_rwlock_rdlock((plk))
-#define obtain_wrlock(plk)                      pthread_rwlock_wrlock((plk))
-#define release_rwlock(plk)                     pthread_rwlock_unlock((plk))
-#define try_obtain_rdlock(plk)                  pthread_rwlock_tryrdlock((plk))
-#define try_obtain_wrlock(plk)                  pthread_rwlock_tryrwlock((plk))
-#define test_rdlock(plk)                        (pthread_rwlock_tryrdlock((plk)) ? 1 : pthread_rwlock_unlock((plk)))
-#define test_wrlock(plk)                        (pthread_rwlock_trywrlock((plk)) ? 1 : pthread_rwlock_unlock((plk)))
-
-#define initialize_condition(pcond)             pthread_cond_init((pcond),NULL)
-#define destroy_condition(pcond)                pthread_cond_destroy((pcond))
-#define signal_condition(pcond)                 pthread_cond_signal((pcond))
-#define broadcast_condition(pcond)              pthread_cond_broadcast((pcond))
-#define wait_condition(pcond,plk)               pthread_cond_wait((pcond),(plk))
-#define timed_wait_condition(pcond,plk,timeout) pthread_cond_timedwait((pcond),(plk),(timeout))
-
-#define initialize_detach_attr(pat) \
-    do { \
-        pthread_attr_init((pat)); \
-        pthread_attr_setstacksize((pat),THREAD_STACK_SIZE); \
-        pthread_attr_setdetachstate((pat),PTHREAD_CREATE_DETACHED); \
-    } while (0)
-
-#define initialize_join_attr(pat) \
-    do { \
-        pthread_attr_init((pat)); \
-        pthread_attr_setstacksize((pat),THREAD_STACK_SIZE); \
-        pthread_attr_setdetachstate((pat),PTHREAD_CREATE_JOINABLE); \
-    } while (0)
-
-#define join_thread(tid,pcode)                  pthread_join((tid),(pcode))
-#define detach_thread(tid)                      pthread_detach((tid))
-
-typedef void*THREAD_FUNC(void*);
-#define create_thread(ptid,pat,fn,arg,nm)       pthread_create(ptid,pat,(THREAD_FUNC*)&(fn),arg)
-#define exit_thread(_code)                      pthread_exit((_code))
-#define signal_thread(tid,signo)                pthread_kill((tid),(signo))
-#define thread_id()                             pthread_self()
-#define equal_threads(tid1,tid2)                pthread_equal(tid1,tid2)
-
-#endif // !( defined( OPTION_FTHREADS ) || defined( OPTION_WTHREADS ) )
-
-#define initialize_lock(plk) \
-    do { \
-        MATTR attr; \
-        int rc; \
-        if ((rc = hthread_mutexattr_init( &attr )) == 0) { \
-            if ((rc = hthread_mutexattr_settype( &attr, HTHREAD_MUTEX_DEFAULT )) == 0) { \
-                rc = hthread_mutex_init( (plk), &attr ); \
-            } \
-            hthread_mutexattr_destroy( &attr ); \
-        } \
-        if (rc != 0) {\
-            perror( "Fatal error initializing Mutex Locking Model" ); \
-            exit(1); \
-        } \
-    } while (0)
-
-///////////////////////////////////////////////////////////////////////
-// 'Thread' tracing...
-///////////////////////////////////////////////////////////////////////
-
-#ifdef OPTION_PTTRACE
-
-#include "pttrace.h"
-
-#undef  initialize_lock
-#define initialize_lock(plk) \
-    do { \
-        MATTR attr; \
-        int rc; \
-        if ((rc = hthread_mutexattr_init( &attr )) == 0) { \
-            if ((rc = hthread_mutexattr_settype( &attr, HTHREAD_MUTEX_DEFAULT )) == 0) { \
-                rc = ptt_pthread_mutex_init( (plk), &attr, PTT_LOC ); \
-            } \
-            hthread_mutexattr_destroy( &attr ); \
-        } \
-        if (rc != 0) {\
-            perror( "Fatal error initializing Mutex Locking Model" ); \
-            exit(1); \
-        } \
-    } while (0)
-#undef  obtain_lock
-#define obtain_lock(plk)                        ptt_pthread_mutex_lock((plk),PTT_LOC)
-#undef  try_obtain_lock
-#define try_obtain_lock(plk)                    ptt_pthread_mutex_trylock((plk),PTT_LOC)
-#undef  test_lock
-#define test_lock(plk)                          (ptt_pthread_mutex_trylock((plk),PTT_LOC) ? 1 : ptt_pthread_mutex_unlock((plk),PTT_LOC))
-#undef  release_lock
-#define release_lock(plk)                       ptt_pthread_mutex_unlock((plk),PTT_LOC)
-
-#undef  initialize_rwlock
-#define initialize_rwlock(plk)                  ptt_pthread_rwlock_init((plk),NULL,PTT_LOC)
-#undef  obtain_rdlock
-#define obtain_rdlock(plk)                      ptt_pthread_rwlock_rdlock((plk),PTT_LOC)
-#undef  obtain_wrlock
-#define obtain_wrlock(plk)                      ptt_pthread_rwlock_wrlock((plk),PTT_LOC)
-#undef  release_rwlock
-#define release_rwlock(plk)                     ptt_pthread_rwlock_unlock((plk),PTT_LOC)
-#undef  try_obtain_rdlock
-#define try_obtain_rdlock(plk)                  ptt_pthread_rwlock_tryrdlock((plk),PTT_LOC)
-#undef  try_obtain_wrlock
-#define try_obtain_wrlock(plk)                  ptt_pthread_rwlock_trywrlock((plk),PTT_LOC)
-#undef  test_rdlock
-#define test_rdlock(plk)                        (ptt_pthread_rwlock_tryrdlock((plk),PTT_LOC) ? 1 : ptt_pthread_rwlock_unlock((plk),PTT_LOC))
-#undef  test_wrlock
-#define test_wrlock(plk)                        (ptt_pthread_rwlock_trywrlock((plk),PTT_LOC) ? 1 : ptt_pthread_rwlock_unlock((plk),PTT_LOC))
-
-#undef  initialize_condition
-#define initialize_condition(pcond)             ptt_pthread_cond_init((pcond),NULL,PTT_LOC)
-#undef  signal_condition
-#define signal_condition(pcond)                 ptt_pthread_cond_signal((pcond),PTT_LOC)
-#undef  broadcast_condition
-#define broadcast_condition(pcond)              ptt_pthread_cond_broadcast((pcond),PTT_LOC)
-#undef  wait_condition
-#define wait_condition(pcond,plk)               ptt_pthread_cond_wait((pcond),(plk),PTT_LOC)
-#undef  timed_wait_condition
-#define timed_wait_condition(pcond,plk,timeout) ptt_pthread_cond_timedwait((pcond),(plk),(timeout),PTT_LOC)
-#undef  create_thread
-#if     defined(OPTION_FTHREADS)
-#define create_thread(ptid,pat,fn,arg,nm)       ptt_pthread_create((ptid),(pat),(PFT_THREAD_FUNC)&(fn),(arg),(nm),PTT_LOC)
+#if        OPTION_RWLOCK_DEFAULT == OPTION_RWLOCK_SHARED
+  #define HTHREAD_RWLOCK_DEFAULT   HTHREAD_RWLOCK_SHARED
+#elif      OPTION_RWLOCK_DEFAULT == OPTION_RWLOCK_PRIVATE
+  #define HTHREAD_RWLOCK_DEFAULT   HTHREAD_RWLOCK_PRIVATE
 #else
-#define create_thread(ptid,pat,fn,arg,nm)       ptt_pthread_create(ptid,pat,(THREAD_FUNC*)&(fn),arg,(nm),PTT_LOC)
+  #error Invalid or Usupported 'OPTION_RWLOCK_DEFAULT' setting
 #endif
-#undef  join_thread
-#define join_thread(tid,pcode)                  ptt_pthread_join((tid),(pcode),PTT_LOC)
-#undef  detach_thread
-#define detach_thread(tid)                      ptt_pthread_detach((tid),PTT_LOC)
-#undef  signal_thread
-#define signal_thread(tid,signo)                ptt_pthread_kill((tid),(signo),PTT_LOC)
-
-#else  // OPTION_PTTRACE
-#define PTT(...)
-#endif // OPTION_PTTRACE
-
-///////////////////////////////////////////////////////////////////////
-// (Misc)
-///////////////////////////////////////////////////////////////////////
-
-/* Pattern for displaying the thread_id */
-#define TIDPAT "%8.8lX"
 
 /*-------------------------------------------------------------------*/
-/* Pipe signaling support...                                         */
+/*                      Fish Threads                                 */
 /*-------------------------------------------------------------------*/
+#if defined( OPTION_FTHREADS )
 
-#if defined( OPTION_WAKEUP_SELECT_VIA_PIPE )
+typedef fthread_t               hthread_t;
+typedef fthread_cond_t          COND;
+typedef fthread_attr_t          ATTR;
+typedef fthread_mutexattr_t     MATTR;
+//pedef fthread_rwlockattr_t    RWATTR;   /* fthreads doesn't have r/w locks (yet) */
+#define RWATTR MATTR                      /* fthreads doesn't have r/w locks (yet) */
+typedef fthread_mutex_t         HLOCK;
+//pedef fthread_rwlock_t        HRWLOCK;  /* fthreads doesn't have r/w locks (yet) */
+#define HRWLOCK HLOCK                     /* fthreads doesn't have r/w locks (yet) */
 
-  #define RECV_PIPE_SIGNAL( rfd, lock, flag ) \
-    do { \
-      int f; int saved_errno=get_HSO_errno(); BYTE c=0; \
-      obtain_lock(&(lock)); \
-      if ((f=(flag))>=1) (flag)=0; \
-      release_lock(&(lock)); \
-      if (f>=1) \
-        VERIFY(read_pipe((rfd),&c,1)==1); \
-      set_HSO_errno(saved_errno); \
-    } while (0)
+#define hthread_mutexattr_init( pla )           fthread_mutexattr_init( pla )
+#define hthread_mutexattr_settype( pla, typ )   fthread_mutexattr_settype( (pla), (typ) )
+#define hthread_mutexattr_destroy( pla )        fthread_mutexattr_destroy( pla )
 
-  #define SEND_PIPE_SIGNAL( wfd, lock, flag ) \
-    do { \
-      int f; int saved_errno=get_HSO_errno(); BYTE c=0; \
-      obtain_lock(&(lock)); \
-      if ((f=(flag))<=0) (flag)=1; \
-      release_lock(&(lock)); \
-      if (f<=0) \
-        VERIFY(write_pipe((wfd),&c,1)==1); \
-      set_HSO_errno(saved_errno); \
-    } while (0)
+#define hthread_mutex_init( plk, pla )          fthread_mutex_init( (plk), (pla) )
+#define hthread_mutex_lock( plk )               fthread_mutex_lock( plk )
+#define hthread_mutex_trylock( plk )            fthread_mutex_trylock( plk )
+#define hthread_mutex_unlock( plk )             fthread_mutex_unlock( plk )
+#define hthread_mutex_destroy( plk )            fthread_mutex_destroy( plk )
 
-  #define SUPPORT_WAKEUP_SELECT_VIA_PIPE( pipe_rfd, maxfd, prset ) \
-    FD_SET((pipe_rfd),(prset)); \
-    (maxfd)=(maxfd)>(pipe_rfd)?(maxfd):(pipe_rfd)
+#if 0           /* fthreads doesn't have r/w locks (yet) */
+#define hthread_rwlockattr_init( pla )          fthread_rwlockattr_init( pla )
+#define hthread_rwlockattr_setpshared( pla, s ) fthread_rwlockattr_setpshared( (pla), (s) )
+#define hthread_rwlockattr_destroy( pla )       fthread_rwlockattr_destroy( pla )
+#else           /* fthreads doesn't have r/w locks (yet) */
+#define hthread_rwlockattr_init( pla )          fthread_mutexattr_init( pla )
+#define hthread_rwlockattr_setpshared( pla, s ) fthread_mutexattr_settype( (pla), HTHREAD_MUTEX_DEFAULT )
+#define hthread_rwlockattr_destroy( pla )       fthread_mutexattr_destroy( pla )
+#endif
+#if 0           /* fthreads doesn't have r/w locks (yet) */
+#define hthread_rwlock_init( plk, pla )         fthread_rwlock_init( (plk), (pla) )
+#define hthread_rwlock_destroy( plk )           fthread_rwlock_destroy( plk )
+#define hthread_rwlock_rdlock( plk )            fthread_rwlock_rdlock( plk )
+#define hthread_rwlock_wrlock( plk )            fthread_rwlock_wrlock( plk )
+#define hthread_rwlock_unlock( plk )            fthread_rwlock_unlock( plk )
+#define hthread_rwlock_tryrdlock( plk )         fthread_rwlock_tryrdlock( plk )
+#define hthread_rwlock_trywrlock( plk )         fthread_rwlock_trywrlock( plk )
+#else           /* fthreads doesn't have r/w locks (yet) */
+#define hthread_rwlock_init( plk, pla )         fthread_mutex_init( (plk), (pla) )
+#define hthread_rwlock_destroy( plk )           fthread_mutex_destroy( plk )
+#define hthread_rwlock_rdlock( plk )            fthread_mutex_lock( plk )
+#define hthread_rwlock_wrlock( plk )            fthread_mutex_lock( plk )
+#define hthread_rwlock_unlock( plk )            fthread_mutex_unlock( plk )
+#define hthread_rwlock_tryrdlock( plk )         fthread_mutex_trylock( plk )
+#define hthread_rwlock_trywrlock( plk )         fthread_mutex_trylock( plk )
+#endif
 
-  #define SUPPORT_WAKEUP_CONSOLE_SELECT_VIA_PIPE( maxfd, prset )  SUPPORT_WAKEUP_SELECT_VIA_PIPE( sysblk.cnslrpipe, (maxfd), (prset) )
-  #define SUPPORT_WAKEUP_SOCKDEV_SELECT_VIA_PIPE( maxfd, prset )  SUPPORT_WAKEUP_SELECT_VIA_PIPE( sysblk.sockrpipe, (maxfd), (prset) )
+#define hthread_cond_init( plc )                fthread_cond_init( plc )
+#define hthread_cond_wait( plc, plk )           fthread_cond_wait( (plc), (plk) )
+#define hthread_cond_timedwait( plc, plk, tm )  fthread_cond_timedwait( (plc), (plk), (tm) )
+#define hthread_cond_signal( plc )              fthread_cond_signal( plc )
+#define hthread_cond_broadcast( plc )           fthread_cond_broadcast( plc )
+#define hthread_cond_destroy( plc )             fthread_cond_destroy( plc )
 
-  #define RECV_CONSOLE_THREAD_PIPE_SIGNAL()  RECV_PIPE_SIGNAL( sysblk.cnslrpipe, sysblk.cnslpipe_lock, sysblk.cnslpipe_flag )
-  #define RECV_SOCKDEV_THREAD_PIPE_SIGNAL()  RECV_PIPE_SIGNAL( sysblk.sockrpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
-  #define SIGNAL_CONSOLE_THREAD()            SEND_PIPE_SIGNAL( sysblk.cnslwpipe, sysblk.cnslpipe_lock, sysblk.cnslpipe_flag )
-  #define SIGNAL_SOCKDEV_THREAD()            SEND_PIPE_SIGNAL( sysblk.sockwpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
+#define hthread_attr_init( pat )                fthread_attr_init( pat )
+#define hthread_attr_setstacksize( pat, z )     fthread_attr_setstacksize( (pat), (z) )
+#define hthread_attr_setdetachstate( pat, s )   fthread_attr_setdetachstate( (pat), (s) )
+#define hthread_attr_destroy( pat )             fthread_attr_destroy( pat )
 
-#else // !defined( OPTION_WAKEUP_SELECT_VIA_PIPE )
+#define hthread_create( pt, pa, fn, ar, nm )    fthread_create( (hthread_t*)(pt), (pa), (fn), (ar), (nm) )
+#define hthread_detach( tid )                   fthread_detach( (hthread_t)tid )
+#define hthread_join( tid, prc )                fthread_join( (hthread_t)(tid), (prc) )
+#define hthread_kill( tid, sig )                fthread_kill( (hthread_t)(tid), (sig) )
+#define hthread_exit( rc )                      fthread_exit( rc )
+#define hthread_self()                          fthread_self()
+#define hthread_equal( tid1, tid2 )             fthread_equal( (hthread_t)(tid1), (hthread_t)(tid2) )
+#define hthread_get_handle( tid )               fthread_get_handle( (hthread_t)tid )
 
-  #define RECV_PIPE_SIGNAL( rfd, lock, flag )
-  #define SEND_PIPE_SIGNAL( wfd, lock, flag )
+#endif /* defined( OPTION_FTHREADS ) */
 
-  #define SUPPORT_WAKEUP_SELECT_VIA_PIPE( pipe_rfd, maxfd, prset )
+/*-------------------------------------------------------------------*/
+/*                      Posix Threads                                */
+/*-------------------------------------------------------------------*/
+#if !defined( OPTION_FTHREADS )
 
-  #define SUPPORT_WAKEUP_CONSOLE_SELECT_VIA_PIPE( maxfd, prset )
-  #define SUPPORT_WAKEUP_SOCKDEV_SELECT_VIA_PIPE( maxfd, prset )
+typedef pthread_t               hthread_t;
+typedef pthread_cond_t          COND;
+typedef pthread_attr_t          ATTR;
+typedef pthread_mutexattr_t     MATTR;
+typedef pthread_rwlockattr_t    RWATTR;
+typedef pthread_mutex_t         HLOCK;
+typedef pthread_rwlock_t        HRWLOCK;
 
-  #define RECV_CONSOLE_THREAD_PIPE_SIGNAL()
-  #define RECV_SOCKDEV_THREAD_PIPE_SIGNAL()
+#define hthread_mutexattr_init( pla )           pthread_mutexattr_init( pla )
+#define hthread_mutexattr_settype( pla, typ )   pthread_mutexattr_settype( (pla), (typ) )
+#define hthread_mutexattr_destroy( pla )        pthread_mutexattr_destroy( pla )
 
-  #define SIGNAL_CONSOLE_THREAD()     signal_thread( sysblk.cnsltid, SIGUSR2 )
-  #define SIGNAL_SOCKDEV_THREAD()     signal_thread( sysblk.socktid, SIGUSR2 )
+#define hthread_mutex_init( plk, pla )          pthread_mutex_init( (plk), (pla) )
+#define hthread_mutex_lock( plk )               pthread_mutex_lock( plk )
+#define hthread_mutex_trylock( plk )            pthread_mutex_trylock( plk )
+#define hthread_mutex_unlock( plk )             pthread_mutex_unlock( plk )
+#define hthread_mutex_destroy( plk )            pthread_mutex_destroy( plk )
 
-#endif // defined( OPTION_WAKEUP_SELECT_VIA_PIPE )
+#define hthread_rwlockattr_init( pla )          pthread_rwlockattr_init( pla )
+#define hthread_rwlockattr_setpshared( pla, s ) pthread_rwlockattr_setpshared( (pla), (s) )
+#define hthread_rwlockattr_destroy( pla )       pthread_rwlockattr_destroy( pla )
 
-#endif // _HTHREADS_H
+#define hthread_rwlock_init( plk, pla )         pthread_rwlock_init( (plk), (pla) )
+#define hthread_rwlock_destroy( plk )           pthread_rwlock_destroy( plk )
+#define hthread_rwlock_rdlock( plk )            pthread_rwlock_rdlock( plk )
+#define hthread_rwlock_wrlock( plk )            pthread_rwlock_wrlock( plk )
+#define hthread_rwlock_unlock( plk )            pthread_rwlock_unlock( plk )
+#define hthread_rwlock_tryrdlock( plk )         pthread_rwlock_tryrdlock( plk )
+#define hthread_rwlock_trywrlock( plk )         pthread_rwlock_trywrlock( plk )
+
+#define hthread_cond_init( plc )                pthread_cond_init( plc, NULL )
+#define hthread_cond_wait( plc, plk )           pthread_cond_wait( (plc), (plk) )
+#define hthread_cond_timedwait( plc, plk, tm )  pthread_cond_timedwait( (plc), (plk), (tm) )
+#define hthread_cond_signal( plc )              pthread_cond_signal( plc )
+#define hthread_cond_broadcast( plc )           pthread_cond_broadcast( plc )
+#define hthread_cond_destroy( plc )             pthread_cond_destroy( plc )
+
+#define hthread_attr_init( pat )                pthread_attr_init( pat )
+#define hthread_attr_setstacksize( pat, z )     pthread_attr_setstacksize( (pat), (z) )
+#define hthread_attr_setdetachstate( pat, s )   pthread_attr_setdetachstate( (pat), (s) )
+#define hthread_attr_destroy( pat )             pthread_attr_destroy( pat )
+
+#define hthread_create( pt, pa, fn, ar, nm )    pthread_create( (hthread_t*)(pt), (pa), (fn), (ar) )
+#define hthread_detach( tid )                   pthread_detach( (hthread_t)tid )
+#define hthread_join( tid, prc )                pthread_join( (hthread_t)(tid), (prc) )
+#define hthread_kill( tid, sig )                pthread_kill( (hthread_t)(tid), (sig) )
+#define hthread_exit( rc )                      pthread_exit( rc )
+#define hthread_self()                          pthread_self()
+#define hthread_equal( tid1, tid2 )             pthread_equal( (hthread_t)(tid1), (hthread_t)(tid2) )
+#define hthread_get_handle( tid )               NULL
+
+#endif /* !defined( OPTION_FTHREADS ) */
+
+/*-------------------------------------------------------------------*/
+/*       Hercules threading macros, consts and typedefs              */
+/*-------------------------------------------------------------------*/
+#define PTT_LOC             __FILE__ ":" QSTR( __LINE__ )
+typedef void* (THREAD_FUNC)( void* );   /* Generic thread function   */
+typedef hthread_t   HID;                /* Hercules thread-id type   */
+typedef U64         TID;                /* Generic thread-id type    */
+#define TIDPAT      "%lld"              /* TID printf pattern        */
+#if !defined(EOWNERDEAD)
+  /* PROGRAMMING NOTE: we use a purposely large value to try and
+     prevent collision with any existing threading return value.     */
+  #define EOWNERDEAD        32768       /* Owner has died            */
+  #define ENOTRECOVERABLE   32769       /* State not recoverable     */
+  #undef  FEAT_ROBUST_MUTEX             /* Robust mutex NOT supported*/
+#else
+  #define FEAT_ROBUST_MUTEX             /* Robust mutex ARE supported*/
+#endif
+
+/*-------------------------------------------------------------------*/
+/*                   Hercules lock structures                        */
+/*-------------------------------------------------------------------*/
+struct LOCK
+{
+    void*   ilk;                /* ptr to internal ILOCK structure   */
+};
+typedef struct LOCK LOCK;
+
+struct RWLOCK
+{
+    void*   ilk;                /* ptr to internal ILOCK structure   */
+};
+typedef struct RWLOCK RWLOCK;
+
+/*-------------------------------------------------------------------*/
+/*                  hthreads exported functions                      */
+/*-------------------------------------------------------------------*/
+HT_DLL_IMPORT int  locks_cmd( int argc, char* argv[], char* cmdline );
+
+HT_DLL_IMPORT int  hthread_initialize_lock        ( LOCK* plk, const char* name, const char* location );
+HT_DLL_IMPORT int  hthread_obtain_lock            ( LOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_try_obtain_lock        ( LOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_test_lock              ( LOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_release_lock           ( LOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_destroy_lock           ( LOCK* plk, const char* location );
+
+HT_DLL_IMPORT int  hthread_initialize_rwlock      ( RWLOCK* plk, const char* name, const char* location );
+HT_DLL_IMPORT int  hthread_destroy_rwlock         ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_obtain_rdlock          ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_obtain_wrlock          ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_release_rwlock         ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_try_obtain_rdlock      ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_try_obtain_wrlock      ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_test_rdlock            ( RWLOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_test_wrlock            ( RWLOCK* plk, const char* location );
+
+HT_DLL_IMPORT int  hthread_initialize_condition   ( COND* plc, const char* location );
+HT_DLL_IMPORT int  hthread_destroy_condition      ( COND* plc, const char* location );
+HT_DLL_IMPORT int  hthread_signal_condition       ( COND* plc, const char* location );
+HT_DLL_IMPORT int  hthread_broadcast_condition    ( COND* plc, const char* location );
+HT_DLL_IMPORT int  hthread_wait_condition         ( COND* plc, LOCK* plk, const char* location );
+HT_DLL_IMPORT int  hthread_timed_wait_condition   ( COND* plc, LOCK* plk, const struct timespec* tm, const char* location );
+
+HT_DLL_IMPORT int  hthread_initialize_join_attr   ( ATTR* pat, const char* location );
+HT_DLL_IMPORT int  hthread_initialize_detach_attr ( ATTR* pat, const char* location );
+HT_DLL_IMPORT int  hthread_create_thread          ( TID* ptid, ATTR* pat, THREAD_FUNC* pfn, void* arg, const char* name, const char* location );
+HT_DLL_IMPORT int  hthread_join_thread            ( TID tid, void** prc, const char* location );
+HT_DLL_IMPORT int  hthread_detach_thread          ( TID tid, const char* location );
+HT_DLL_IMPORT int  hthread_signal_thread          ( TID tid, int sig, const char* location );
+HT_DLL_IMPORT TID  hthread_thread_id              ( const char* location );
+HT_DLL_IMPORT void hthread_exit_thread            ( void* rc, const char* location );
+HT_DLL_IMPORT int  hthread_equal_threads          ( TID tid1, TID tid2, const char* location );
+
+#if defined(_MSVC_)
+HT_DLL_IMPORT HANDLE hthread_win_thread_handle    ( TID tid );
+#endif
+
+/*-------------------------------------------------------------------*/
+/*               Hercules threading/locking macros                   */
+/*-------------------------------------------------------------------*/
+#define initialize_lock( plk )                  hthread_initialize_lock( plk, #plk, PTT_LOC )
+#define obtain_lock( plk )                      hthread_obtain_lock( plk, PTT_LOC )
+#define try_obtain_lock( plk )                  hthread_try_obtain_lock( plk, PTT_LOC )
+#define test_lock( plk )                        hthread_test_lock( plk, PTT_LOC )
+#define release_lock(plk)                       hthread_release_lock( plk, PTT_LOC )
+#define destroy_lock(plk)                       hthread_destroy_lock( plk, PTT_LOC )
+
+#define initialize_rwlock( plk )                hthread_initialize_rwlock( plk, #plk, PTT_LOC )
+#define destroy_rwlock( plk )                   hthread_destroy_rwlock( plk, PTT_LOC )
+#define obtain_rdlock( plk )                    hthread_obtain_rdlock( plk, PTT_LOC )
+#define obtain_wrlock( plk )                    hthread_obtain_wrlock( plk, PTT_LOC )
+#define release_rwlock( plk )                   hthread_release_rwlock( plk, PTT_LOC )
+#define try_obtain_rdlock( plk )                hthread_try_obtain_rdlock( plk, PTT_LOC )
+#define try_obtain_wrlock( plk )                hthread_try_obtain_wrlock( plk, PTT_LOC )
+#define test_rdlock( plk )                      hthread_test_rdlock( plk, PTT_LOC )
+#define test_wrlock( plk )                      hthread_test_wrlock( plk, PTT_LOC )
+
+#define initialize_condition( plc )             hthread_initialize_condition( plc, PTT_LOC )
+#define destroy_condition( plc )                hthread_destroy_condition( plc, PTT_LOC )
+#define signal_condition( plc )                 hthread_signal_condition( plc, PTT_LOC )
+#define broadcast_condition( plc )              hthread_broadcast_condition( plc, PTT_LOC )
+#define wait_condition( plc, plk )              hthread_wait_condition( (plc), (plk), PTT_LOC )
+#define timed_wait_condition( plc, plk, tm )    hthread_timed_wait_condition( (plc), (plk), (tm), PTT_LOC )
+
+#define initialize_join_attr( pat )             hthread_initialize_join_attr( pat, PTT_LOC )
+#define initialize_detach_attr( pat )           hthread_initialize_detach_attr( pat, PTT_LOC )
+#define create_thread( pt, pa, fn, ar, nm )     hthread_create_thread( (pt), (pa), (fn), (ar), (nm), PTT_LOC )
+#define join_thread( tid, prc )                 hthread_join_thread( (tid), (prc), PTT_LOC )
+#define detach_thread( tid )                    hthread_detach_thread( tid, PTT_LOC )
+#define signal_thread( tid, sig )               hthread_signal_thread( (tid), (sig), PTT_LOC )
+#define thread_id()                             hthread_thread_id( PTT_LOC )
+#define exit_thread( rc )                       hthread_exit_thread( rc, PTT_LOC )
+#define equal_threads( tid1, tid2 )             hthread_equal_threads( (tid1), (tid2), PTT_LOC )
+
+#if defined(_MSVC_)
+#define win_thread_handle( tid )                hthread_win_thread_handle( tid )
+#endif
+
+/*-------------------------------------------------------------------*/
+/*                         PTT Tracing                               */
+/*-------------------------------------------------------------------*/
+#include "pttrace.h"            /* defines Primary PTT Tracing macro */
+
+#endif /* _HTHREADS_H */

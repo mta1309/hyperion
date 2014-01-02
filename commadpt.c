@@ -103,6 +103,27 @@
    Here's an example, for windows telnet clients
    0046 2703 lport=32003 dial=IN lnctl=tele2 uctrans=yes term=tty skip=88C9DF iskip=0A bs=dumb break=dumb
 
+   *****************************************************************
+
+   driver mods for APL\360 December 2012 MHP <ikj1234i at yahoo dot com>
+   - circumvention for several race conditions
+   - new "eol" parameter specifies a byte value (ASCII), default 0x0D,
+     which when received marks the end of the input line
+   - new "prepend" and "append" parameters to specify zero to four
+     bytes to be prepended and appended (respectively) to input lines
+     that have been received from terminals before being sent to the
+     mainframe OS.  Typical use is to add Circle D and C around each
+     input transmission (2741's for APL\360).  Bytes must be specified in
+     S/370 channel format, not in ASCII.
+   - new terminal type "rxvt4apl" with 8-bit and character translation
+     support for rxvt4apl in 2741 mode. Use the following conf definition entry
+     0402 2703 dial=in lport=57413 lnctl=ibm1 term=rxvt4apl skip=5EDE code=ebcd
+        iskip=0D0A prepend=16 append=5B1F eol=0A binary=yes crlf=yes sendcr=yes
+          [all on a single line]
+   - negotiation to telnet binary mode when using rxvt4apl ("binary" parameter)
+   - send CR back to terminal when input line received ("sendcr" parameter)
+   - option to map 2741 NL to TTY CRLF sequence ("crlf" parameter)
+   - increase Hercules MAX_ARGS
 
 ******************************************************************** */
 
@@ -173,6 +194,14 @@ static PARSER ptab[]={
     { "iskip",    PARSER_STR_TYPE },
     { "bs",       PARSER_STR_TYPE },
     { "break",    PARSER_STR_TYPE },
+    { "prepend",  PARSER_STR_TYPE },
+    { "append",   PARSER_STR_TYPE },
+    { "eol",      PARSER_STR_TYPE },
+    { "crlf",     PARSER_STR_TYPE },
+    { "sendcr",   PARSER_STR_TYPE },
+    { "binary",   PARSER_STR_TYPE },
+    { "ka",       PARSER_STR_TYPE },
+    { "crlf2cr",  PARSER_STR_TYPE },
     {NULL,NULL}  /* (end of table) */
 };
 
@@ -195,6 +224,14 @@ enum {
     COMMADPT_KW_ISKIP,
     COMMADPT_KW_BS,
     COMMADPT_KW_BREAK,
+    COMMADPT_KW_PREPEND,
+    COMMADPT_KW_APPEND,
+    COMMADPT_KW_EOL,
+    COMMADPT_KW_CRLF,
+    COMMADPT_KW_SENDCR,
+    COMMADPT_KW_BINARY,
+    COMMADPT_KW_KA,
+    COMMADPT_KW_CRLF2CR,
 } commadpt_kw;
 
 static BYTE byte_reverse_table[256] = {
@@ -214,6 +251,98 @@ static BYTE byte_reverse_table[256] = {
     0x0B,0x8B,0x4B,0xCB,0x2B,0xAB,0x6B,0xEB,0x1B,0x9B,0x5B,0xDB,0x3B,0xBB,0x7B,0xFB,
     0x07,0x87,0x47,0xC7,0x27,0xA7,0x67,0xE7,0x17,0x97,0x57,0xD7,0x37,0xB7,0x77,0xF7,
     0x0F,0x8F,0x4F,0xCF,0x2F,0xAF,0x6F,0xEF,0x1F,0x9F,0x5F,0xDF,0x3F,0xBF,0x7F,0xFF
+};
+
+static BYTE telnet_binary[6] = { 0xff, 0xfd, 0x00, 0xff, 0xfb, 0x00 };
+
+BYTE overstrike_2741_pairs[] = {
+    0x93, 0xA6, /* nor */
+    0xC9, 0xCC, /* rotate */
+    0xCC, 0xCF, /* log */
+    0xC9, 0xEE, /* grade down */
+    0xC3, 0xE7, /* lamp */
+    0xC5, 0xC6, /* quote quad */
+    0x93, 0xA6, /* nand */
+    0xA3, 0xCC, /* transpose */
+    0xA6, 0xEE, /* locked fn */
+    0xC9, 0xF0, /* grade up */
+    0x76, 0xC5, /* exclamation */
+    0xCA, 0xE4, /* ibeam */
+    0xC6, 0xE1, /* domino */
+};
+
+BYTE overstrike_rxvt4apl_chars[] = {
+    /* must match overstrike_2741_pairs */
+    0xe5,
+    0xe8,
+    0x89,
+    0x9d,
+    0xa6,
+    0x97,
+    0xea,
+    0xed,
+    0xa1, /* locked fn - no exact match for this */
+    0x93,
+    0x21,
+    0x84,
+    0x98,
+};
+
+static BYTE overstrike_map [256] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0,
+    0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+static BYTE rxvt4apl_from_2741[256] = {
+    0x3f, 0x20, 0x31, 0x3f, 0x32, 0x3f, 0x3f, 0x33, 0x34, 0x3f, 0x3f, 0x35, 0x3f, 0x36, 0x37, 0x3f,
+    0x38, 0x3f, 0x3f, 0x39, 0x3f, 0x30, 0x5d, 0x3f, 0x3f, 0x3f, 0x95, 0x3f, 0x96, 0x3f, 0x3f, 0x04,
+    0x90, 0x3f, 0x3f, 0x2f, 0x3f, 0x53, 0x54, 0x3f, 0x3f, 0x55, 0x56, 0x3f, 0x57, 0x3f, 0x3f, 0x58,
+    0x3f, 0x59, 0x5a, 0x3f, 0x3f, 0x3f, 0x3f, 0x2c, 0x84, 0x3f, 0x3f, 0x0a, 0x3f, 0x17, 0x1b, 0x3f,
+    0x2b, 0x3f, 0x3f, 0x4a, 0x3f, 0x4b, 0x4c, 0x3f, 0x3f, 0x4d, 0x4e, 0x3f, 0x4f, 0x3f, 0x3f, 0x50,
+    0x3f, 0x51, 0x52, 0x3f, 0x3f, 0x3f, 0x3f, 0x5b, 0x9d, 0x3f, 0x3f, 0x0d, 0x3f, 0x08, 0x87, 0x3f,
+    0x3f, 0x92, 0x41, 0x3f, 0x42, 0x3f, 0x3f, 0x43, 0x44, 0x3f, 0x3f, 0x45, 0x3f, 0x46, 0x47, 0x3f,
+    0x48, 0x3f, 0x3f, 0x49, 0x3f, 0x3f, 0x2e, 0x3f, 0x3f, 0x3f, 0x09, 0x3f, 0x86, 0x3f, 0x3f, 0x7f,
+    0x3f, 0x20, 0x9a, 0x3f, 0xfd, 0x3f, 0x3f, 0x3c, 0xf3, 0x3f, 0x3f, 0x3d, 0x3f, 0xf2, 0x3e, 0x3f,
+    0x86, 0x3f, 0x3f, 0xfa, 0x3f, 0x5e, 0x29, 0x3f, 0x3f, 0x3f, 0x95, 0x3f, 0x96, 0x3f, 0x3f, 0x3f,
+    0x85, 0x3f, 0x3f, 0x5c, 0x3f, 0x8d, 0x7e, 0x3f, 0x3f, 0x8b, 0xfc, 0x3f, 0xf7, 0x3f, 0x3f, 0x83,
+    0x3f, 0x8c, 0x82, 0x3f, 0x3f, 0x3f, 0x3f, 0x3b, 0x84, 0x3f, 0x3f, 0x0a, 0x3f, 0x17, 0x1b, 0x3f,
+    0x2d, 0x3f, 0x3f, 0xf8, 0x3f, 0x27, 0x95, 0x3f, 0x3f, 0x7c, 0xe7, 0x3f, 0xf9, 0x3f, 0x3f, 0x2a,
+    0x3f, 0x3f, 0xfb, 0x3f, 0x3f, 0x3f, 0x3f, 0x28, 0x9d, 0x3f, 0x3f, 0x0d, 0x3f, 0x08, 0x87, 0x3f,
+    0x3f, 0xf6, 0xe0, 0x3f, 0xe6, 0x3f, 0x3f, 0xef, 0x8f, 0x3f, 0x3f, 0xee, 0x3f, 0x5f, 0xec, 0x3f,
+    0x91, 0x3f, 0x3f, 0xe2, 0x3f, 0x3f, 0x3a, 0x3f, 0x3f, 0x3f, 0x09, 0x3f, 0x86, 0x3f, 0x3f, 0x7f,
+};
+
+static BYTE rxvt4apl_to_2741[256] = {
+    0x88, 0x88, 0x88, 0x88, 0x1f, 0x88, 0x88, 0x88, 0x5d, 0x7a, 0x3b, 0x88, 0x88, 0x5b, 0x88, 0x88,
+    0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x5e, 0x88, 0x88, 0x88, 0x88, 0x3e, 0x88, 0x88, 0x88, 0x88,
+    0x01, 0xb7, 0x96, 0x16, 0x57, 0x8b, 0x61, 0xc5, 0xd7, 0x96, 0xcf, 0x40, 0x37, 0xc0, 0x76, 0x23,
+    0x15, 0x02, 0x04, 0x07, 0x08, 0x0b, 0x0d, 0x0e, 0x10, 0x13, 0xf6, 0xb7, 0x87, 0x8b, 0x8e, 0xd1,
+    0x20, 0xe2, 0xe4, 0xe7, 0xe8, 0xeb, 0xed, 0xee, 0xf0, 0xf3, 0xc3, 0xc5, 0xc6, 0xc9, 0xca, 0xcc,
+    0xcf, 0xd1, 0xd2, 0xa5, 0xa6, 0xa9, 0xaa, 0xac, 0xaf, 0xb1, 0xb2, 0x57, 0xa3, 0x16, 0x95, 0xed,
+    0x88, 0x62, 0x64, 0x67, 0x68, 0x6b, 0x6d, 0x6e, 0x70, 0x73, 0x43, 0x45, 0x46, 0x49, 0x4a, 0x4c,
+    0x4f, 0x51, 0x52, 0x25, 0x26, 0x29, 0x2a, 0x2c, 0x2f, 0x31, 0x32, 0x88, 0xc9, 0x88, 0xa6, 0x88,
+    0x88, 0x88, 0xb2, 0xaf, 0x88, 0xa0, 0x90, 0x88, 0x88, 0x88, 0x88, 0xa9, 0xb1, 0xa5, 0x88, 0xe8,
+    0x20, 0xf0, 0x61, 0x88, 0x88, 0xc6, 0x88, 0x88, 0x88, 0x88, 0x82, 0x88, 0x88, 0x88, 0x88, 0x88,
+    0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88,
+    0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88,
+    0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88,
+    0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88,
+    0xe2, 0x88, 0xf3, 0x88, 0x88, 0x88, 0xe4, 0xca, 0x88, 0x88, 0x88, 0x88, 0xee, 0x88, 0xeb, 0xe7,
+    0x88, 0x88, 0x8d, 0x88, 0x88, 0x88, 0xe1, 0xac, 0xc3, 0xcc, 0x93, 0xd2, 0xaa, 0x84, 0x88, 0x88,
 };
 
 /* 2741 EBCD code tables */
@@ -295,6 +424,9 @@ static BYTE xlate_table_cc_fromebcdic[256] = {
     0xEB, 0xEB, 0xD2, 0xA0, 0xA6, 0xC6, 0xD7, 0xA3, 0xF3, 0x95, 0xEB, 0xEB, 0xEB, 0xEB, 0xEB, 0xEB,
     0x13, 0x02, 0x04, 0x07, 0x10, 0x08, 0x0D, 0x0B, 0x0E, 0x16, 0xEB, 0xEB, 0xEB, 0xEB, 0xEB, 0xEB,
 };
+
+#define CIRCLE_C 0x1F
+#define CIRCLE_D 0x16
 
 static BYTE byte_parity_table [128] = {
 /* value: 0 = even parity, 1 = odd parity */
@@ -727,7 +859,7 @@ static int     commadpt_initiate_userdial(COMMADPT *ca)
     return(commadpt_connout(ca));
 }
 
-static void connect_message(int sfd, int devnum, int term)
+static void connect_message(int sfd, int devnum, int term, int binary_opt)
 {
 struct      sockaddr_in client;
 socklen_t   namelen;
@@ -746,6 +878,9 @@ char        msgtext[256];
     write(sfd, "\r\n", 2);
 
     WRMSG(HHC01073,"I", ipaddr, (int)ntohs(client.sin_port), devnum, (term == COMMADPT_TERM_TTY) ? "TTY" : "2741");
+
+    if (binary_opt)
+        write(sfd, telnet_binary, sizeof(telnet_binary));
 
     return;
 }
@@ -787,6 +922,7 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
     BYTE        tty_buf[TTYLINE_SZ];
     int         tty_bp=0;
     int i1;
+    u_int j;
     int crflag = 0;
     for (i1 = 0; i1 < len; i1++)
     {
@@ -799,6 +935,8 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
                         SSID_TO_LCSS(ca->dev->ssid),
                         ca->dev->devnum,
                         ca->telnet_cmd, c);
+            if (c == 0x00 && ca->binary_opt)
+                continue; /* for binary: assume it's a response, so don't answer */
             bfr3[0] = 0xff;  /* IAC */
         /* set won't/don't for all received commands */
             bfr3[1] = (ca->telnet_cmd == 0xfd) ? 0xfc : 0xfe;
@@ -848,7 +986,7 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
         {
             ca->telnet_iac = 0;
         }
-        if (c == 0x0d) { // char was CR ?
+        if (c == ca->eol_char) { // char was CR ?
             crflag = 1;
         }
         if (c == 0x03 && ca->dumb_break)
@@ -864,6 +1002,14 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
     }
     if (crflag)
     {   /* process complete line, perform editing and translation, etc. */
+        if (ca->prepend_length)
+        {
+            for (i1 = 0; i1 < ca->prepend_length; i1++) {
+                tty_buf[tty_bp++] = ca->prepend_bytes[i1];
+                if (tty_bp >= TTYLINE_SZ)
+                    tty_bp = TTYLINE_SZ - 1;   // prevent buf overflow
+            }
+        }
         while (ca->ttybuf.havedata)
         {
             c = commadpt_ring_pop(&ca->ttybuf);
@@ -875,7 +1021,21 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
             }
             if (ca->input_byte_skip_table[c])
                 continue;   // skip this byte per cfg
-            c &= 0x7f;      // make 7 bit ASCII
+
+            if (1
+                && ca->crlf2cr_opt      /* dhd: CRLF2CR option? */
+                && (c & 0x7f) == 0x0a   /* dhd: is this a <LF>? */
+                && tty_bp > 0           /* dhd: and something in buffer? */
+            )
+            {
+                if (0xb1 == tty_buf[tty_bp-1])  /* dhd: <LF> follows <CR>? */
+                    continue;                   /* dhd: skip <LF> to avoid problems */
+            }
+
+            if (!(ca->rxvt4apl || !ca->code_table_fromebcdic))
+            { /* tty33 and 2741 emulation are 7-bit, code=none and rxvt4apl want 8 bit */
+                c &= 0x7f;  // make 7 bit ASCII
+            }
             if  (ca->uctrans && c >= 'a' && c <= 'z')
             {
                 c = toupper( c );     /* make uppercase */
@@ -889,8 +1049,31 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
             }
             else
             {   /* 2741 */
-                if (ca->code_table_fromebcdic)
-                {  // do only if code != none
+                if (ca->rxvt4apl)
+                {
+                    if (overstrike_map[c] == 1)
+                    {
+                        for (j = 0; j < sizeof(overstrike_rxvt4apl_chars); j++)
+                        {
+                            if (c == overstrike_rxvt4apl_chars[j])
+                            {
+                                tty_buf[tty_bp++] = overstrike_2741_pairs[j*2];
+                                if (tty_bp >= TTYLINE_SZ)
+                                    tty_bp = TTYLINE_SZ - 1;   // prevent buf overflow
+                                tty_buf[tty_bp++] = 0xDD;      // 2741 backspace
+                                if (tty_bp >= TTYLINE_SZ)
+                                    tty_bp = TTYLINE_SZ - 1;   // prevent buf overflow
+                                c = overstrike_2741_pairs[ (j*2) + 1];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        c = rxvt4apl_to_2741[c];
+                    }
+                }
+                else if (ca->code_table_fromebcdic)
+                {
                     c = host_to_guest(c & 0x7f);  // first translate to EBCDIC
                     c = ca->code_table_fromebcdic[ c ];   // then to 2741 code
                 }
@@ -898,6 +1081,14 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
             tty_buf[tty_bp++] = c;
             if (tty_bp >= TTYLINE_SZ)
                 tty_bp = TTYLINE_SZ - 1;   // prevent buf overflow
+        }
+        if (ca->append_length)
+        {
+            for (i1 = 0; i1 < ca->append_length; i1++) {
+                tty_buf[tty_bp++] = ca->append_bytes[i1];
+                if (tty_bp >= TTYLINE_SZ)
+                    tty_bp = TTYLINE_SZ - 1;   // prevent buf overflow
+            }
         }
         if (tty_bp > 0) {
             for (i1 = 0; i1 < tty_bp; i1++) {
@@ -908,6 +1099,11 @@ static void commadpt_read_tty(COMMADPT *ca, BYTE * bfr, int len)
         }
         logdump("RCV2",ca->dev,dump_buf,dump_bp);
         ca->eol_flag = 1; // set end of line flag
+        if (ca->sendcr_opt)
+        {
+            /* move carriage to left margin */
+            commadpt_ring_push(&ca->outbfr,0x0d);
+        }
     } /* end of if(crflag) */
 }
 
@@ -1205,6 +1401,9 @@ static void *commadpt_thread(void *vca)
                 }
                 if(ca->inbfr.havedata || ca->eol_flag)
                 {
+                    if (ca->term == COMMADPT_TERM_2741) {
+                        usleep(10000);
+                    }
                     ca->curpending=COMMADPT_PEND_IDLE;
                     signal_condition(&ca->ipc);
                     break;
@@ -1579,8 +1778,8 @@ static void *commadpt_thread(void *vca)
                 if(IS_ASYNC_LNCTL(ca) || !dopoll)
                 {
                     commadpt_read(ca);
-                    if(IS_ASYNC_LNCTL(ca) && ca->ttybuf.havedata) {
-                        /* async: EOL char not yet received, partial line is still in ttybuf */
+                    if(IS_ASYNC_LNCTL(ca) && !ca->eol_flag && !ca->telnet_int) {
+                        /* async: EOL char not yet received and not attn: no data to read */
                         /* ... just remain in COMMADPT_PEND_READ state ... */
                     } else {
                         ca->curpending=COMMADPT_PEND_IDLE;
@@ -1669,10 +1868,15 @@ static void *commadpt_thread(void *vca)
                         /* is connected and notify CCW exec   */
                         ca->curpending=COMMADPT_PEND_IDLE;
                         ca->connect=1;
+
+                        /* dhd - Try to detect dropped connections */
+                        if (COMM_KEEPALIVE(ca))
+                            socket_keepalive( tempfd, ca->kaidle, ca->kaintv, ca->kacnt );
+
                         ca->sfd=tempfd;
                         signal_condition(&ca->ipc);
                         if (IS_ASYNC_LNCTL(ca)) {
-                            connect_message(ca->sfd, ca->devnum, ca->term);
+                            connect_message(ca->sfd, ca->devnum, ca->term, ca->binary_opt);
                         }
                         continue;
                     }
@@ -1681,9 +1885,14 @@ static void *commadpt_thread(void *vca)
                     if(ca->dialin==0)
                     {
                         ca->connect=1;
+
+                        /* dhd - Try to detect dropped connections */
+                        if (COMM_KEEPALIVE(ca))
+                            socket_keepalive( tempfd, ca->kaidle, ca->kaintv, ca->kacnt );
+
                         ca->sfd=tempfd;
                         if (IS_ASYNC_LNCTL(ca)) {
-                            connect_message(ca->sfd, ca->devnum, ca->term);
+                            connect_message(ca->sfd, ca->devnum, ca->term, ca->binary_opt);
                         }
                         continue;
                     }
@@ -1750,23 +1959,28 @@ static void commadpt_halt(DEVBLK *dev)
     /* the working thread will (or has) notified      */
     /* the CCW executor to terminate the current I/O  */
     wait_condition(&dev->commadpt->ipc_halt,&dev->commadpt->lock);
+    dev->commadpt->haltprepare = 1; /* part of APL\360 2741 race cond I circumvention */
     release_lock(&dev->commadpt->lock);
 }
 /* The following 3 MSG functions ensure only 1 (one)  */
 /* hardcoded instance exist for the same numbered msg */
 /* that is issued on multiple situations              */
-static void msg013e(DEVBLK *dev,char *kw,char *kv)
+static void msg01007e(DEVBLK *dev,char *kw,char *kv)
 {
-        WRMSG(HHC01007, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,kw,kv);
+    // "%1d:%04X COMM: option %s value %s invalid"
+    WRMSG(HHC01007, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,kw,kv);
 }
-static void msg015e(DEVBLK *dev,char *dialt,char *kw)
+static void msg01008e(DEVBLK *dev,char *dialt,char *kw)
 {
-        WRMSG(HHC01008, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,dialt,kw);
+    // "%1d:%04X COMM: missing parameter: DIAL(%s) and %s not specified"
+    WRMSG(HHC01008, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,dialt,kw);
 }
-static void msg016w017i(DEVBLK *dev,char *dialt,char *kw,char *kv)
+static void msg01009w(DEVBLK *dev,char *dialt,char *kw,char *kv)
 {
-        WRMSG(HHC01009, "W",SSID_TO_LCSS(dev->ssid),dev->devnum,dialt,kw,kv);
-        WRMSG(HHC01010, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
+    // "%1d:%04X COMM: conflicting parameter: DIAL(%s) and %s=%s specified"
+    WRMSG(HHC01009, "W",SSID_TO_LCSS(dev->ssid),dev->devnum,dialt,kw,kv);
+    // "%1d:%04X COMM: RPORT parameter ignored"
+    WRMSG(HHC01010, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
 }
 /*-------------------------------------------------------------------*/
 /* Device Initialisation                                             */
@@ -1786,457 +2000,591 @@ static int commadpt_init_handler (DEVBLK *dev, int argc, char *argv[])
     union   { int num; char text[MAX_PARSER_STRLEN+1];  /* (+1 for null terminator) */ } res;
     char    bf[4];
 
-        /* For re-initialisation, close the existing file, if any */
-        if (dev->fd >= 0)
-            (dev->hnd->close)(dev);
+    /* For re-initialisation, close the existing file, if any */
+    if (dev->fd >= 0)
+        (dev->hnd->close)(dev);
 
-        dev->excps = 0;
+    dev->excps = 0;
 
-        dev->devtype=0x2703;
-        if(dev->ccwtrace)
+    dev->devtype=0x2703;
+    if(dev->ccwtrace)
+    {
+        WRMSG(HHC01058,"D",SSID_TO_LCSS(dev->ssid),dev->devnum);
+    }
+
+    rc=commadpt_alloc_device(dev);
+    if(rc<0)
+    {
+        WRMSG(HHC01011, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
+        return(-1);
+    }
+    if(dev->ccwtrace)
+    {
+        WRMSG(HHC01059,"D",SSID_TO_LCSS(dev->ssid),dev->devnum);
+    }
+    errcnt=0;
+    /*
+     * Initialise ports & hosts
+    */
+    dev->commadpt->sfd=-1;
+    dev->commadpt->lport=0;
+    dev->commadpt->rport=0;
+    dev->commadpt->lhost=INADDR_ANY;
+    dev->commadpt->rhost=INADDR_NONE;
+    dev->commadpt->dialin=0;
+    dev->commadpt->dialout=1;
+    dev->commadpt->rto=3000;        /* Read Time-Out in milis */
+    dev->commadpt->pto=3000;        /* Poll Time-out in milis */
+    dev->commadpt->eto=10000;       /* Enable Time-out in milis */
+    dev->commadpt->kaidle = sysblk.kaidle;
+    dev->commadpt->kaintv = sysblk.kaintv;
+    dev->commadpt->kacnt  = sysblk.kacnt;
+    dev->commadpt->lnctl=COMMADPT_LNCTL_BSC;
+    dev->commadpt->term=COMMADPT_TERM_TTY;
+    dev->commadpt->uctrans=FALSE;
+    dev->commadpt->code_table_toebcdic   = xlate_table_ebcd_toebcdic;
+    dev->commadpt->code_table_fromebcdic = xlate_table_ebcd_fromebcdic;
+    memset(dev->commadpt->byte_skip_table, 0, sizeof(dev->commadpt->byte_skip_table) );
+    memset(dev->commadpt->input_byte_skip_table, 0, sizeof(dev->commadpt->input_byte_skip_table) );
+    dev->commadpt->dumb_bs=0;
+    dev->commadpt->dumb_break=0;
+    dev->commadpt->prepend_length = 0;
+    dev->commadpt->append_length = 0;
+    dev->commadpt->rxvt4apl = 0;
+    dev->commadpt->overstrike_flag = 0;
+    dev->commadpt->crlf_opt = 0;
+    dev->commadpt->sendcr_opt = 0;
+    dev->commadpt->binary_opt = 0;
+    dev->commadpt->crlf2cr_opt = 0;
+    dev->commadpt->eol_char = 0x0d;   // default is ascii CR
+    memset(dev->commadpt->prepend_bytes, 0, sizeof(dev->commadpt->prepend_bytes));
+    memset(dev->commadpt->append_bytes, 0, sizeof(dev->commadpt->append_bytes));
+    etospec=0;
+
+    for(i=0;i<argc;i++)
+    {
+        pc=parser(ptab,argv[i],&res);
+        if(pc<0)
         {
-                WRMSG(HHC01058,"D",SSID_TO_LCSS(dev->ssid),dev->devnum);
+            WRMSG(HHC01012, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,argv[i]);
+            errcnt++;
+            continue;
         }
-
-        rc=commadpt_alloc_device(dev);
-        if(rc<0)
+        if(pc==0)
         {
-                WRMSG(HHC01011, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
-            return(-1);
+            WRMSG(HHC01012, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,argv[i]);
+            errcnt++;
+            continue;
         }
-        if(dev->ccwtrace)
+        switch(pc)
         {
-                WRMSG(HHC01059,"D",SSID_TO_LCSS(dev->ssid),dev->devnum);
-        }
-        errcnt=0;
-        /*
-         * Initialise ports & hosts
-        */
-        dev->commadpt->sfd=-1;
-        dev->commadpt->lport=0;
-        dev->commadpt->rport=0;
-        dev->commadpt->lhost=INADDR_ANY;
-        dev->commadpt->rhost=INADDR_NONE;
-        dev->commadpt->dialin=0;
-        dev->commadpt->dialout=1;
-        dev->commadpt->rto=3000;        /* Read Time-Out in milis */
-        dev->commadpt->pto=3000;        /* Poll Time-out in milis */
-        dev->commadpt->eto=10000;       /* Enable Time-out in milis */
-        dev->commadpt->lnctl=COMMADPT_LNCTL_BSC;
-        dev->commadpt->term=COMMADPT_TERM_TTY;
-        dev->commadpt->uctrans=FALSE;
-        dev->commadpt->code_table_toebcdic   = xlate_table_ebcd_toebcdic;
-        dev->commadpt->code_table_fromebcdic = xlate_table_ebcd_fromebcdic;
-        memset(dev->commadpt->byte_skip_table, 0, sizeof(dev->commadpt->byte_skip_table) );
-        memset(dev->commadpt->input_byte_skip_table, 0, sizeof(dev->commadpt->input_byte_skip_table) );
-        dev->commadpt->dumb_bs=0;
-        dev->commadpt->dumb_break=0;
-        etospec=0;
-
-        for(i=0;i<argc;i++)
-        {
-            pc=parser(ptab,argv[i],&res);
-            if(pc<0)
-            {
-                WRMSG(HHC01012, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,argv[i]);
-                errcnt++;
-                continue;
-            }
-            if(pc==0)
-            {
-                WRMSG(HHC01012, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,argv[i]);
-                errcnt++;
-                continue;
-            }
-            switch(pc)
-            {
-                case COMMADPT_KW_LPORT:
-                    rc=commadpt_getport(res.text);
-                    if(rc<0)
-                    {
-                        errcnt++;
-                        msg013e(dev,"LPORT",res.text);
-                        break;
-                    }
-                    dev->commadpt->lport=rc;
+            case COMMADPT_KW_LPORT:
+                rc=commadpt_getport(res.text);
+                if(rc<0)
+                {
+                    errcnt++;
+                    msg01007e(dev,"LPORT",res.text);
                     break;
-                case COMMADPT_KW_LHOST:
-                    if(strcmp(res.text,"*")==0)
-                    {
-                        dev->commadpt->lhost=INADDR_ANY;
-                        break;
-                    }
-                    rc=commadpt_getaddr(&dev->commadpt->lhost,res.text);
-                    if(rc!=0)
-                    {
-                        msg013e(dev,"LHOST",res.text);
-                        errcnt++;
-                    }
+                }
+                dev->commadpt->lport=rc;
+                break;
+            case COMMADPT_KW_LHOST:
+                if(strcmp(res.text,"*")==0)
+                {
+                    dev->commadpt->lhost=INADDR_ANY;
                     break;
-                case COMMADPT_KW_RPORT:
-                    rc=commadpt_getport(res.text);
-                    if(rc<0)
-                    {
-                        errcnt++;
-                        msg013e(dev,"RPORT",res.text);
-                        break;
-                    }
-                    dev->commadpt->rport=rc;
+                }
+                rc=commadpt_getaddr(&dev->commadpt->lhost,res.text);
+                if(rc!=0)
+                {
+                    msg01007e(dev,"LHOST",res.text);
+                    errcnt++;
+                }
+                break;
+            case COMMADPT_KW_RPORT:
+                rc=commadpt_getport(res.text);
+                if(rc<0)
+                {
+                    errcnt++;
+                    msg01007e(dev,"RPORT",res.text);
                     break;
-                case COMMADPT_KW_RHOST:
-                    if(strcmp(res.text,"*")==0)
-                    {
-                        dev->commadpt->rhost=INADDR_NONE;
-                        break;
-                    }
-                    rc=commadpt_getaddr(&dev->commadpt->rhost,res.text);
-                    if(rc!=0)
-                    {
-                        msg013e(dev,"RHOST",res.text);
-                        errcnt++;
-                    }
+                }
+                dev->commadpt->rport=rc;
+                break;
+            case COMMADPT_KW_RHOST:
+                if(strcmp(res.text,"*")==0)
+                {
+                    dev->commadpt->rhost=INADDR_NONE;
                     break;
-                case COMMADPT_KW_READTO:
-                    dev->commadpt->rto=atoi(res.text);
+                }
+                rc=commadpt_getaddr(&dev->commadpt->rhost,res.text);
+                if(rc!=0)
+                {
+                    msg01007e(dev,"RHOST",res.text);
+                    errcnt++;
+                }
+                break;
+            case COMMADPT_KW_READTO:
+                dev->commadpt->rto=atoi(res.text);
+                break;
+            case COMMADPT_KW_POLLTO:
+                dev->commadpt->pto=atoi(res.text);
+                break;
+            case COMMADPT_KW_ENABLETO:
+                dev->commadpt->eto=atoi(res.text);
+                etospec=1;
+                break;
+            case COMMADPT_KW_LNCTL:
+                if(strcasecmp(res.text,"tele2")==0
+                || strcasecmp(res.text,"ibm1")==0 )
+                {
+                    dev->commadpt->lnctl = COMMADPT_LNCTL_ASYNC;
+                    dev->commadpt->rto=28000;        /* Read Time-Out in milis */
+                }
+                else if(strcasecmp(res.text,"bsc")==0)
+                {
+                    dev->commadpt->lnctl = COMMADPT_LNCTL_BSC;
+                }
+                else
+                {
+                    msg01007e(dev,"LNCTL",res.text);
+                }
+                break;
+            case COMMADPT_KW_TERM:
+                if(strcasecmp(res.text,"tty")==0)
+                {
+                    dev->commadpt->term = COMMADPT_TERM_TTY;
+                }
+                else if(strcasecmp(res.text,"2741")==0)
+                {
+                    dev->commadpt->term = COMMADPT_TERM_2741;
+                }
+                else if(strcasecmp(res.text,"rxvt4apl")==0)
+                {
+                    dev->commadpt->term = COMMADPT_TERM_2741;
+                    dev->commadpt->rxvt4apl = 1;
+                }
+                else
+                {
+                    msg01007e(dev,"TERM",res.text);
+                }
+                break;
+            case COMMADPT_KW_CODE:
+                if(strcasecmp(res.text,"corr")==0)
+                {
+                    dev->commadpt->code_table_toebcdic   = xlate_table_cc_toebcdic;
+                    dev->commadpt->code_table_fromebcdic = xlate_table_cc_fromebcdic;
+                }
+                else if(strcasecmp(res.text,"ebcd")==0)
+                {
+                    dev->commadpt->code_table_toebcdic   = xlate_table_ebcd_toebcdic;
+                    dev->commadpt->code_table_fromebcdic = xlate_table_ebcd_fromebcdic;
+                }
+                else if(strcasecmp(res.text,"none")==0)
+                {
+                    dev->commadpt->code_table_toebcdic   = NULL;
+                    dev->commadpt->code_table_fromebcdic = NULL;
+                }
+                else
+                {
+                    msg01007e(dev,"CODE",res.text);
+                }
+                break;
+            case COMMADPT_KW_CRLF:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->crlf_opt = FALSE;
+                }
+                else if(strcasecmp(res.text,"yes")==0)
+                {
+                    dev->commadpt->crlf_opt = TRUE;
+                }
+                else
+                {
+                    msg01007e(dev,"CRLF",res.text);
+                }
+                break;
+            case COMMADPT_KW_SENDCR:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->sendcr_opt = FALSE;
+                }
+                else if(strcasecmp(res.text,"yes")==0)
+                {
+                    dev->commadpt->sendcr_opt = TRUE;
+                }
+                else
+                {
+                    msg01007e(dev,"SENDCR",res.text);
+                }
+                break;
+            case COMMADPT_KW_BINARY:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->binary_opt = FALSE;
+                }
+                else if(strcasecmp(res.text,"yes")==0)
+                {
+                    dev->commadpt->binary_opt = TRUE;
+                }
+                else
+                {
+                    msg01007e(dev,"BINARY",res.text);
+                }
+                break;
+            case COMMADPT_KW_UCTRANS:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->uctrans = FALSE;
+                }
+                else if(strcasecmp(res.text,"yes")==0)
+                {
+                    dev->commadpt->uctrans = TRUE;
+                }
+                else
+                {
+                    msg01007e(dev,"UCTRANS",res.text);
+                }
+                break;
+            case COMMADPT_KW_EOL:
+                if  (strlen(res.text) < 2)
                     break;
-                case COMMADPT_KW_POLLTO:
-                    dev->commadpt->pto=atoi(res.text);
+                bf[0] = res.text[0];
+                bf[1] = res.text[1];
+                bf[2] = 0;
+                sscanf(bf, "%x", &ix);
+                dev->commadpt->eol_char = ix;
+                break;
+            case COMMADPT_KW_SKIP:
+                if  (strlen(res.text) < 2)
                     break;
-                case COMMADPT_KW_ENABLETO:
-                    dev->commadpt->eto=atoi(res.text);
-                    etospec=1;
+                for (j=0; j < (int)strlen(res.text); j+= 2)
+                {
+                    bf[0] = res.text[j+0];
+                    bf[1] = res.text[j+1];
+                    bf[2] = 0;
+                    sscanf(bf, "%x", &ix);
+                    dev->commadpt->byte_skip_table[ix] = 1;
+                }
+                break;
+            case COMMADPT_KW_PREPEND:
+                if  (strlen(res.text) != 2 && strlen(res.text) != 4
+                  && strlen(res.text) != 6 && strlen(res.text) != 8)
                     break;
-                case COMMADPT_KW_LNCTL:
-                    if(strcasecmp(res.text,"tele2")==0
-                    || strcasecmp(res.text,"ibm1")==0 )
-                    {
-                        dev->commadpt->lnctl = COMMADPT_LNCTL_ASYNC;
-                        dev->commadpt->rto=28000;        /* Read Time-Out in milis */
-                    }
-                    else
-                        if(strcasecmp(res.text,"bsc")==0)
-                        {
-                            dev->commadpt->lnctl = COMMADPT_LNCTL_BSC;
-                        }
-                        else
-                        {
-                            msg013e(dev,"LNCTL",res.text);
-                        }
+                for (j=0; j < (int)strlen(res.text); j+= 2)
+                {
+                    bf[0] = res.text[j+0];
+                    bf[1] = res.text[j+1];
+                    bf[2] = 0;
+                    sscanf(bf, "%x", &ix);
+                    dev->commadpt->prepend_bytes[j>>1] = ix;
+                }
+                dev->commadpt->prepend_length = strlen(res.text) >> 1;
+                break;
+            case COMMADPT_KW_APPEND:
+                if  (strlen(res.text) != 2 && strlen(res.text) != 4
+                  && strlen(res.text) != 6 && strlen(res.text) != 8)
                     break;
-                case COMMADPT_KW_TERM:
-                    if(strcasecmp(res.text,"tty")==0)
-                    {
-                        dev->commadpt->term = COMMADPT_TERM_TTY;
-                    }
-                    else
-                        if(strcasecmp(res.text,"2741")==0)
-                        {
-                            dev->commadpt->term = COMMADPT_TERM_2741;
-                        }
-                        else
-                        {
-                            msg013e(dev,"TERM",res.text);
-                        }
+                for (j=0; j < (int)strlen(res.text); j+= 2)
+                {
+                    bf[0] = res.text[j+0];
+                    bf[1] = res.text[j+1];
+                    bf[2] = 0;
+                    sscanf(bf, "%x", &ix);
+                    dev->commadpt->append_bytes[j>>1] = ix;
+                }
+                dev->commadpt->append_length = strlen(res.text) >> 1;
+                break;
+            case COMMADPT_KW_ISKIP:
+                if  (strlen(res.text) < 2)
                     break;
-                case COMMADPT_KW_CODE:
-                    if(strcasecmp(res.text,"corr")==0)
-                    {
-                        dev->commadpt->code_table_toebcdic   = xlate_table_cc_toebcdic;
-                        dev->commadpt->code_table_fromebcdic = xlate_table_cc_fromebcdic;
-                    }
-                    else
-                        if(strcasecmp(res.text,"ebcd")==0)
-                        {
-                            dev->commadpt->code_table_toebcdic   = xlate_table_ebcd_toebcdic;
-                            dev->commadpt->code_table_fromebcdic = xlate_table_ebcd_fromebcdic;
-                        }
-                        else
-                            if(strcasecmp(res.text,"none")==0)
-                            {
-                                dev->commadpt->code_table_toebcdic   = NULL;
-                                dev->commadpt->code_table_fromebcdic = NULL;
-                            }
-                            else
-                            {
-                                msg013e(dev,"CODE",res.text);
-                            }
+                for (j=0; j < (int)strlen(res.text); j+= 2)
+                {
+                    bf[0] = res.text[j+0];
+                    bf[1] = res.text[j+1];
+                    bf[2] = 0;
+                    sscanf(bf, "%x", &ix);
+                    dev->commadpt->input_byte_skip_table[ix] = 1;
+                }
+                break;
+            case COMMADPT_KW_BS:
+                if(strcasecmp(res.text,"dumb")==0) {
+                    dev->commadpt->dumb_bs = 1;
+                }
+                break;
+            case COMMADPT_KW_BREAK:
+                if(strcasecmp(res.text,"dumb")==0)
+                    dev->commadpt->dumb_break = 1;
+                break;
+            case COMMADPT_KW_SWITCHED:
+            case COMMADPT_KW_DIAL:
+                if(strcasecmp(res.text,"yes")==0 || strcmp(res.text,"1")==0 || strcasecmp(res.text,"inout")==0)
+                {
+                    dev->commadpt->dialin=1;
+                    dev->commadpt->dialout=1;
                     break;
-                case COMMADPT_KW_UCTRANS:
-                    if(strcasecmp(res.text,"no")==0)
-                    {
-                        dev->commadpt->uctrans = FALSE;
-                    }
-                    else
-                        if(strcasecmp(res.text,"yes")==0)
-                        {
-                            dev->commadpt->uctrans = TRUE;
-                        }
-                        else
-                        {
-                            msg013e(dev,"UCTRANS",res.text);
-                        }
-                    break;
-                case COMMADPT_KW_SKIP:
-                    if  (strlen(res.text) < 2)
-                        break;
-                    for (j=0; j < (int)strlen(res.text); j+= 2)
-                    {
-                        bf[0] = res.text[j+0];
-                        bf[1] = res.text[j+1];
-                        bf[2] = 0;
-                        sscanf(bf, "%x", &ix);
-                        dev->commadpt->byte_skip_table[ix] = 1;
-                    }
-                    break;
-                case COMMADPT_KW_ISKIP:
-                    if  (strlen(res.text) < 2)
-                        break;
-                    for (j=0; j < (int)strlen(res.text); j+= 2)
-                    {
-                        bf[0] = res.text[j+0];
-                        bf[1] = res.text[j+1];
-                        bf[2] = 0;
-                        sscanf(bf, "%x", &ix);
-                        dev->commadpt->input_byte_skip_table[ix] = 1;
-                    }
-                    break;
-                case COMMADPT_KW_BS:
-                    if(strcasecmp(res.text,"dumb")==0) {
-                        dev->commadpt->dumb_bs = 1;
-                    }
-                    break;
-                case COMMADPT_KW_BREAK:
-                    if(strcasecmp(res.text,"dumb")==0)
-                        dev->commadpt->dumb_break = 1;
-                    break;
-                case COMMADPT_KW_SWITCHED:
-                case COMMADPT_KW_DIAL:
-                    if(strcasecmp(res.text,"yes")==0 || strcmp(res.text,"1")==0 || strcasecmp(res.text,"inout")==0)
-                    {
-                        dev->commadpt->dialin=1;
-                        dev->commadpt->dialout=1;
-                        break;
-                    }
-                    if(strcasecmp(res.text,"no")==0 || strcmp(res.text,"0")==0)
-                    {
-                        dev->commadpt->dialin=0;
-                        dev->commadpt->dialout=0;
-                        break;
-                    }
-                    if(strcasecmp(res.text,"in")==0)
-                    {
-                        dev->commadpt->dialin=1;
-                        dev->commadpt->dialout=0;
-                        break;
-                    }
-                    if(strcasecmp(res.text,"out")==0)
-                    {
-                        dev->commadpt->dialin=0;
-                        dev->commadpt->dialout=1;
-                        break;
-                    }
-                    WRMSG(HHC01013, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,res.text);
+                }
+                if(strcasecmp(res.text,"no")==0 || strcmp(res.text,"0")==0)
+                {
                     dev->commadpt->dialin=0;
                     dev->commadpt->dialout=0;
                     break;
-                default:
+                }
+                if(strcasecmp(res.text,"in")==0)
+                {
+                    dev->commadpt->dialin=1;
+                    dev->commadpt->dialout=0;
                     break;
+                }
+                if(strcasecmp(res.text,"out")==0)
+                {
+                    dev->commadpt->dialin=0;
+                    dev->commadpt->dialout=1;
+                    break;
+                }
+                WRMSG(HHC01013, "E",SSID_TO_LCSS(dev->ssid),dev->devnum,res.text);
+                dev->commadpt->dialin=0;
+                dev->commadpt->dialout=0;
+                break;
+            case COMMADPT_KW_KA:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->kaidle=0;
+                    dev->commadpt->kaintv=0;
+                    dev->commadpt->kacnt=0;
+                }
+                else
+                {
+                    int idle=-1,intv=-1,cnt=-1;
+                    if (parse_conkpalv(res.text,&idle,&intv,&cnt)==0
+                        || (idle==0 && intv==0 && cnt==0))
+                    {
+                        dev->commadpt->kaidle = idle;
+                        dev->commadpt->kaintv = intv;
+                        dev->commadpt->kacnt  = cnt;
+                    }
+                    else
+                    {
+                        msg01007e(dev,"KA",res.text);
+                        errcnt++;
+                    }
+                }
+                break;
+            case COMMADPT_KW_CRLF2CR:
+                if(strcasecmp(res.text,"no")==0)
+                {
+                    dev->commadpt->crlf2cr_opt = FALSE;
+                }
+                else if(strcasecmp(res.text,"yes")==0)
+                {
+                    dev->commadpt->crlf2cr_opt = TRUE;
+                }
+                else
+                {
+                    msg01007e(dev,"CRLF2CR",res.text);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    /*
+     * Check parameters consistency
+     * when DIAL=NO :
+     *     lport must not be 0
+     *     lhost may be anything
+     *     rport must not be 0
+     *     rhost must not be INADDR_NONE
+     * when DIAL=IN or DIAL=INOUT
+     *     lport must NOT be 0
+     *     lhost may be anything
+     *     rport MUST be 0
+     *     rhost MUST be INADDR_NONE
+     * when DIAL=OUT
+     *     lport MUST be 0
+     *     lhost MUST be INADDR_ANY
+     *     rport MUST be 0
+     *     rhost MUST be INADDR_NONE
+    */
+    switch(dev->commadpt->dialin+dev->commadpt->dialout*2)
+    {
+        case 0:
+            dialt="NO";
+            break;
+        case 1:
+            dialt="IN";
+            break;
+        case 2:
+            dialt="OUT";
+            break;
+        case 3:
+            dialt="INOUT";
+            break;
+        default:
+            dialt="*ERR*";
+            break;
+    }
+    switch(dev->commadpt->dialin+dev->commadpt->dialout*2)
+    {
+        case 0: /* DIAL = NO */
+            dev->commadpt->eto=0;
+            if(dev->commadpt->lport==0)
+            {
+                msg01008e(dev,dialt,"LPORT");
+                errcnt++;
             }
-        }
-        /*
-         * Check parameters consistency
-         * when DIAL=NO :
-         *     lport must not be 0
-         *     lhost may be anything
-         *     rport must not be 0
-         *     rhost must not be INADDR_NONE
-         * when DIAL=IN or DIAL=INOUT
-         *     lport must NOT be 0
-         *     lhost may be anything
-         *     rport MUST be 0
-         *     rhost MUST be INADDR_NONE
-         * when DIAL=OUT
-         *     lport MUST be 0
-         *     lhost MUST be INADDR_ANY
-         *     rport MUST be 0
-         *     rhost MUST be INADDR_NONE
-        */
-        switch(dev->commadpt->dialin+dev->commadpt->dialout*2)
-        {
-                case 0:
-                    dialt="NO";
-                    break;
-                case 1:
-                    dialt="IN";
-                    break;
-                case 2:
-                    dialt="OUT";
-                    break;
-                case 3:
-                    dialt="INOUT";
-                    break;
-                default:
-                    dialt="*ERR*";
-                    break;
-        }
-        switch(dev->commadpt->dialin+dev->commadpt->dialout*2)
-        {
-            case 0: /* DIAL = NO */
-                dev->commadpt->eto=0;
-                if(dev->commadpt->lport==0)
-                {
-                    msg015e(dev,dialt,"LPORT");
-                    errcnt++;
-                }
-                if(dev->commadpt->rport==0)
-                {
-                    msg015e(dev,dialt,"RPORT");
-                    errcnt++;
-                }
-                if(dev->commadpt->rhost==INADDR_NONE)
-                {
-                    msg015e(dev,dialt,"RHOST");
-                    errcnt++;
-                }
-                if(etospec)
-                {
-                    MSGBUF(fmtbfr,"%d",dev->commadpt->eto);
-                    msg016w017i(dev,dialt,"ETO",fmtbfr);
-                    errcnt++;
-                }
-                dev->commadpt->eto=0;
-                break;
-            case 1: /* DIAL = IN */
-            case 3: /* DIAL = INOUT */
-                if(dev->commadpt->lport==0)
-                {
-                    msg015e(dev,dialt,"LPORT");
-                    errcnt++;
-                }
-                if(dev->commadpt->rport!=0)
-                {
-                    MSGBUF(fmtbfr,"%d",dev->commadpt->rport);
-                    msg016w017i(dev,dialt,"RPORT",fmtbfr);
-                }
-                if(dev->commadpt->rhost!=INADDR_NONE)
-                {
-                    in_temp.s_addr=dev->commadpt->rhost;
-                    msg016w017i(dev,dialt,"RHOST",inet_ntoa(in_temp));
-                    dev->commadpt->rhost=INADDR_NONE;
-                }
-                break;
-            case 2: /* DIAL = OUT */
-                if(dev->commadpt->lport!=0)
-                {
-                    MSGBUF(fmtbfr,"%d",dev->commadpt->lport);
-                    msg016w017i(dev,dialt,"LPORT",fmtbfr);
-                    dev->commadpt->lport=0;
-                }
-                if(dev->commadpt->rport!=0)
-                {
-                    MSGBUF(fmtbfr,"%d",dev->commadpt->rport);
-                    msg016w017i(dev,dialt,"RPORT",fmtbfr);
-                    dev->commadpt->rport=0;
-                }
-                if(dev->commadpt->lhost!=INADDR_ANY)    /* Actually it's more like INADDR_NONE */
-                {
-                    in_temp.s_addr=dev->commadpt->lhost;
-                    msg016w017i(dev,dialt,"LHOST",inet_ntoa(in_temp));
-                    dev->commadpt->lhost=INADDR_ANY;
-                }
-                if(dev->commadpt->rhost!=INADDR_NONE)
-                {
-                    in_temp.s_addr=dev->commadpt->rhost;
-                    msg016w017i(dev,dialt,"RHOST",inet_ntoa(in_temp));
-                    dev->commadpt->rhost=INADDR_NONE;
-                }
-                break;
-        }
-        if(errcnt>0)
-        {
-            WRMSG(HHC01014, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
-            return -1;
-        }
-        in_temp.s_addr=dev->commadpt->lhost;
-        in_temp.s_addr=dev->commadpt->rhost;
-        dev->bufsize=256;
-        dev->numsense=2;
-        memset(dev->sense, 0, sizeof(dev->sense));
+            if(dev->commadpt->rport==0)
+            {
+                msg01008e(dev,dialt,"RPORT");
+                errcnt++;
+            }
+            if(dev->commadpt->rhost==INADDR_NONE)
+            {
+                msg01008e(dev,dialt,"RHOST");
+                errcnt++;
+            }
+            if(etospec)
+            {
+                MSGBUF(fmtbfr,"%d",dev->commadpt->eto);
+                msg01009w(dev,dialt,"ETO",fmtbfr);
+                errcnt++;
+            }
+            dev->commadpt->eto=0;
+            break;
+        case 1: /* DIAL = IN */
+        case 3: /* DIAL = INOUT */
+            if(dev->commadpt->lport==0)
+            {
+                msg01008e(dev,dialt,"LPORT");
+                errcnt++;
+            }
+            if(dev->commadpt->rport!=0)
+            {
+                MSGBUF(fmtbfr,"%d",dev->commadpt->rport);
+                msg01009w(dev,dialt,"RPORT",fmtbfr);
+            }
+            if(dev->commadpt->rhost!=INADDR_NONE)
+            {
+                in_temp.s_addr=dev->commadpt->rhost;
+                msg01009w(dev,dialt,"RHOST",inet_ntoa(in_temp));
+                dev->commadpt->rhost=INADDR_NONE;
+            }
+            break;
+        case 2: /* DIAL = OUT */
+            if(dev->commadpt->lport!=0)
+            {
+                MSGBUF(fmtbfr,"%d",dev->commadpt->lport);
+                msg01009w(dev,dialt,"LPORT",fmtbfr);
+                dev->commadpt->lport=0;
+            }
+            if(dev->commadpt->rport!=0)
+            {
+                MSGBUF(fmtbfr,"%d",dev->commadpt->rport);
+                msg01009w(dev,dialt,"RPORT",fmtbfr);
+                dev->commadpt->rport=0;
+            }
+            if(dev->commadpt->lhost!=INADDR_ANY)    /* Actually it's more like INADDR_NONE */
+            {
+                in_temp.s_addr=dev->commadpt->lhost;
+                msg01009w(dev,dialt,"LHOST",inet_ntoa(in_temp));
+                dev->commadpt->lhost=INADDR_ANY;
+            }
+            if(dev->commadpt->rhost!=INADDR_NONE)
+            {
+                in_temp.s_addr=dev->commadpt->rhost;
+                msg01009w(dev,dialt,"RHOST",inet_ntoa(in_temp));
+                dev->commadpt->rhost=INADDR_NONE;
+            }
+            break;
+    }
+    if(errcnt>0)
+    {
+        WRMSG(HHC01014, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
+        return -1;
+    }
+    in_temp.s_addr=dev->commadpt->lhost;
+    in_temp.s_addr=dev->commadpt->rhost;
+    dev->bufsize=256;
+    dev->numsense=2;
+    memset(dev->sense, 0, sizeof(dev->sense));
 
-        /* Initialise various flags & statuses */
-        dev->commadpt->enabled=0;
-        dev->commadpt->connect=0;
-        dev->fd=100;    /* Ensures 'close' function called */
-        dev->commadpt->devnum=dev->devnum;
+    /* Initialise various flags & statuses */
+    dev->commadpt->enabled=0;
+    dev->commadpt->connect=0;
+    dev->fd=100;    /* Ensures 'close' function called */
+    dev->commadpt->devnum=dev->devnum;
 
-        dev->commadpt->telnet_opt=0;
-        dev->commadpt->telnet_iac=0;
-        dev->commadpt->telnet_int=0;
-        dev->commadpt->eol_flag=0;
-        dev->commadpt->telnet_cmd=0;
+    dev->commadpt->telnet_opt=0;
+    dev->commadpt->telnet_iac=0;
+    dev->commadpt->telnet_int=0;
+    dev->commadpt->eol_flag=0;
+    dev->commadpt->telnet_cmd=0;
 
-        /* Initialize the device identifier bytes */
-        dev->numdevid = sysblk.legacysenseid ? 7 : 0;
-        dev->devid[0] = 0xFF;
-        dev->devid[1] = dev->devtype >> 8;
-        dev->devid[2] = dev->devtype & 0xFF;
-        dev->devid[3] = 0x00;
-        dev->devid[4] = dev->devtype >> 8;
-        dev->devid[5] = dev->devtype & 0xFF;
-        dev->devid[6] = 0x00;
+    dev->commadpt->haltpending=0;
+    dev->commadpt->haltprepare=0;
 
-        /* Initialize the CA lock */
-        initialize_lock(&dev->commadpt->lock);
+    /* Initialize the device identifier bytes */
+    dev->numdevid = sysblk.legacysenseid ? 7 : 0;
+    dev->devid[0] = 0xFF;
+    dev->devid[1] = dev->devtype >> 8;
+    dev->devid[2] = dev->devtype & 0xFF;
+    dev->devid[3] = 0x00;
+    dev->devid[4] = dev->devtype >> 8;
+    dev->devid[5] = dev->devtype & 0xFF;
+    dev->devid[6] = 0x00;
 
-        /* Initialise thread->I/O & halt initiation EVB */
-        initialize_condition(&dev->commadpt->ipc);
-        initialize_condition(&dev->commadpt->ipc_halt);
+    /* Initialize the CA lock */
+    initialize_lock(&dev->commadpt->lock);
 
-        /* Allocate I/O -> Thread signaling pipe */
-        create_pipe(dev->commadpt->pipe);
+    /* Initialise thread->I/O & halt initiation EVB */
+    initialize_condition(&dev->commadpt->ipc);
+    initialize_condition(&dev->commadpt->ipc_halt);
 
-        /* Obtain the CA lock */
-        obtain_lock(&dev->commadpt->lock);
+    /* Allocate I/O -> Thread signaling pipe */
+    create_pipe(dev->commadpt->pipe);
 
-        /* Indicate listen required if DIAL!=OUT */
-        if(dev->commadpt->dialin ||
-                (!dev->commadpt->dialin && !dev->commadpt->dialout))
-        {
-            dev->commadpt->dolisten=1;
-        }
-        else
-        {
-            dev->commadpt->dolisten=0;
-        }
+    /* Obtain the CA lock */
+    obtain_lock(&dev->commadpt->lock);
 
-        /* Start the async worker thread */
+    /* Indicate listen required if DIAL!=OUT */
+    if(dev->commadpt->dialin ||
+            (!dev->commadpt->dialin && !dev->commadpt->dialout))
+    {
+        dev->commadpt->dolisten=1;
+    }
+    else
+    {
+        dev->commadpt->dolisten=0;
+    }
+
+    /* Start the async worker thread */
 
     /* Set thread-name for debugging purposes */
-        MSGBUF(thread_name, "commadpt %4.4X thread", dev->devnum);
-        thread_name[sizeof(thread_name)-1]=0;
+    MSGBUF(thread_name, "commadpt %4.4X thread", dev->devnum);
+    thread_name[sizeof(thread_name)-1]=0;
 
-        dev->commadpt->curpending=COMMADPT_PEND_TINIT;
-        rc = create_thread(&dev->commadpt->cthread,DETACHED,commadpt_thread,dev->commadpt,thread_name);
-        if(rc)
-        {
-            WRMSG(HHC00102, "E", strerror(rc));
-            release_lock(&dev->commadpt->lock);
-            return -1;
-        }
-        commadpt_wait(dev);
-        if(dev->commadpt->curpending!=COMMADPT_PEND_IDLE)
-        {
-            WRMSG(HHC01015, "E",SSID_TO_LCSS(dev->ssid),dev->devnum);
-            /* Release the CA lock */
-            release_lock(&dev->commadpt->lock);
-            return -1;
-        }
-        dev->commadpt->have_cthread=1;
-
+    dev->commadpt->curpending=COMMADPT_PEND_TINIT;
+    rc = create_thread(&dev->commadpt->cthread,DETACHED,commadpt_thread,dev->commadpt,thread_name);
+    if(rc)
+    {
+        WRMSG(HHC00102, "E", strerror(rc));
+        release_lock(&dev->commadpt->lock);
+        return -1;
+    }
+    commadpt_wait(dev);
+    if(dev->commadpt->curpending!=COMMADPT_PEND_IDLE)
+    {
+        WRMSG(HHC01015, "E",SSID_TO_LCSS(dev->ssid),dev->devnum);
         /* Release the CA lock */
         release_lock(&dev->commadpt->lock);
-        /* Indicate succesfull completion */
-        return 0;
+        return -1;
+    }
+    dev->commadpt->have_cthread=1;
+
+    /* Release the CA lock */
+    release_lock(&dev->commadpt->lock);
+    /* Indicate succesfull completion */
+    return 0;
 }
 
 static char *commadpt_lnctl_names[]={
@@ -2312,15 +2660,17 @@ static int commadpt_close_device ( DEVBLK *dev )
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 static void commadpt_execute_ccw (DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual)
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual)
 {
 U32 num;                        /* Work : Actual CCW transfer count                   */
 BYTE    b;                      /* Input processing work variable : Current character */
 BYTE    setux;                  /* EOT kludge */
 BYTE    turnxpar;               /* Write contains turn to transparent mode */
-int     i;                      /* work */
+u_int   i;                      /* work */
+u_int   j;                      /* work */
 BYTE    gotdle;                 /* Write routine DLE marker */
+BYTE    b1, b2;                 /* 2741 overstrike rewriting */
     UNREFERENCED(flags);
     UNREFERENCED(chained);
     UNREFERENCED(prevcode);
@@ -2335,6 +2685,10 @@ BYTE    gotdle;                 /* Write routine DLE marker */
         WRMSG(HHC01063,"D",SSID_TO_LCSS(dev->ssid),dev->devnum,code);
     }
     obtain_lock(&dev->commadpt->lock);
+    if(code != 0x06) /* for any command other than PREPARE */
+    {
+        dev->commadpt->haltprepare = 0;
+    }
     switch (code)
     {
         /*---------------------------------------------------------------*/
@@ -2591,9 +2945,11 @@ BYTE    gotdle;                 /* Write routine DLE marker */
                 break;
             }
             /* Check for any remaining data in read work buffer */
-            if(dev->commadpt->readcomp || dev->commadpt->eol_flag)
+            /* for async, we allow all reads to wait (even if data is available now) */
+            /* (APL\360 2741 race cond III circumvention) see APLSASUP label UNRZ19 */
+            if(dev->commadpt->readcomp && IS_BSC_LNCTL(dev->commadpt))
             {
-                if (dev->commadpt->rdwrk.havedata || dev->commadpt->eol_flag)
+                if (dev->commadpt->rdwrk.havedata)
                 {
                     num=(U32)commadpt_ring_popbfr(&dev->commadpt->rdwrk,iobuf,count);
                     if(dev->commadpt->rdwrk.havedata)
@@ -2602,8 +2958,6 @@ BYTE    gotdle;                 /* Write routine DLE marker */
                     }
                     *residual=count-num;
                     *unitstat=CSW_CE|CSW_DE;
-                    if(IS_ASYNC_LNCTL(dev->commadpt) && !dev->commadpt->rdwrk.havedata && *residual > 0)
-                        dev->commadpt->eol_flag = 0;
                     break;
                 }
             }
@@ -2947,6 +3301,7 @@ BYTE    gotdle;                 /* Write routine DLE marker */
                     break;
                 }
 
+                dev->commadpt->haltpending = 0; /* circumvent APL\360 2741 race cond II */
                 /* read 1 byte to check for pending input */
                 i=read_socket(dev->commadpt->sfd,&b,1);
                 if (IS_ASYNC_LNCTL(dev->commadpt))
@@ -3006,8 +3361,60 @@ BYTE    gotdle;                 /* Write routine DLE marker */
                         }
                         else
                         { /* 2741 */
-                            if (dev->commadpt->code_table_toebcdic)
-                            {   // only if code != none
+                            if (count == 1 && b == CIRCLE_D)
+                            {
+                                b = 0x00; /* map initial Circle-D to NUL */
+                            }
+                            else if (dev->commadpt->rxvt4apl)
+                            {
+                                if (dev->commadpt->overstrike_flag == 1 && (b & 0x7f) == 0x5d)
+                                { /* char is another backspace but overstrike was expected */
+                                    dev->commadpt->overstrike_flag = 0;
+                                    dev->commadpt->saved_char = b;
+                                    b = rxvt4apl_from_2741[b];
+                                }
+                                else if (dev->commadpt->overstrike_flag == 1)
+                                {
+                                    dev->commadpt->overstrike_flag = 0;
+                                    if (((u_int)dev->commadpt->saved_char) > ((u_int)b))
+                                    {
+                                        b1 = b;
+                                        b2 = dev->commadpt->saved_char;
+                                    }
+                                    else
+                                    {
+                                        b1 = dev->commadpt->saved_char;
+                                        b2 = b;
+                                    }
+                                    b = '?';
+                                    for (j = 0; j < sizeof(overstrike_2741_pairs); j+=2) {
+                                        if (overstrike_2741_pairs[j] == b1 && overstrike_2741_pairs[j+1] == b2) {
+                                            b = overstrike_rxvt4apl_chars[j>>1];
+                                        }
+                                    }
+                                }
+                                else if ((b & 0x7f) == 0x5d /* 2741 backspace */
+                                      && (dev->commadpt->saved_char & 0x7f) != 0x5d
+                                      && (dev->commadpt->saved_char & 0x7f) != 0x3b
+                                      && (dev->commadpt->saved_char & 0x7f) != 0x7f)
+                                {
+                                    dev->commadpt->overstrike_flag = 1;
+                                    b = rxvt4apl_from_2741[b];
+                                }
+                                else
+                                {
+                                    dev->commadpt->overstrike_flag = 0;
+                                    dev->commadpt->saved_char = b;
+                                    b = rxvt4apl_from_2741[b];
+                                    if (b == 0x0d && dev->commadpt->crlf_opt) /* ascii CR? */
+                                    {   /* 2741 NL has been mapped to CR, we need to append LF to this (sigh) */
+                                        commadpt_ring_push(&dev->commadpt->outbfr,b);
+                                        b = 0x0a;
+                                    }
+                                }
+                            }
+                            else if (dev->commadpt->code_table_toebcdic)
+                            {
                                 b = dev->commadpt->code_table_toebcdic[b];  // first translate to EBCDIC
                                 b = guest_to_host(b) & 0x7f; // then EBCDIC to ASCII
                             }
@@ -3116,8 +3523,15 @@ BYTE    gotdle;                 /* Write routine DLE marker */
                 break;
             }
 
-            if (IS_ASYNC_LNCTL(dev->commadpt))
+            if(IS_ASYNC_LNCTL(dev->commadpt) && dev->commadpt->haltprepare)
+            {  /* circumvent APL\360 2741 race cond I */
+                *unitstat=CSW_CE|CSW_DE|CSW_UX;
+                break;
+            } /* end of if(async) */
+
+            if(IS_ASYNC_LNCTL(dev->commadpt) && dev->commadpt->telnet_int)
             {
+                dev->commadpt->telnet_int = 0;
                 *unitstat=CSW_CE|CSW_DE;
                 if(dev->commadpt->haltpending)
                 {
@@ -3169,6 +3583,7 @@ BYTE    gotdle;                 /* Write routine DLE marker */
 
             /* Normal Prepare exit condition - data is present in the input buffer */
             *unitstat=CSW_CE|CSW_DE;
+            dev->commadpt->telnet_int = 0;
             break;
 
         default:

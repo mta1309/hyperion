@@ -56,10 +56,10 @@ extern void     CTCX_Query( DEVBLK* pDEVBLK, char** ppszClass,
                             int     iBufLen, char*  pBuffer );
 extern void     CTCX_ExecuteCCW( DEVBLK* pDEVBLK, BYTE  bCode,
                                  BYTE    bFlags,  BYTE  bChained,
-                                 U16     sCount,  BYTE  bPrevCode,
+                                 U32     sCount,  BYTE  bPrevCode,
                                  int     iCCWSeq, BYTE* pIOBuf,
                                  BYTE*   pMore,   BYTE* pUnitStat,
-                                 U16*    pResidual );
+                                 U32*    pResidual );
 
 extern int      CTCI_Init( DEVBLK* pDEVBLK, int argc, char *argv[] );
 extern int      CTCI_Close( DEVBLK* pDEVBLK );
@@ -67,17 +67,17 @@ extern void     CTCI_Query( DEVBLK* pDEVBLK, char** ppszClass,
                             int     iBufLen, char*  pBuffer );
 extern void     CTCI_ExecuteCCW( DEVBLK* pDEVBLK, BYTE  bCode,
                                  BYTE    bFlags,  BYTE  bChained,
-                                 U16     sCount,  BYTE  bPrevCode,
+                                 U32     sCount,  BYTE  bPrevCode,
                                  int     iCCWSeq, BYTE* pIOBuf,
                                  BYTE*   pMore,   BYTE* pUnitStat,
-                                 U16*    pResidual );
+                                 U32*    pResidual );
 
-extern void     CTCI_Read( DEVBLK* pDEVBLK,   U16   sCount,
+extern void     CTCI_Read( DEVBLK* pDEVBLK,   U32   sCount,
                            BYTE*   pIOBuf,    BYTE* UnitStat,
-                           U16*    pResidual, BYTE* pMore );
-extern void     CTCI_Write( DEVBLK* pDEVBLK,   U16   sCount,
+                           U32*    pResidual, BYTE* pMore );
+extern void     CTCI_Write( DEVBLK* pDEVBLK,   U32   sCount,
                             BYTE*   pIOBuf,    BYTE* UnitStat,
-                            U16*    pResidual );
+                            U32*    pResidual );
 
 extern int      LCS_Init( DEVBLK* pDEVBLK, int argc, char *argv[] );
 extern int      LCS_Close( DEVBLK* pDEVBLK );
@@ -85,20 +85,20 @@ extern void     LCS_Query( DEVBLK* pDEVBLK, char** ppszClass,
                            int     iBufLen, char*  pBuffer );
 extern void     LCS_ExecuteCCW( DEVBLK* pDEVBLK, BYTE  bCode,
                                 BYTE    bFlags,  BYTE  bChained,
-                                U16     sCount,  BYTE  bPrevCode,
+                                U32     sCount,  BYTE  bPrevCode,
                                 int     iCCWSeq, BYTE* pIOBuf,
                                 BYTE*   pMore,   BYTE* pUnitStat,
-                                U16*    pResidual );
+                                U32*    pResidual );
 
-extern void     LCS_Read( DEVBLK* pDEVBLK,   U16   sCount,
+extern void     LCS_Read( DEVBLK* pDEVBLK,   U32   sCount,
                           BYTE*   pIOBuf,    BYTE* UnitStat,
-                          U16*    pResidual, BYTE* pMore );
-extern void     LCS_Write( DEVBLK* pDEVBLK,   U16   sCount,
+                          U32*    pResidual, BYTE* pMore );
+extern void     LCS_Write( DEVBLK* pDEVBLK,   U32   sCount,
                            BYTE*   pIOBuf,    BYTE* UnitStat,
-                           U16*    pResidual );
+                           U32*    pResidual );
 extern void     LCS_SDC( DEVBLK* pDEVBLK,   BYTE   bOpCode,
-                         U16     sCount,    BYTE*  pIOBuf,
-                         BYTE*   UnitStat,  U16*   pResidual,
+                         U32     sCount,    BYTE*  pIOBuf,
+                         BYTE*   UnitStat,  U32*   pResidual,
                          BYTE*   pMore );
 
 extern void     packet_trace( BYTE *addr, int len, BYTE dir );
@@ -195,7 +195,7 @@ struct  _IP6FRM
 {
     BYTE      bVersTCFlow[4];            // 0x00 Vers:4, TC:8 FlowID:20
     BYTE      bPayloadLength[2];         // 0x04
-    BYTE      bNextHeader;               // 0x06
+    BYTE      bNextHeader;               // 0x06 (same as IPv4 Protocol)
     BYTE      bHopLimit;                 // 0x07
     BYTE      bSrcAddr[16];              // 0x08
     BYTE      bDstAddr[16];              // 0x18
@@ -294,7 +294,7 @@ struct  _CTCBLK
     char        szNetMask[32];            // Netmask for P2P link
     char        szMTU[32];
     char        szTUNCharDevName[256];    // TUN/TAP special char device filename (/dev/net/tun)
-    char        szTUNIfName[IFNAMSIZ];    // Network interface Name (tun0)
+    char        szTUNIfName[IFNAMSIZ];    // Network Interface Name (e.g. tun0)
     char        szMACAddress[32];         // MAC Address
 };
 
@@ -376,13 +376,6 @@ typedef struct  _LCSIPMPAIR LCSIPMPAIR, *PLCSIPMPAIR;
 typedef struct  _LCSIPMFRM  LCSIPMFRM,  *PLCSIPMFRM;
 typedef struct  _LCSETHFRM  LCSETHFRM,  *PLCSETHFRM;
 
-#if       defined ( _MSVC_ )
-struct  _RBPKT;
-struct  _RINGBUFFER;
-typedef struct  _RBPKT      RBPKT,      *PRBPKT;
-typedef struct  _RINGBUFFER RINGBUFFER, *PRINGBUFFER;
-#endif
-
 // --------------------------------------------------------------------
 // LCS Device                              (host byte order)
 // --------------------------------------------------------------------
@@ -456,16 +449,10 @@ struct  _LCSPORT
     u_int       fCloseInProgress:1;       // Close in progress
 
     int         fd;                       // TUN/TAP fd
-#if       defined ( _MSVC_ )
-    HANDLE      handle;                   // NDIS handle
-    TID         rb_tid;                   // Ring Buffer Thread ID
-    pid_t       rb_pid;                   // Ring Buffer pid
-    PRINGBUFFER prb_struct;               // -> RINGBUFFER
-#endif // defined ( _MSVC_ )
     TID         tid;                      // Read Thread ID
     pid_t       pid;                      // Read Thread pid
     int         icDevices;                // Device count
-    char        szNetDevName[IFNAMSIZ];   // Network Device Name
+    char        szNetIfName[IFNAMSIZ];    // Network Interface Name (e.g. tap0)
     char        szMACAddress[32];         // MAC Address
     char        szGWAddress[32];          // Gateway for W32
 };

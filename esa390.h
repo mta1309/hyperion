@@ -988,6 +988,14 @@ typedef struct _ORB {
         BYTE    lpm;                    /* Logical path mask         */
         BYTE    flag7;                  /* Flag byte 7               */
         FWORD   ccwaddr;                /* CCW address               */
+        BYTE    csspriority;            /* CSS Priority              */
+        BYTE    reserved_byte_13;       /* Reserved for future use   */
+        BYTE    cupriority;             /* CU Priority               */
+        BYTE    reserved_byte_15;       /* Reserved for future use   */
+        FWORD   reserved_word_4;        /* Reserved for future use   */
+        FWORD   reserved_word_5;        /* Reserved for future use   */
+        FWORD   reserved_word_6;        /* Reserved for future use   */
+        FWORD   reserved_word_7;        /* Reserved for future use   */
     } ORB;
 
 /* Bit definitions for ORB flag byte 4 */
@@ -2001,11 +2009,15 @@ typedef struct _SCABLK {
 typedef struct _SYSIB111 {              /* Basic Machine Config      */
         BYTE    flag1;                  /* 1.1.1 SYSIB Flag          */
 #define SYSIB111_PFLAG  0x80            /* Type percentage present   */
-        BYTE    resv1[3];               /* Reserved                  */
-        FWORD   resv2[7];               /* Reserved                  */
+#define SYSIB111_TFLAG  0x01            /* CCR & CAI are transient   */
+        BYTE    reservedforblue;        /* Manufacturer reserved byte*/
+#define SYSIB111_RFB_BIT_2  0x20        /* Reserved for manufacturer */
+        BYTE    ccr;                    /* Capacity change reason    */
+        BYTE    cai;                    /* Capacity adjustment ind.  */
+        FWORD   resv1[7];               /* Reserved                  */
         BYTE    manufact[16];           /* Manufacturer              */
         BYTE    type[4];                /* Type                      */
-        FWORD   resv3[3];               /* Reserved                  */
+        FWORD   resv2[3];               /* Reserved                  */
         BYTE    modcapaid[16];          /* Model capacity identifier */
         BYTE    seqc[16];               /* Sequence Code             */
         BYTE    plant[4];               /* Plant of manufacture      */
@@ -2016,6 +2028,10 @@ typedef struct _SYSIB111 {              /* Basic Machine Config      */
         FWORD   mpcaprating;            /* Model Perm Capacity Rating*/
         FWORD   mtcaprating;            /* Model temp Capacity Rating*/
         BYTE    typepct[5];             /* Secondary CPU types pct   */
+        BYTE    resv3[3];               /* Reserved                  */
+        FWORD   ncaprating;             /* Nominal Capacity Rating   */
+        FWORD   npcaprating;            /* Nominal Perm Capacity Rat.*/
+        FWORD   ntcaprating;            /* Nominal Temp Capacity Rat.*/
     }   SYSIB111;
 
 typedef struct _SYSIB121 {              /* Basic Machine CPU         */
@@ -2030,7 +2046,8 @@ typedef struct _SYSIB122 {              /* Basic Machine CPUs        */
         BYTE    format;                 /* Format 0 or 1             */
         BYTE    resv1;                  /* Reserved                  */
         HWORD   accoff;                 /* Offset to accap field     */
-        FWORD   resv2[6];               /* Reserved                  */
+        FWORD   resv2[5];               /* Reserved                  */
+        FWORD   nccap;                  /* Nominal CPU Capability    */
         FWORD   sccap;                  /* Secondary CPU Capability  */
         FWORD   cap;                    /* CPU capability            */
         HWORD   totcpu;                 /* Total CPU count           */
@@ -2112,9 +2129,12 @@ typedef struct _TLECPU {                /* CPU TLE                   */
         DW      cpumask;                /* CPU Mask                  */
     }   TLECPU;
 
-#define CPUTLE_FLAG_RESERVED    0xF8
-#define CPUTLE_FLAG_DEDICATED   0x04
-#define CPUTLE_FLAG_VPOLARMASK  0x03
+/* Bit definitions for TLECPU flag byte */
+#define CPUTLE_FLAG_DEDICATED   0x04    /* Dedicated CPU             */
+#define CPUTLE_FLAG_HORIZ       0x00    /* Horizontally polarized    */
+#define CPUTLE_FLAG_VERTLOW     0x01    /* Vertical low entitlement  */
+#define CPUTLE_FLAG_VERTMED     0x02    /* Vertical med entitlement  */
+#define CPUTLE_FLAG_VERTHIGH    0x03    /* Vertical high entitlement */
 
 typedef struct _SYSIBVMDB {             /* Virtual Machine Desc Block*/
         BYTE    resv1[4*1];             /* Reserved                  */

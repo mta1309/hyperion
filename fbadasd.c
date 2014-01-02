@@ -215,9 +215,11 @@ char   *strtok_str = NULL;              /* save last position        */
                        | ((U32)(cdevhdr.cyls[1]) << 8)
                        |  (U32)(cdevhdr.cyls[0]);
 
+#ifdef OPTION_SYNCIO
         /* Default to synchronous I/O */
 //FIXME: syncio is reported to be broken for fba
 //      dev->syncio = 1;
+#endif // OPTION_SYNCIO
 
         /* process the remaining arguments */
         for (i = 1; i < argc; i++)
@@ -248,18 +250,24 @@ char   *strtok_str = NULL;              /* save last position        */
                 cu = strtok_r (NULL, " \t", &strtok_str);
                 continue;
             }
+#if 1 /*#ifdef OPTION_SYNCIO -- remove completely once syncio deprecation lifespan expires*/
             if (strcasecmp ("nosyncio", argv[i]) == 0
              || strcasecmp ("nosyio",   argv[i]) == 0)
             {
+#ifdef OPTION_SYNCIO
                 dev->syncio = 0;
+#endif // OPTION_SYNCIO
                 continue;
             }
             if (strcasecmp ("syncio", argv[i]) == 0
              || strcasecmp ("syio",   argv[i]) == 0)
             {
+#ifdef OPTION_SYNCIO
                 dev->syncio = 1;
+#endif // OPTION_SYNCIO
                 continue;
             }
+#endif // OPTION_SYNCIO
 
             WRMSG (HHC00503, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[i], i + 1);
             return -1;
@@ -463,12 +471,14 @@ int     copylen;                        /* Length left to copy       */
     bufoff = 0;
     copylen = len;
 
+#ifdef OPTION_SYNCIO
     /* Access multiple block groups asynchronously */
     if (dev->syncio_active && copylen > blklen)
     {
         dev->syncio_retry = 1;
         return -1;
     }
+#endif // OPTION_SYNCIO
 
     /* Copy from the device buffer to the target buffer */
     while (copylen > 0)
@@ -534,12 +544,14 @@ int     copylen;                        /* Length left to copy       */
     bufoff = 0;
     copylen = len;
 
+#ifdef OPTION_SYNCIO
     /* Access multiple block groups asynchronously */
     if (dev->syncio_active && copylen > blklen)
     {
         dev->syncio_retry = 1;
         return -1;
     }
+#endif // OPTION_SYNCIO
 
     /* Copy to the device buffer from the target buffer */
     while (copylen > 0)
@@ -584,12 +596,14 @@ off_t           offset;                 /* File offsets              */
     /* Write the previous block group if modified */
     if (dev->bufupd)
     {
+#ifdef OPTION_SYNCIO
         /* Retry if synchronous I/O */
         if (dev->syncio_active)
         {
             dev->syncio_retry = 1;
             return -1;
         }
+#endif // OPTION_SYNCIO
 
         dev->bufupd = 0;
 
@@ -669,6 +683,7 @@ fba_read_blkgrp_retry:
         return 0;
     }
 
+#ifdef OPTION_SYNCIO
     /* Retry if synchronous I/O */
     if (dev->syncio_active)
     {
@@ -676,6 +691,7 @@ fba_read_blkgrp_retry:
         dev->syncio_retry = 1;
         return -1;
     }
+#endif // OPTION_SYNCIO
 
     /* Wait if no available cache entry */
     if (o < 0)
@@ -831,6 +847,9 @@ BYTE            unitstat;
     close (dev->fd);
     dev->fd = -1;
 
+    dev->buf = NULL;
+    dev->bufsize = 0;
+
     return 0;
 } /* end function fbadasd_close_device */
 
@@ -847,8 +866,8 @@ int fbadasd_used (DEVBLK *dev)
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 void fbadasd_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual )
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual )
 {
 int     rc;                             /* Return code               */
 int     num;                            /* Number of bytes to move   */
@@ -893,9 +912,10 @@ int     repcnt;                         /* Replication count         */
         }
 
         /* Calculate number of bytes to read and set residual count */
-        num = (count < dev->fbablksiz) ? count : dev->fbablksiz;
+        num = (count < (U32)dev->fbablksiz) ?
+               count : (U32)dev->fbablksiz;
         *residual = count - num;
-        if (count < dev->fbablksiz) *more = 1;
+        if (count < (U32)dev->fbablksiz) *more = 1;
 
         /* Read physical block into channel buffer */
         rc = fba_read (dev, iobuf, num, unitstat);
@@ -947,7 +967,7 @@ int     repcnt;                         /* Replication count         */
                 break;
 
             /* Overrun if data chaining within a physical block */
-            if ((flags & CCW_FLAGS_CD) && count < dev->fbablksiz)
+            if ((flags & CCW_FLAGS_CD) && count < (U32)dev->fbablksiz)
             {
                 dev->sense[0] = SENSE_OR;
                 *unitstat = CSW_CE | CSW_DE | CSW_UC;
@@ -955,7 +975,8 @@ int     repcnt;                         /* Replication count         */
             }
 
             /* Calculate number of bytes to write */
-            num = (count < dev->fbablksiz) ? count : dev->fbablksiz;
+            num = (count < (U32)dev->fbablksiz) ?
+                   count : (U32)dev->fbablksiz;
             if (num < dev->fbablksiz) *more = 1;
 
             /* Write physical block from channel buffer */
@@ -1014,7 +1035,7 @@ int     repcnt;                         /* Replication count         */
         while (dev->fbalcnum > 0 && count > 0)
         {
             /* Overrun if data chaining within a physical block */
-            if ((flags & CCW_FLAGS_CD) && count < dev->fbablksiz)
+            if ((flags & CCW_FLAGS_CD) && count < (U32)dev->fbablksiz)
             {
                 dev->sense[0] = SENSE_OR;
                 *unitstat = CSW_CE | CSW_DE | CSW_UC;
@@ -1022,7 +1043,8 @@ int     repcnt;                         /* Replication count         */
             }
 
             /* Calculate number of bytes to read */
-            num = (count < dev->fbablksiz) ? count : dev->fbablksiz;
+            num = (count < (U32)dev->fbablksiz) ?
+                   count : (U32)dev->fbablksiz;
             if (num < dev->fbablksiz) *more = 1;
 
             /* Read physical block into channel buffer */
@@ -1387,7 +1409,7 @@ int     repcnt;                         /* Replication count         */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT void fbadasd_read_block
       ( DEVBLK *dev, int blknum, int blksize, int blkfactor,
-        BYTE *iobuf, BYTE *unitstat, U16 *residual )
+        BYTE *iobuf, BYTE *unitstat, U32 *residual )
 {
 int     rc;                             /* Return code               */
 int     sector;       /* First sector being read                     */
@@ -1424,7 +1446,7 @@ int     sector;       /* First sector being read                     */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT void fbadasd_write_block (
         DEVBLK *dev, int blknum, int blksize, int blkfactor,
-        BYTE *iobuf, BYTE *unitstat, U16 *residual )
+        BYTE *iobuf, BYTE *unitstat, U32 *residual )
 {
 int     rc;           /* Return code from write function             */
 int     sector;       /* First sector being read                     */
@@ -1464,7 +1486,7 @@ U64     rba;          /* Large file size offset                      */
 /* Synchronous Fixed Block I/O (used by Diagnose instruction)        */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT void fbadasd_syncblk_io ( DEVBLK *dev, BYTE type, int blknum,
-        int blksize, BYTE *iobuf, BYTE *unitstat, U16 *residual )
+        int blksize, BYTE *iobuf, BYTE *unitstat, U32 *residual )
 {
 int     rc;                             /* Return code               */
 int     blkfactor;                      /* Number of device blocks

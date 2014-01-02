@@ -15,7 +15,52 @@
 
 #if defined( _FW_REF )          /* (pre-table build pass) */
 
-#define bangmsg_cmd_desc        "SCP priority messsage"
+//  -------------- (template for new commands) ----------------
+//  -------------- (template for new commands) ----------------
+//
+//#define xxx_cmd_desc            "Short XXX description"
+//#define xxx_cmd_help            \
+//                                \
+//  "Much longer, more detailed xxx command description...\n"                     \
+//  "Use other commands as reference for typical formatting and wording.\n"       \
+//
+//  -------------- (template for new commands) ----------------
+//  -------------- (template for new commands) ----------------
+
+
+#define $test_cmd_desc           "Your custom command (*DANGEROUS!*)"
+#define $test_cmd_help          \
+                                \
+  "Performs whatever test function *YOU* specifically coded it to do.\n\n"      \
+                                                                                \
+  "                  * * * *  WARNING!  * * * *\n\n"                            \
+                                                                                \
+  "DO NOT RUN THIS COMMAND UNLESS *YOU* SPECIFICALLY CODED THE FUNCTION\n"      \
+  "THAT THIS COMMAND INVOKES! Unless you wrote it yourself you probably\n"      \
+  "don't know it does. It could perform any function at all from crashing\n"    \
+  "Hercules to launching a nuclear strike. You have been warned!\n"
+
+#define $zapcmd_cmd_desc        "Enable/disable command (*CAREFUL!*)"
+#define $zapcmd_cmd_help        \
+                                \
+  "Format:\n\n"                                                                 \
+                                                                                \
+  "    $zapcmd  cmdname  CFG|NOCFG|CMD|NOCMD\n\n"                               \
+                                                                                \
+  "For normal non-Debug production release builds, use the sequence:\n\n"       \
+                                                                                \
+    "    msglvl   VERBOSE      (optional)\n"                                    \
+    "    msglvl   DEBUG        (optional)\n"                                    \
+    "    cmdlvl   DEBUG        (*required!*) (because not DEBUG build,\n"       \
+    "    $zapcmd  cmdname  CMD                and $zapcmd is SYSDEBUG)\n\n"     \
+                                                                                \
+    "In other words, the $zapcmd is itself a 'debug' level command, and\n"      \
+    "thus in order to use it, the debug cmdlvl must be set first (which\n"      \
+    "is the default for Debug builds but not normal production builds).\n"      \
+    "Note: it is possible to disable the $zapcmd itself so BE CAREFUL!\n"
+
+#define $locate_cmd_desc        "Display sysblk, regs or hostinfo"
+#define bangmsg_cmd_desc        "SCP priority message"
 #define bangmsg_cmd_help        \
                                 \
   "To enter a system control program (i.e. guest operating system)\n"           \
@@ -258,7 +303,7 @@
   "'cpu 14 gpr' will execute the 'gpr' command on cpu 20, but will not\n"       \
   "change the target cpu for subsequent panel displays and commands.\n"
 
-#define cpuidfmt_cmd_desc       "Set format 0/1 STIDP generation"
+#define cpuidfmt_cmd_desc       "Set format BASIC/0/1 STIDP generation"
 #define cpumodel_cmd_desc       "Set CPU model number"
 #define cpuprio_cmd_desc        "Set/Display cpuprio parameter"
 #define cpuserial_cmd_desc      "Set CPU serial number"
@@ -621,6 +666,11 @@
   "identical to the 'loadcore' command except that it loads a text deck\n"       \
   "file with \"TXT\" and \"END\" 80 byte records (i.e. an object deck).\n"
 
+#define locks_cmd_desc          "Display internal locks list"
+#define locks_cmd_help          \
+                                \
+  "Format: \"locks [HELD|tid|ALL] [SORT [TIME|TOD]|[OWNER|TID]|NAME|LOC]\"\n"
+
 #define log_cmd_desc            "Direct logger output"
 #define log_cmd_help            \
                                 \
@@ -646,11 +696,14 @@
 #define lparnum_cmd_desc        "Set LPAR identification number"
 #define lparnum_cmd_help        \
                                 \
-  "Specifies the one- or two-digit hexadecimal LPAR identification\n"            \
-  "number stored by the STIDP instruction. If a one-digit number\n"              \
-  "is specified then STIDP stores a format-0 CPU ID. If a two-digit\n"           \
-  "number is specified then STIDP stores a format-1 CPU ID. If\n"                \
-  "LPARNUM is not specified, then STIDP stores a basic-mode CPUID"
+   "Specifies the one- or two-digit hexadecimal LPAR identification\n"           \
+   "number stored by the STIDP instruction, or BASIC. If a one-digit\n"          \
+   "hexadecimal number from 1 to F is specified, then STIDP stores a\n"          \
+   "format-0 CPU ID. If a two-digit hexadecimal number is specified,\n"          \
+   "except 10, then STIDP stores a format-1 CPU ID. For LPARNUM 10, \n"          \
+   "STIDP uses the current CPUIDFMT setting. If LPARNUM is BASIC, then\n"        \
+   "STIDP stores a basic-mode CPU ID. The default LPAR identification\n"         \
+   "number is 1.\n"
 
 #define ls_cmd_desc             "List directory contents"
 #define lsdep_cmd_desc          "List module dependencies"
@@ -661,7 +714,8 @@
   "Format: mainsize [ mmmm | nnnS [ lOCK | unlOCK ] ]\n"                         \
   "        mmmm    - define main storage size mmmm Megabytes\n"                  \
   "\n"                                                                           \
-  "        nnnS    - define main storage size nnn S where S is the multiplier\n" \
+  "        nnnS    - define main storage size nnn S where S is the\n"            \
+  "                  multipler:\n"                                               \
   "                  B = no multiplier\n"                                        \
   "                  K = 2**10 (kilo/kibi)\n"                                    \
   "                  M = 2**20 (mega/mebi)\n"                                    \
@@ -1201,11 +1255,32 @@
   "prepared to wait a long time.\n"
 
 #define sh_cmd_desc             "Shell command"
+#if defined( _MSVC_ )
+#define sh_cmd_help             \
+                                \
+  "Format: \"sh command [args...]\" where 'command' is any valid shell\n"        \
+  "command or the special command 'startgui'. The entered command and any\n"     \
+  "arguments are passed as-is to the shell for processing and the results\n"     \
+  "are displayed on the Hercules console.\n\n"                                   \
+                                                                                 \
+  "The special startgui command MUST be used if the command being started\n"     \
+  "either directly or indirectly starts a Windows graphical user interface\n"    \
+  "(i.e. non-command-line) program such as notepad. Failure to use startgui\n"   \
+  "in such cases will hang Hercules until you close/exit notepad. Note that\n"   \
+  "starting a batch file which starts notepad still requires using startgui.\n"  \
+  "If 'foo.bat' does: \"start notepad\", then doing \"sh foo.bat\" will hang\n"   \
+  "Hercules until notepad exits just as doing \"sh start foo.bat\" will too.\n"  \
+  "Use startgui to invoke foo.bat instead: \"sh startgui foo.bat\".\n"
+
+#else /* !defined( _MSVC ) */
+
 #define sh_cmd_help             \
                                 \
   "Format: \"sh command [args...]\" where 'command' is any valid shell\n"        \
   "command. The entered command and any arguments are passed as-is to the\n"     \
-  "shell for processing and the results are displayed on the console.\n"
+  "shell for processing and the results are displayed on the Hercules console.\n"
+
+#endif /* defined( _MSVC ) */
 
 #define showdvol1_cmd_desc      "Enable showing of dasd volsers in device list"
 #define showdvol1_cmd_help      \
@@ -1261,17 +1336,19 @@
 #define sysclear_cmd_help       \
                                 \
   "Performs the System Reset Clear manual control function. Same as\n"           \
-  "the \"sysreset\" command but also clears main storage to 0. Also,\n"          \
-  "registers control registers, etc.. are reset to their initial value.\n"       \
+  "the \"sysreset clear\" command. Clears main storage to 0, and all\n"          \
+  "registers, control registers, etc.. are reset to their initial value.\n"      \
   "At this point, the system is essentially in the same state as it was\n"       \
-  "just after having been started\n"
+  "when it was first started.\n"
 
 #define sysepoch_cmd_desc       "Set sysepoch parameter"
 #define sysreset_cmd_desc       "System Reset manual operation"
 #define sysreset_cmd_help       \
                                 \
-  "Performs the System Reset manual control function. A CPU and I/O\n"           \
-  "subsystem reset are performed.\n"
+  "Performs the System Reset manual control function. Without any arguments\n"   \
+  "or with the \"normal\" argument then only a CPU and I/O subsystem reset\n"    \
+  "are performed. When the \"clear\" argument is given then this command is\n"   \
+  "identical in functionality to the \"sysclear\" command.\n"
 
 #define tminus_cmd_desc         "Turn off instruction tracing"
 #define t_cmd_desc              "Instruction trace"
@@ -1389,9 +1466,9 @@
 //MMAND( "x{+/-}zz",  "flag on/off cmd", NULL,        SYSCMDNOPER, NULL )  // 'OnOffCommand'   (special handling)
 
 //       "1...5...9",               function                type flags          description             long help
-COMMAND( "$test",                   test_cmd,               SYSDEBUG,           NULL,                   NULL                )
-COMMAND( "$zapcmd",                 zapcmd_cmd,             SYSDEBUG,           NULL,                   NULL                )
-CMDABBR( "locate",   3,             locate_cmd,             SYSDEBUG,           NULL,                   NULL                )
+COMMAND( "$test",                   test_cmd,               SYSPROGDEVELDEBUG,  $test_cmd_desc,         $test_cmd_help      )
+CMDABBR( "$zapcmd",        4,       zapcmd_cmd,             SYSPROGDEVELDEBUG,  $zapcmd_cmd_desc,       $zapcmd_cmd_help    )
+CMDABBR( "$locate",        4,       locate_cmd,             SYSPROGDEVELDEBUG,  $locate_cmd_desc,       NULL                )
 
 COMMAND( "cache",                   cache_cmd,              SYSCONFIG,          cache_cmd_desc,         cache_cmd_help      )
 COMMAND( "cckd",                    cckd_cmd,               SYSCONFIG,          cckd_cmd_desc,          cckd_cmd_help       )
@@ -1439,6 +1516,7 @@ COMMAND( "aea",                     aea_cmd,                SYSCMDNOPER,        
 COMMAND( "aia",                     aia_cmd,                SYSCMDNOPER,        aia_cmd_desc,           NULL                )
 COMMAND( "ar",                      ar_cmd,                 SYSCMDNOPER,        ar_cmd_desc,            NULL                )
 COMMAND( "autoinit",                autoinit_cmd,           SYSCMDNOPER,        autoinit_cmd_desc,      autoinit_cmd_help   )
+COMMAND( "automount",               automount_cmd,          SYSCMDNOPER,        automount_cmd_desc,     automount_cmd_help  )
 COMMAND( "b-",                      trace_cmd,              SYSCMDNOPER,        bminus_cm_desc,         bminus_cm_help      )
 COMMAND( "b",                       trace_cmd,              SYSCMDNOPER,        b_cmd_desc,             b_cmd_help          )
 COMMAND( "b+",                      trace_cmd,              SYSCMDNOPER,        bplus_cmd_desc,         NULL                )
@@ -1469,6 +1547,7 @@ COMMAND( "pgmtrace",                pgmtrace_cmd,           SYSCMDNOPER,        
 COMMAND( "pr",                      pr_cmd,                 SYSCMDNOPER,        pr_cmd_desc,            NULL                )
 COMMAND( "psw",                     psw_cmd,                SYSCMDNOPER,        psw_cmd_desc,           psw_cmd_help        )
 COMMAND( "ptp",                     ptp_cmd,                SYSCMDNOPER,        ptp_cmd_desc,           ptp_cmd_help        )
+COMMAND( "ptt",                     EXTCMD( ptt_cmd ),      SYSCMDNOPER,        ptt_cmd_desc,           ptt_cmd_help        )
 COMMAND( "qd",                      qd_cmd,                 SYSCMDNOPER,        qd_cmd_desc,            NULL                )
 COMMAND( "quiet",                   quiet_cmd,              SYSCMDNOPER,        quiet_cmd_desc,         quiet_cmd_help      )
 COMMAND( "r",                       r_cmd,                  SYSCMDNOPER,        r_cmd_desc,             r_cmd_help          )
@@ -1483,7 +1562,6 @@ COMMAND( "sh",                      sh_cmd,                 SYSCMDNOPER,        
 COMMAND( "shrd",                    EXTCMD(shared_cmd),     SYSCMDNOPER,        shrd_cmd_desc,          NULL                )
 COMMAND( "suspend",                 suspend_cmd,            SYSCMDNOPER,        suspend_cmd_desc,       NULL                )
 COMMAND( "symptom",                 traceopt_cmd,           SYSCMDNOPER,        symptom_cmd_desc,       NULL                )
-COMMAND( "syncio",                  syncio_cmd,             SYSCMDNOPER,        syncio_cmd_desc,        NULL                )
 COMMAND( "t-",                      trace_cmd,              SYSCMDNOPER,        tminus_cmd_desc,        NULL                )
 COMMAND( "t",                       trace_cmd,              SYSCMDNOPER,        t_cmd_desc,             t_cmd_help          )
 COMMAND( "t?",                      trace_cmd,              SYSCMDNOPER,        tquest_cmd_desc,        tquest_cmd_help     )
@@ -1512,6 +1590,7 @@ COMMAND( "store",                   store_cmd,              SYSCMDNDIAG8,       
 COMMAND( "sysclear",                sysclear_cmd,           SYSCMDNDIAG8,       sysclear_cmd_desc,      sysclear_cmd_help   )
 COMMAND( "sysreset",                sysreset_cmd,           SYSCMDNDIAG8,       sysreset_cmd_desc,      sysreset_cmd_help   )
 
+COMMAND( "capping",                 capping_cmd,            SYSCFGNDIAG8,       capping_cmd_desc,       capping_cmd_help    )
 COMMAND( "cnslport",                cnslport_cmd,           SYSCFGNDIAG8,       cnslport_cmd_desc,      NULL                )
 COMMAND( "cpuidfmt",                cpuidfmt_cmd,           SYSCFGNDIAG8,       cpuidfmt_cmd_desc,      NULL                )
 COMMAND( "cpumodel",                cpumodel_cmd,           SYSCFGNDIAG8,       cpumodel_cmd_desc,      NULL                )
@@ -1526,6 +1605,9 @@ COMMAND( "hercprio",                hercprio_cmd,           SYSCFGNDIAG8,       
 COMMAND( "lparname",                lparname_cmd,           SYSCFGNDIAG8,       lparname_cmd_desc,      lparname_cmd_help   )
 COMMAND( "lparnum",                 lparnum_cmd,            SYSCFGNDIAG8,       lparnum_cmd_desc,       lparnum_cmd_help    )
 COMMAND( "mainsize",                mainsize_cmd,           SYSCFGNDIAG8,       mainsize_cmd_desc,      mainsize_cmd_help   )
+CMDABBR( "manufacturer",  8,        stsi_manufacturer_cmd,  SYSCFGNDIAG8,       manuf_cmd_desc,         NULL                )
+COMMAND( "model",                   stsi_model_cmd,         SYSCFGNDIAG8,       model_cmd_desc,         model_cmd_help      )
+COMMAND( "plant",                   stsi_plant_cmd,         SYSCFGNDIAG8,       plant_cmd_desc,         NULL                )
 COMMAND( "shcmdopt",                shcmdopt_cmd,           SYSCFGNDIAG8,       shcmdopt_cmd_desc,      NULL                )
 COMMAND( "srvprio",                 srvprio_cmd,            SYSCFGNDIAG8,       srvprio_cmd_desc,       NULL                )
 COMMAND( "sysepoch",                sysepoch_cmd,           SYSCFGNDIAG8,       sysepoch_cmd_desc,      NULL                )
@@ -1540,6 +1622,8 @@ COMMAND( "archmode",                archlvl_cmd,            SYSCMDNOPERNDIAG8,  
 COMMAND( "exit",                    quit_cmd,               SYSALLNDIAG8,       exit_cmd_desc,          NULL                )
 
 COMMAND( "sizeof",                  sizeof_cmd,             SYSCMDNOPERNPROG,   sizeof_cmd_desc,        NULL                )
+
+COMMAND( "locks",                   EXTCMD( locks_cmd ),    SYSPROGDEVEL,       locks_cmd_desc,         locks_cmd_help      )
 
 /*-------------------------------------------------------------------*/
 /*             Commands optional by build option                     */
@@ -1601,9 +1685,6 @@ COMMAND( "dir",                     dir_cmd,                SYSCMDNDIAG8,       
 COMMAND( "ls",                      ls_cmd,                 SYSCMDNDIAG8,       ls_cmd_desc,            NULL                )
 #endif
 #endif
-#if defined( OPTION_CAPPING )
-COMMAND( "capping",                 capping_cmd,            SYSCFGNDIAG8,       capping_cmd_desc,       capping_cmd_help    )
-#endif
 #if defined( OPTION_CMDTGT )
 COMMAND( "cmdtgt",                  cmdtgt_cmd,             SYSCMD,             cmdtgt_cmd_desc,        cmdtgt_cmd_help     )
 COMMAND( "herc",                    herc_cmd,               SYSCMD,             herc_cmd_desc,          herc_cmd_help       )
@@ -1655,17 +1736,9 @@ COMMAND( "maxrates",                maxrates_cmd,           SYSCMD,             
 COMMAND( "kd",                      msghld_cmd,             SYSCMD,             kd_cmd_desc,            NULL                )
 COMMAND( "msghld",                  msghld_cmd,             SYSCMD,             msghld_cmd_desc,        msghld_cmd_help     )
 #endif
-#if defined( OPTION_PTTRACE )
-COMMAND( "ptt",                     EXTCMD( ptt_cmd ),      SYSCMDNOPER,        ptt_cmd_desc,           ptt_cmd_help        )
-#endif
 #if defined( OPTION_SCSI_TAPE )
 COMMAND( "auto_scsi_mount",         scsimount_cmd,          SYSCMDNOPER,        autoscsi_cmd_desc,      autoscsi_cmd_help   )
 COMMAND( "scsimount",               scsimount_cmd,          SYSCMDNOPER,        scsimount_cmd_desc,     scsimount_cmd_help  )
-#endif
-#if defined( OPTION_SET_STSI_INFO )
-CMDABBR( "manufacturer",  8,        stsi_manufacturer_cmd,  SYSCFGNDIAG8,       manuf_cmd_desc,         NULL                )
-COMMAND( "model",                   stsi_model_cmd,         SYSCFGNDIAG8,       model_cmd_desc,         model_cmd_help      )
-COMMAND( "plant",                   stsi_plant_cmd,         SYSCFGNDIAG8,       plant_cmd_desc,         NULL                )
 #endif
 #if defined( OPTION_SHARED_DEVICES )
 COMMAND( "shrdport",                shrdport_cmd,           SYSCFGNDIAG8,       shrdport_cmd_desc,      NULL                )
@@ -1675,9 +1748,6 @@ COMMAND( "quit",                    quit_cmd,               SYSALLNDIAG8,       
 COMMAND( "quitmout",                quitmout_cmd,           SYSCMDNOPER,        quitmout_cmd_desc,      quitmout_cmd_help   )
 #else
 COMMAND( "quit",                    quit_cmd,               SYSALLNDIAG8,       quit_ssd_cmd_desc,      quit_ssd_cmd_help   )
-#endif
-#if defined( OPTION_TAPE_AUTOMOUNT )
-COMMAND( "automount",               automount_cmd,          SYSCMDNOPER,        automount_cmd_desc,     automount_cmd_help  )
 #endif
 #if defined( OPTION_W32_CTCI )
 COMMAND( "tt32",                    tt32_cmd,               SYSCMDNOPER,        tt32_cmd_desc,          tt32_cmd_help       )
@@ -1691,5 +1761,8 @@ COMMAND( "spm",                     spm_cmd,                SYSCMDNOPER,        
 #if defined( OPTION_SHOWDVOL1 )
 COMMAND( "showdvol1",               showdvol1_cmd,          SYSCMD,             showdvol1_cmd_desc,     showdvol1_cmd_help  )
 #endif /* defined( OPTION_SHOWDVOL1 ) */
+#ifdef OPTION_SYNCIO
+COMMAND( "syncio",                  syncio_cmd,             SYSCMDNOPER,        syncio_cmd_desc,        NULL                )
+#endif // OPTION_SYNCIO
 
 /*------------------------------(EOF)--------------------------------*/

@@ -26,100 +26,289 @@
 #include "hercules.h"
 #include "opcode.h"
 #include "inline.h"
-#if defined(OPTION_FISHIO)
-#include "w32chan.h"
-#endif // defined(OPTION_FISHIO)
 #ifdef FEATURE_MESSAGE_SECURITY_ASSIST_EXTENSION_3
 #include "hexterns.h"
+#endif
+
+
+/*-------------------------------------------------------------------*/
+/* Function to reset instruction count and CPU time                  */
+/*-------------------------------------------------------------------*/
+#if !defined(_reset_instcount_)
+#define _reset_instcount_
+INLINE void
+cpu_reset_instcount_and_cputime(REGS* regs)
+{
+    /* Reset instruction counts, I/O counts and real CPU time */
+    regs->prevcount = 0;
+    regs->instcount = 0;
+    regs->mipsrate  = 0;
+    regs->siocount  = 0;
+    regs->siosrate  = 0;
+    regs->siototal  = 0;
+    regs->cpupct    = 0;
+    regs->rcputime  = 0;
+    regs->bcputime  = thread_cputime_us(regs);
+}
+#endif
+
+/*-------------------------------------------------------------------*/
+/* Function to perform Subystem Reset                                */
+/*-------------------------------------------------------------------*/
+/* Locks held on entry/exit:                                         */
+/*  sysblk.intlock                                                   */
+/*-------------------------------------------------------------------*/
+#if !defined(_subsystem_reset_)
+#define _subsystem_reset_
+void subsystem_reset (void)
+{
+    /* Perform subsystem reset
+     *
+     * GA22-7000-10 IBM System/370 Principles of Operation, Chapter 4.
+     *              Control, Subsystem Reset, p. 4-34
+     * SA22-7085-00 IBM System/370 Extended Architecture Principles of
+     *              Operation, Chapter 4. Control, Subsystem Reset,
+     *              p. 4-28
+     * SA22-7832-09 z/Architecture Principles of Operation, Chapter 4.
+     *              Control, Subsystem Reset, p. 4-57
+     */
+
+    /* Clear pending external interrupts */
+    OFF_IC_SERVSIG;
+    OFF_IC_INTKEY;
+
+    /* Reset the I/O subsystem */
+    RELEASE_INTLOCK(NULL);
+    io_reset ();
+    OBTAIN_INTLOCK(NULL);
+}
 #endif
 
 /*-------------------------------------------------------------------*/
 /* Function to perform System Reset   (either 'normal' or 'clear')   */
 /*-------------------------------------------------------------------*/
-int ARCH_DEP(system_reset) (int cpu, int clear)
+int ARCH_DEP(system_reset)
+(
+    const int cpu,              /* CPU address                       */
+    const int flags,            /* Flags:
+                                 * 0x00 0000 0000 System reset normal
+                                 * 0x01 .... ...1 System reset clear
+                                 * 0x02 .... ..1. System reset normal
+                                 *                with initial CPU
+                                 *                reset on requesting
+                                 *                processor (used by
+                                 *                IPL)
+                                 */
+    const int target_mode       /* Target architecture mode          */
+)
 {
-    int    rc1 = 0, rc;
-    int    n;
-    REGS  *regs;
+    int         rc;
+    int         n;
+    int         regs_mode;
+    int         architecture_switch;
+    REGS*       regs;
+    CPU_BITMAP  mask;
 
-    /* Configure the cpu if it is not online (configure implies init reset) */
+    /* Configure the cpu if it is not online (configure implies initial
+     * reset)
+     */
     if (!IS_CPU_ONLINE(cpu))
+    {
+        sysblk.arch_mode = target_mode;
         if ( (rc = configure_cpu(cpu)) )
             return rc;
+    }
 
     HDC1(debug_cpu_state, sysblk.regs[cpu]);
 
-    /* Reset external interrupts */
-    OFF_IC_SERVSIG;
-    OFF_IC_INTKEY;
-    
-    /* Perform system-reset-normal or system-reset-clear function */
-    if (clear)
-    {
-        /* Reset all CPUs in the configuration */
-        for (n = 0; n < sysblk.maxcpu; n++)
-            if (IS_CPU_ONLINE(n))
-            {
-                regs=sysblk.regs[n];
+    /* Define the target mode for reset */
+    if (flags &&
+        target_mode > ARCH_390)
+        regs_mode = ARCH_390;
+    else
+        regs_mode = target_mode;
 
-                if ((rc = ARCH_DEP(initial_cpu_reset) (regs)) )
-                    rc1 = rc;
-                else
+    architecture_switch = (regs_mode != sysblk.arch_mode);
+
+    /* Signal all CPUs in configuration to stop and reset */
+    {
+        /* Switch lock context to hold both sigplock and intlock */
+        RELEASE_INTLOCK(NULL);
+        obtain_lock(&sysblk.sigplock);
+        OBTAIN_INTLOCK(NULL);
+
+        /* Ensure no external updates pending */
+        OFF_IC_SERVSIG;
+        OFF_IC_INTKEY;
+
+        /* Loop through CPUs and issue appropriate CPU reset function
+         */
+        {
+            mask = sysblk.config_mask;
+
+            for (n = 0; mask; mask >>= 1, ++n)
+            {
+                if (mask & 1)
                 {
-                    /* Clear all the registers (AR, GPR, FPR, VR)
-                       as part of the CPU CLEAR RESET operation */
-                    memset (regs->ar, 0, sizeof(regs->ar));
-                    memset (regs->gr, 0, sizeof(regs->gr));
-                    memset (regs->fpr, 0, sizeof(regs->fpr));
-                  #if defined(_FEATURE_VECTOR_FACILITY)
-                    memset (regs->vf->vr, 0, sizeof(regs->vf->vr));
-                  #endif /*defined(_FEATURE_VECTOR_FACILITY)*/
+                    regs = sysblk.regs[n];
+
+                    /* Signal CPU reset function; if requesting CPU with
+                     * CLEAR or architecture change, signal initial CPU
+                     * reset. Otherwise, signal a normal CPU reset.
+                     */
+                    if ((n == cpu && (flags & 0x03))    ||
+                        architecture_switch)
+                        regs->sigpireset = 1;
+                    else
+                        regs->sigpreset = 1;
+
+                    regs->opinterv = 1;
+                    regs->cpustate = CPUSTATE_STOPPING;
+                    ON_IC_INTERRUPT(regs);
+                    wakeup_cpu(regs);
                 }
             }
-    
-        sysblk.program_parameter = 0;
-    
+        }
+
+        /* Return to hold of just intlock */
+        RELEASE_INTLOCK(NULL);
+        release_lock(&sysblk.sigplock);
+        OBTAIN_INTLOCK(NULL);
+    }
+
+    /* Wait for CPUs to complete reset */
+    {
+        int i;
+        int wait;
+
+        for (n = 0; ; ++n)
+        {
+            mask = sysblk.config_mask;
+
+            for (i = wait = 0; mask; mask >>= 1, ++i)
+            {
+                if (!(mask & 1))
+                    continue;
+
+                regs = sysblk.regs[i];
+
+                if (regs->cpustate != CPUSTATE_STOPPED)
+                {
+                    /* Release intlock, take a nap, and re-acquire */
+                    RELEASE_INTLOCK(NULL);
+                    wait = 1;
+                    usleep(10000);
+                    OBTAIN_INTLOCK(NULL);
+                }
+            }
+
+            if (!wait)
+                break;
+
+            if (n < 300)
+                continue;
+
+            /* FIXME: Recovery code needed to handle case where CPUs
+             *        are misbehaving. Outstanding locks should be
+             *        reported, then take-over CPUs and perform an
+             *        initial reset of each CPU.
+             */
+            WRMSG(HHC90000, "E", "Could not perform reset within three seconds");
+            break;
+        }
+    }
+
+    /* If architecture switch, complete reset in requested mode */
+    if (architecture_switch)
+    {
+        sysblk.arch_mode = regs_mode;
+        return ARCH_DEP(system_reset)(cpu, flags, target_mode);
+    }
+
+    /* Perform subsystem reset
+     *
+     * GA22-7000-10 IBM System/370 Principles of Operation, Chapter 4.
+     *              Control, Subsystem Reset, p. 4-34
+     * SA22-7085-00 IBM System/370 Extended Architecture Principles of
+     *              Operation, Chapter 4. Control, Subsystem Reset,
+     *              p. 4-28
+     * SA22-7832-09 z/Architecture Principles of Operation, Chapter 4.
+     *              Control, Subsystem Reset, p. 4-57
+     */
+    subsystem_reset();
+
+    /* Perform system-reset-clear additional functions */
+    if (flags & 0x01)
+    {
+        /* Finish reset-clear of all CPUs in the configuration */
+        for (n = 0; n < sysblk.maxcpu; ++n)
+        {
+            if (IS_CPU_ONLINE(n))
+            {
+                regs = sysblk.regs[n];
+
+                /* Clear all the registers (AR, GPR, FPR, VR) as part
+                 * of the CPU CLEAR RESET operation
+                 */
+                memset (regs->ar, 0, sizeof(regs->ar));
+                memset (regs->gr, 0, sizeof(regs->gr));
+                memset (regs->fpr, 0, sizeof(regs->fpr));
+                #if defined(_FEATURE_VECTOR_FACILITY)
+                    memset (regs->vf->vr, 0, sizeof(regs->vf->vr));
+                #endif /*defined(_FEATURE_VECTOR_FACILITY)*/
+
+                /* Clear the instruction counter and CPU time used */
+                cpu_reset_instcount_and_cputime(regs);
+            }
+        }
+
         /* Clear storage */
         sysblk.main_clear = sysblk.xpnd_clear = 0;
         storage_clear();
         xstorage_clear();
 
-    }
-    else
-    {
-        /* Reset all CPUs in the configuration */
-        for (n = 0; n < sysblk.maxcpu; n++)
-            if (IS_CPU_ONLINE(n))
-            {
-                regs=sysblk.regs[n];
-        
-                if(n == cpu)
-                {
-                    /* Perform initial reset on the IPL CPU */
-                    if ( (rc = ARCH_DEP(initial_cpu_reset) (regs)) )
-                        rc1 = rc;
-                }
-                else
-                {
-                    /* Perform reset on the other CPUs */
-                    if ( (rc = ARCH_DEP(cpu_reset) (regs)) )
-                        rc1 = rc;
-                }
-            }
+        /* Clear IPL program parameter */
+        sysblk.program_parameter = 0;
     }
 
-    /* Perform I/O subsystem reset */
-    io_reset ();
+    /* If IPL call, reset CPU instruction counts and times */
+    else if (flags & 0x02)
+    {
+        CPU_BITMAP  mask = sysblk.config_mask;
+        int         i;
+
+        for (i = 0; mask; mask >>= 1, ++i)
+        {
+            if (mask & 1)
+                cpu_reset_instcount_and_cputime(sysblk.regs[i]);
+        }
+    }
+
+    /* If IPL or system-reset-clear, clear system instruction counter,
+     * rates, and IPLed indicator.
+     */
+    if (flags & 0x03)
+    {
+        /* Clear system instruction counter and CPU rates */
+        sysblk.instcount = 0;
+        sysblk.mipsrate  = 0;
+        sysblk.siosrate  = 0;
+
+        sysblk.ipled = FALSE;
+    }
 
 #if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
+    /* Set horizontal polarization */
+    sysblk.topology = TOPOLOGY_HORIZ;
+
     /* Clear topology-change-report-pending condition */
     sysblk.topchnge = 0;
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
 
     /* set default system state to reset */
-    sysblk.sys_reset = TRUE; 
+    sysblk.sys_reset = TRUE;
 
-    return rc1;
+    return (0);
 } /* end function system_reset */
 
 /*-------------------------------------------------------------------*/
@@ -145,9 +334,6 @@ int ARCH_DEP(common_load_begin) (int cpu, int clear)
 
     /* Save the original architecture mode for later */
     orig_arch_mode = sysblk.dummyregs.arch_mode = sysblk.arch_mode;
-#if defined(OPTION_FISHIO)
-    ios_arch_mode = sysblk.arch_mode;
-#endif // defined(OPTION_FISHIO)
 
     capture = (!clear) && IS_CPU_ONLINE(cpu) && sysblk.arch_mode == ARCH_900;
 
@@ -155,13 +341,18 @@ int ARCH_DEP(common_load_begin) (int cpu, int clear)
     if (capture)
         captured_zpsw = sysblk.regs[cpu]->psw;
 
-    /* Switch architecture mode to ESA390 mode for z/Arch IPL */
-    if (sysblk.arch_mode == ARCH_900)
-        sysblk.arch_mode = ARCH_390;
-
-    /* Perform system-reset-normal or system-reset-clear function */
-    if ( (rc = ARCH_DEP(system_reset(cpu,clear))) )
-        return rc;
+    /* Perform system-reset-normal or system-reset-clear function;
+     * architecture mode updated, if necessary. The clear indicator is
+     * cleaned with an initial CPU reset added.
+     *
+     * SA22-7085-0 IBM System/370 Extended Architecture Principles of
+     *             Operation, Chapter 12, Operator Facilities, LOAD-
+     *             CLEAR KEY and LOAD-NORMAL KEY, p. 12-3.
+     */
+    if ( (rc = ARCH_DEP(system_reset(cpu, ((clear & 0x01) | 0x02),
+                                     sysblk.arch_mode > ARCH_390 ?
+                                     ARCH_390 : sysblk.arch_mode))) )
+        return (rc);
 
     /* Save our captured-z/Arch-PSW if this is a Load-normal IPL
        since the initial_cpu_reset call cleared it to zero. */
@@ -192,10 +383,18 @@ int rc;
     if ((rc = ARCH_DEP(common_load_begin) (cpu, clear)) )
         return rc;
 
+    /* Ensure CPU is online */
+    if (!IS_CPU_ONLINE(cpu))
+    {
+        char buf[80];
+        MSGBUF(buf, "CP%2.2X Offline", devnum);
+        WRMSG (HHC00810, "E", PTYPSTR(sysblk.pcpu), sysblk.pcpu, buf);
+        return -1;
+    }
+
     /* The actual IPL proper starts here... */
 
     regs = sysblk.regs[cpu];    /* Point to IPL CPU's registers */
-
     /* Point to the device block for the IPL device */
     dev = find_device_by_devnum (lcss,devnum);
     if (dev == NULL)
@@ -207,7 +406,6 @@ int rc;
         return -1;
     }
 
-#if defined(OPTION_IPLPARM)
     if(sysblk.haveiplparm)
     {
         for(i=0;i<16;i++)
@@ -216,7 +414,6 @@ int rc;
         }
         sysblk.haveiplparm=0;
     }
-#endif
 
     /* Set Main Storage Reference and Update bits */
     STORAGE_KEY(regs->PX, regs) |= (STORKEY_REF | STORKEY_CHANGE);
@@ -258,21 +455,14 @@ int rc;
     dev->scsw.flag3 = 0;
 
     /* Check that load completed normally */
-#ifdef FEATURE_S370_CHANNEL
-    unitstat = dev->csw[4];
-    chanstat = dev->csw[5];
-#endif /*FEATURE_S370_CHANNEL*/
-
-#ifdef FEATURE_CHANNEL_SUBSYSTEM
     unitstat = dev->scsw.unitstat;
     chanstat = dev->scsw.chanstat;
-#endif /*FEATURE_CHANNEL_SUBSYSTEM*/
 
-    if (unitstat != (CSW_CE | CSW_DE) || chanstat != 0) 
+    if (unitstat != (CSW_CE | CSW_DE) || chanstat != 0)
     {
         char buf[80];
         char buf2[16];
-        
+
         memset(buf,0,sizeof(buf));
         for (i=0; i < (int)dev->numsense; i++)
         {
@@ -283,7 +473,7 @@ int rc;
         {
             char buffer[256];
             MSGBUF(buffer, "architecture mode %s, csw status %2.2X%2.2X, sense %s",
-                get_arch_mode_string((REGS *)0), 
+                get_arch_mode_string((REGS *)0),
                 unitstat, chanstat, buf);
             WRMSG (HHC00828, "E", PTYPSTR(sysblk.pcpu), sysblk.pcpu, buffer);
         }
@@ -315,6 +505,7 @@ int rc;
     sysblk.ipldev = devnum;
     sysblk.iplcpu = regs->cpuad;
     sysblk.ipllcss = lcss;
+    sysblk.ipled = TRUE;
 
     /* Finish up... */
     return ARCH_DEP(common_load_finish) (regs);
@@ -330,10 +521,10 @@ int rc;
     regs->psw.intcode = 0;
 
     /* Load IPL PSW from PSA+X'0' */
-    if ((rc = ARCH_DEP(load_psw) (regs, regs->psa->iplpsw)) ) 
+    if ((rc = ARCH_DEP(load_psw) (regs, regs->psa->iplpsw)) )
     {
         char buf[80];
-        MSGBUF(buf, "architecture mode %s, invalid ipl psw %2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X", 
+        MSGBUF(buf, "architecture mode %s, invalid ipl psw %2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X",
                 get_arch_mode_string((REGS *)0),
                 regs->psa->iplpsw[0], regs->psa->iplpsw[1],
                 regs->psa->iplpsw[2], regs->psa->iplpsw[3],
@@ -352,7 +543,7 @@ int rc;
     regs->loadstate = 0;
 
     /* reset sys_reset flag to indicate a active machine */
-    sysblk.sys_reset = FALSE; 
+    sysblk.sys_reset = FALSE;
 
     /* Signal the CPU to retest stopped indicator */
     WAKEUP_CPU (regs);
@@ -378,7 +569,6 @@ int i, rc = 0;                          /* Array subscript           */
     for (i = 0; i < sysblk.maxcpu; i++)
         regs->emercpu[i] = 0;
     regs->instinvalid = 1;
-    regs->instcount = regs->prevcount = 0;
 
     /* Clear interrupts */
     SET_IC_INITIAL_MASK(regs);
@@ -429,10 +619,10 @@ int i, rc = 0;                          /* Array subscript           */
 /*-------------------------------------------------------------------*/
 int ARCH_DEP(initial_cpu_reset) (REGS *regs)
 {
-int rc1 = 0, rc;
+    int rc1 = 0, rc;
+
     /* Clear reset pending indicators */
     regs->sigpireset = regs->sigpreset = 0;
-
 
     /* Clear the registers */
     memset ( &regs->psw, 0,           sizeof(regs->psw)           );
@@ -446,11 +636,11 @@ int rc1 = 0, rc;
     regs->PX     = 0;
     regs->psw.AMASK_G = AMASK24;
 
-    /* 
-     * ISW20060125 : Since we reset the prefix, we must also adjust 
-     * the PSA ptr
-     */
-    regs->psa = (PSA_3XX *)regs->mainstor;
+    /* Ensure memory sizes are properly indicated */
+    regs->mainstor = sysblk.mainstor;
+    regs->storkeys = sysblk.storkeys;
+    regs->mainlim  = sysblk.mainsize ? (sysblk.mainsize - 1) : 0;
+    regs->psa      = (PSA_3XX*)regs->mainstor;
 
     /* Perform a CPU reset (after setting PSA) */
     rc1 = ARCH_DEP(cpu_reset) (regs);
@@ -474,7 +664,7 @@ int rc1 = 0, rc;
     regs->CR(2) = 0xFFFFFFFF;
 #endif /* defined(FEATURE_S370_CHANNEL) && !defined(FEATURE_ACCESS_REGISTERS) */
 
-    regs->chanset = 
+    regs->chanset =
 #if defined(FEATURE_CHANNEL_SWITCHING)
                     regs->cpuad < FEATURE_LCSS_MAX ? regs->cpuad :
 #endif /*defined(FEATURE_CHANNEL_SWITCHING)*/
@@ -522,22 +712,32 @@ int rc1 = 0, rc;
 
 int load_ipl (U16 lcss, U16 devnum, int cpu, int clear)
 {
-    switch(sysblk.arch_mode) {
+    int rc;
+
+    switch (sysblk.arch_mode)
+    {
 #if defined(_370)
         case ARCH_370:
-            return s370_load_ipl (lcss, devnum, cpu, clear);
+            rc = s370_load_ipl (lcss, devnum, cpu, clear);
+            break;
 #endif
 #if defined(_390)
         case ARCH_390:
-            return s390_load_ipl (lcss, devnum, cpu, clear);
+            rc = s390_load_ipl (lcss, devnum, cpu, clear);
+            break;
 #endif
 #if defined(_900)
         case ARCH_900:
             /* z/Arch always starts out in ESA390 mode */
-            return s390_load_ipl (lcss, devnum, cpu, clear);
+            rc = s390_load_ipl (lcss, devnum, cpu, clear);
+            break;
 #endif
+        default:
+            rc = -1;
+            break;
     }
-    return -1;
+
+    return (rc);
 }
 
 /*-------------------------------------------------------------------*/
@@ -545,8 +745,10 @@ int load_ipl (U16 lcss, U16 devnum, int cpu, int clear)
 /*-------------------------------------------------------------------*/
 int initial_cpu_reset (REGS *regs)
 {
-int rc = -1;
-    switch(sysblk.arch_mode) {
+    int rc;
+
+    switch (regs->arch_mode)
+    {
 #if defined(_370)
         case ARCH_370:
             rc = s370_initial_cpu_reset (regs);
@@ -563,33 +765,44 @@ int rc = -1;
             rc = s390_initial_cpu_reset (regs);
             break;
 #endif
+        default:
+            rc = -1;
+            break;
     }
-    regs->arch_mode = sysblk.arch_mode;
-    return rc;
+
+    return (rc);
 }
 
 /*-------------------------------------------------------------------*/
 /*  System Reset    ( Normal reset  or  Clear reset )                */
 /*-------------------------------------------------------------------*/
-int system_reset (int cpu, int clear)
+int system_reset (const int cpu, const int flags, const int target_mode)
 {
-    switch(sysblk.arch_mode) {
+    int rc;
+
+    switch (sysblk.arch_mode)
+    {
 #if defined(_370)
         case ARCH_370:
-            return s370_system_reset (cpu, clear);
+            rc = s370_system_reset (cpu, flags, target_mode);
+            break;
 #endif
 #if defined(_390)
         case ARCH_390:
-            return s390_system_reset (cpu, clear);
+            rc = s390_system_reset (cpu, flags, target_mode);
+            break;
 #endif
 #if defined(_900)
         case ARCH_900:
-            /* z/Arch always starts out in ESA390 mode */
-            return s390_system_reset (cpu, clear);
+            rc = z900_system_reset (cpu, flags, target_mode);
+            break;
 #endif
+        default:
+            rc = -1;
+            break;
     }
 
-    return -1;
+    return (rc);
 }
 
 /*-------------------------------------------------------------------*/
@@ -597,22 +810,31 @@ int system_reset (int cpu, int clear)
 /*-------------------------------------------------------------------*/
 int cpu_reset (REGS *regs)
 {
-    switch(sysblk.arch_mode) {
+    int rc;
+
+    switch (regs->arch_mode)
+    {
 #if defined(_370)
         case ARCH_370:
-            return s370_cpu_reset (regs);
+            rc = s370_cpu_reset (regs);
+            break;
 #endif
 #if defined(_390)
         case ARCH_390:
-            return s390_cpu_reset (regs);
+            rc = s390_cpu_reset (regs);
+            break;
 #endif
 #if defined(_900)
         case ARCH_900:
-            /* z/Arch always starts out in ESA390 mode */
-            return s390_cpu_reset (regs);
+            rc = z900_cpu_reset (regs);
+            break;
 #endif
+        default:
+            rc = -1;
+            break;
     }
-    return -1;
+
+    return (rc);
 }
 
 /*-------------------------------------------------------------------*/

@@ -271,7 +271,6 @@ int cfall_cmd(int argc, char *argv[], char *cmdline)
 /*-------------------------------------------------------------------*/
 static int reset_cmd(int ac,char *av[],char *cmdline,int clear)
 {
-    int i;
     int rc;
 
     UNREFERENCED(ac);
@@ -279,16 +278,12 @@ static int reset_cmd(int ac,char *av[],char *cmdline,int clear)
     UNREFERENCED(cmdline);
     OBTAIN_INTLOCK(NULL);
 
-    for (i = 0; i < sysblk.maxcpu; i++)
-        if (IS_CPU_ONLINE(i)
-         && sysblk.regs[i]->cpustate != CPUSTATE_STOPPED)
-        {
-            RELEASE_INTLOCK(NULL);
-            WRMSG(HHC02235, "E");
-            return -1;
-        }
-
-    rc = system_reset (sysblk.pcpu, clear);
+    /* CPU does not have to be stopped to issue reset                */
+    /* SA22-7201-05:                                                 */
+    /*  p. 12-5, System-Reset-Clear Key                              */
+    /*  p. 12-5, System-Reset-Normal Key                             */
+    /*  p. 4-36 -- 4-37, CPU Reset                                   */
+    rc = system_reset (sysblk.pcpu, clear, sysblk.arch_mode);
 
     RELEASE_INTLOCK(NULL);
 
@@ -302,11 +297,36 @@ static int reset_cmd(int ac,char *av[],char *cmdline,int clear)
 /*-------------------------------------------------------------------*/
 int sysreset_cmd(int ac,char *av[],char *cmdline)
 {
-    int rc = reset_cmd(ac,av,cmdline,0);
-    if ( rc >= 0 )
+    int rc;
+
+    if (ac < 2)
+        rc = reset_cmd( ac, av, cmdline, 0 );
+    else if (ac == 2)
     {
-        WRMSG( HHC02311, "I", av[0] );
+        if (!strcasecmp( "clear", av[1] ))
+        {
+            rc = reset_cmd( ac, av, cmdline, 1 );
+        }
+        else if (!strcasecmp( "normal", av[1] ))
+        {
+            rc = reset_cmd( ac, av, cmdline, 0 );
+        }
+        else
+        {
+            // "Invalid argument %s%s"
+            WRMSG( HHC02205, "E", av[1], "" );
+            rc = -1;
+        }
     }
+    else // (ac > 2)
+    {
+        // "Invalid argument %s%s"
+        WRMSG( HHC02205, "E", av[2], "" );
+        rc = -1;
+    }
+
+    if (rc >= 0)
+        WRMSG( HHC02311, "I", cmdline ); // "%s completed"
 
     return rc;
 }
@@ -317,12 +337,17 @@ int sysreset_cmd(int ac,char *av[],char *cmdline)
 /*-------------------------------------------------------------------*/
 int sysclear_cmd(int ac,char *av[],char *cmdline)
 {
-    int rc = reset_cmd(ac,av,cmdline,1);
+    int rc;
 
-    if ( rc >= 0 )
+    if (ac > 1)
     {
-        WRMSG( HHC02311, "I", av[0] );
+        // "Invalid argument %s%s"
+        WRMSG( HHC02205, "E", av[1], "" );
+        rc = -1;
     }
+
+    if ((rc = reset_cmd( ac, av, cmdline, 1 )) >= 0)
+        WRMSG( HHC02311, "I", av[0] ); // "%s completed"
 
     return rc;
 }
@@ -340,21 +365,24 @@ BYTE c;                                 /* Character work area       */
 int  rc;                                /* Return code               */
 int  i;
 int  clear = clr_prm;                   /* Called with Clear option  */
-#if defined(OPTION_IPLPARM)
 int j;
 size_t  maxb;
-#endif
 U16  lcss;
 U16  devnum;
 char *cdev, *clcss;
-char *strtok_str = NULL;
-
-#if defined(OPTION_IPLPARM)
 char save_loadparm[16];
 int  rest_loadparm = FALSE;
 
     save_loadparm[0] = '\0';
-#endif
+
+    UNREFERENCED( cmdline );
+
+    /* Primary CPU must be online */
+    if (!IS_CPU_ONLINE(sysblk.pcpu))
+    {
+        WRMSG(HHC00816, "E", PTYPSTR(sysblk.pcpu), sysblk.pcpu, "online");
+        return -1;
+    }
 
     /* Check that target processor type allows IPL */
     if (sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_IFA
@@ -370,7 +398,6 @@ int  rest_loadparm = FALSE;
         missing_devnum();
         return -1;
     }
-#if defined(OPTION_IPLPARM)
 #define MAXPARMSTRING   sizeof(sysblk.iplparmstring)
     sysblk.haveiplparm=0;
     maxb=0;
@@ -409,19 +436,8 @@ int  rest_loadparm = FALSE;
             }
         }
     }
-#endif
 
     OBTAIN_INTLOCK(NULL);
-
-    for (i = 0; i < sysblk.maxcpu; i++)
-        if (IS_CPU_ONLINE(i)
-         && sysblk.regs[i]->cpustate == CPUSTATE_STARTED)
-        {
-            RELEASE_INTLOCK(NULL);
-            WRMSG(HHC02236, "E");
-            if ( rest_loadparm ) set_loadparm( save_loadparm );
-            return -1;
-        }
 
     /* The ipl device number might be in format lcss:devnum */
     if ( (cdev = strchr(argv[1],':')) )
@@ -438,7 +454,7 @@ int  rest_loadparm = FALSE;
     /* If the ipl device is not a valid hex number we assume */
     /* This is a load from the service processor             */
     if (sscanf(cdev, "%hx%c", &devnum, &c) != 1)
-        rc = load_hmc(strtok_r(cmdline+3+clear," \t", &strtok_str ), sysblk.pcpu, clear);
+        rc = load_hmc(argv[1], sysblk.pcpu, clear);
     else
     {
 #if defined(_FEATURE_SCSI_IPL)
@@ -492,10 +508,8 @@ int iplc_cmd(int argc, char *argv[], char *cmdline)
 }
 
 
-
-#ifdef OPTION_CAPPING
 /*-------------------------------------------------------------------*/
-/* capping - cap mip rate                                            */
+/* capping - limit MIPS rate                                         */
 /*-------------------------------------------------------------------*/
 int capping_cmd(int argc, char *argv[], char *cmdline)
 {
@@ -538,7 +552,6 @@ int     rc = HNOERROR;
 
     return rc;
 }
-#endif // OPTION_CAPPING
 
 
 /*-------------------------------------------------------------------*/
@@ -776,14 +789,14 @@ int rc = 0;
         hw_now.low  = hw_tod.low;
         epoch_now = regs->tod_epoch;
         clkc_now = regs->clkc;
-        cpt_now = CPU_TIMER(regs);
+        cpt_now = cpu_timer(regs);
 #if defined(_FEATURE_SIE)
         if ( regs->sie_active )
         {
             vtod_now = TOD_CLOCK(regs->guestregs);
             vepoch_now = regs->guestregs->tod_epoch;
             vclkc_now = regs->guestregs->clkc;
-            vcpt_now = CPU_TIMER(regs->guestregs);
+            vcpt_now = cpu_timer_SIE(regs->guestregs);
             sie_flag = 1;
         }
 #endif
@@ -819,18 +832,18 @@ int rc = 0;
             epoch_sign = ' ';
         }
         MSGBUF( buf, "off = %16.16" I64_FMT "X   %c%s",
-                (epoch_now << 8), epoch_sign,
+                etod2tod(epoch_now), epoch_sign,
                 format_tod(clock_buf,epoch_now_abs,FALSE) );
         WRMSG(HHC02274, "I", buf);
 
         MSGBUF( buf, "ckc = %16.16" I64_FMT "X    %s",
-                (clkc_now << 8), format_tod(clock_buf,clkc_now,TRUE) );
+                etod2tod(clkc_now), format_tod(clock_buf,clkc_now,TRUE) );
         WRMSG(HHC02274, "I", buf);
 
         if (regs->cpustate != CPUSTATE_STOPPED)
-            MSGBUF( buf, "cpt = %16.16" I64_FMT "X", (cpt_now << 8) );
+            MSGBUF( buf, "cpt = %16.16" I64_FMT "X", cpt_now );
         else
-            MSGBUF( buf, "cpt = not decrementing" );
+            MSGBUF( buf, "cpt = %16.16" I64_FMT "X         not decrementing", cpt_now );
         WRMSG(HHC02274, "I", buf);
 
 #if defined(_FEATURE_SIE)
@@ -838,7 +851,7 @@ int rc = 0;
         {
 
             MSGBUF( buf, "vtod = %16.16" I64_FMT "X    %s",
-                    (vtod_now << 8), format_tod(clock_buf,vtod_now,TRUE) );
+                    etod2tod(vtod_now), format_tod(clock_buf,vtod_now,TRUE) );
             WRMSG(HHC02274, "I", buf);
 
             if (vepoch_now < 0)
@@ -852,15 +865,15 @@ int rc = 0;
                 vepoch_sign = ' ';
             }
             MSGBUF( buf, "voff = %16.16" I64_FMT "X   %c%s",
-                    (vepoch_now << 8), vepoch_sign,
+                    etod2tod(vepoch_now), vepoch_sign,
                     format_tod(clock_buf,vepoch_now_abs,FALSE) );
             WRMSG(HHC02274, "I", buf);
 
             MSGBUF( buf, "vckc = %16.16" I64_FMT "X    %s",
-                    (vclkc_now << 8), format_tod(clock_buf,vclkc_now,TRUE) );
+                    etod2tod(vclkc_now), format_tod(clock_buf,vclkc_now,TRUE) );
             WRMSG(HHC02274, "I", buf);
 
-            MSGBUF( buf, "vcpt = %16.16" I64_FMT "X", (vcpt_now << 8) );
+            MSGBUF( buf, "vcpt = %16.16" I64_FMT "X", vcpt_now );
             WRMSG(HHC02274, "I", buf);
         }
 #endif

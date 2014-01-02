@@ -1,5 +1,5 @@
-/* HERCULES.H   (c) Copyright Roger Bowler, 1999-2012                */
-/*              Hercules Header Files                                */
+/* HINLINES.H   (c) Copyright Roger Bowler, 1999-2012                */
+/*              Hercules-wide inline functions                       */
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
@@ -106,7 +106,7 @@ static INLINE void __clear_page( void* addr, size_t pgszmod64 )
     return;
 }
 #else /* (all others) */
-  #define  __clear_page(_addr, _pgszmod64 )    memset((void*)(_addr), 0, (size_t)(_pgszmod64))
+  #define  __clear_page(_addr, _pgszmod64 )    memset((void*)(_addr), 0, ((size_t)(_pgszmod64)) << 6)
 #endif
 
 #if defined(_GCC_SSE2_)
@@ -121,7 +121,7 @@ static INLINE void __optimize_clear(void *addr, size_t n)
     return;
 }
 #else /* (all others, including _MSVC_) */
-  #define __optimize_clear(p,n)     memset((p),0,(n))
+  #define __optimize_clear(p,n)     memset((void*)(p),0,(size_t)(n))
 #endif
 
 #if defined(_GCC_SSE2_) || defined (_MSVC_)
@@ -234,5 +234,329 @@ fmt_memsize_MB( const U64 memsizeMB )
 }
 
 #endif /* !defined(_fmt_memsize_) */
+
+
+/*********************************************************************/
+/*                                                                   */
+/*      createCpuId - Create the requested CPU ID                    */
+/*                                                                   */
+/*********************************************************************/
+
+static INLINE U64
+createCpuId(const U64 model, const U64 version, const U64 serial, const U64 MCEL)
+{
+    register U64 result;
+    result   = version;
+    result <<= 24;
+    result  |= serial;
+    result <<= 16;
+    result  |= model;
+    result <<= 16;
+    result  |= MCEL;
+    return result;
+}
+
+
+/**********************************************************************/
+/*                                                                    */
+/* setCpuIdregs - Set the CPU ID for the requested CPU context        */
+/*                                                                    */
+/**********************************************************************/
+
+static INLINE void
+setCpuIdregs(REGS* regs, const unsigned int cpu,
+             S32 arg_model, S16 arg_version, S32 arg_serial, S32 arg_MCEL)
+{
+    register int    initialized;
+    register U16    model;
+    register U8     version;
+    register U32    serial;
+    register U16    MCEL;
+
+    /* Return if CPU out-of-range */
+    if (cpu >= MAX_CPU_ENGINES)
+        return;
+
+    /* Determine if uninitialized */
+    initialized = (regs->cpuid != 0);
+
+    /* Determine and create model number */
+    model = arg_model >= 0 ? arg_model & 0x000FFFF :
+               initialized ? regs->cpumodel : sysblk.cpumodel;
+
+    /* Determine and create version code */
+    version = arg_version >= 0 ? arg_version & 0xFF :
+                   initialized ? regs->cpuversion : sysblk.cpuversion;
+
+    /* Determine and create serial number */
+    serial = arg_serial >= 0 ? (U32)arg_serial :
+                 initialized ? regs->cpuserial : sysblk.cpuserial;
+
+    /* Determine and create MCEL */
+    MCEL = arg_MCEL >= 0 ? (U32)arg_MCEL :
+             initialized ? regs->cpuid : sysblk.cpuid;
+    MCEL &= 0x7FFF;
+
+    /* Register new CPU ID settings */
+    regs->cpumodel = model;
+    regs->cpuversion = version;
+    regs->cpuserial = serial;
+
+    /* Handle LPAR formatting */
+    if (sysblk.lparmode)
+    {
+        /* Version and MCEL are zero in LPAR mode */
+        version = 0;
+
+        /* Overlay CPUID serial nibbles 0 and 1 with LPAR or LPAR/CPU.
+         * The full serial number is maintained in STSI information.
+         */
+        serial &= 0x0000FFFF;
+
+        if (sysblk.cpuidfmt)     /* Format 1 CPU ID */
+        {
+            /* Set Format 1 bit (bit 48 or MCEL bit 0) */
+            MCEL = 0x8000;
+
+            /* Use LPAR number to a maximum of 255 */
+            serial |= min(sysblk.lparnum, 255) << 16;
+        }
+
+        else            /* Format 0 CPU ID */
+        {
+            /* Clear MCEL and leave Format 1 bit as zero */
+            MCEL = 0;
+
+            /* Use low-order nibble of LPAR id; LPARNUM 10 is
+             * indicated as a value of 0.
+             */
+            serial |= (sysblk.lparnum & 0x0F) << 16;
+
+            /* and a single digit CPU ID to a maximum of 15 */
+            serial |= min(regs->cpuad, 15) << 20;
+        }
+    }
+    else    /* BASIC mode */
+    {
+        /* If more than one CPU permitted, use a single digit CPU ID to
+         * a maximum of 15.
+         */
+        if (sysblk.maxcpu <= 1)
+            serial &= 0x00FFFFFF;
+        else
+        {
+            serial &= 0x000FFFFF;
+            serial |= min(regs->cpuad, 15) << 20;
+        }
+    }
+
+    /* Construct new CPU ID */
+    regs->cpuid = createCpuId(model, version, serial, MCEL);
+}
+
+
+/**********************************************************************/
+/*                                                                    */
+/* setCpuId - Set the CPU ID for the requested CPU                    */
+/*                                                                    */
+/**********************************************************************/
+
+static INLINE void
+setCpuId(const unsigned int cpu,
+         S32 arg_model, S16 arg_version, S32 arg_serial, S32 arg_MCEL)
+{
+    register REGS*  regs;
+
+    /* Return if CPU out-of-range */
+    if (cpu >= MAX_CPU_ENGINES)
+        return;
+
+    /* Return if CPU undefined */
+    regs = sysblk.regs[cpu];
+    if (regs == NULL)
+        return;
+
+    /* Set new CPU ID */
+    setCpuIdregs(regs, cpu, arg_model, arg_version, arg_serial, arg_MCEL);
+
+    /* Set CPU timer source (a "strange" place, but here as the CPU ID
+     * must be updated when the LPAR mode or number is update).
+     */
+    set_cpu_timer_mode(regs);
+
+}
+
+
+/*********************************************************************/
+/*                                                                   */
+/* Convert an SCSW to a CSW for S/360 and S/370 channel support      */
+/*                                                                   */
+/*********************************************************************/
+
+static INLINE void
+scsw2csw(const SCSW* scsw, BYTE* csw)
+{
+    memcpy(csw, scsw->ccwaddr, 8);
+    csw[0] = scsw->flag0;
+}
+
+
+/*********************************************************************/
+/*                                                                   */
+/* Store an SCSW as a CSW for S/360 and S/370 channel support        */
+/*                                                                   */
+/*********************************************************************/
+
+static INLINE void
+store_scsw_as_csw(const REGS* regs, const SCSW* scsw)
+{
+    register PSA_3XX*   psa;            /* -> Prefixed storage area  */
+    register RADR       pfx;            /* Current prefix            */
+
+    /* Establish prefixing */
+    pfx =
+#if defined(_FEATURE_SIE)
+          SIE_MODE(regs) ? regs->sie_px :
+#endif
+          regs->PX;
+
+    /* Establish current PSA with prefixing applied */
+    psa = (PSA_3XX*)(regs->mainstor + pfx);
+
+    /* Store the channel status word at PSA+X'40' (64)*/
+    scsw2csw(scsw, psa->csw);
+
+    /* Update storage key for reference and change done by caller */
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Synchronize CPUS                                                  */
+/*                                                                   */
+/* Locks                                                             */
+/*      INTLOCK(regs)                                                */
+/*-------------------------------------------------------------------*/
+static INLINE void
+synchronize_cpus(REGS* regs)
+{
+    int i, n = 0;
+
+    CPU_BITMAP mask = sysblk.started_mask;
+
+    /* Deselect current processor and waiting processors from mask */
+    mask &= ~(sysblk.waiting_mask | (regs)->hostregs->cpubit);
+
+    /* Deselect processors at a syncpoint and count active processors
+     */
+    for (i = 0; mask && i < sysblk.hicpu; ++i)
+    {
+        REGS*   i_regs = sysblk.regs[i];
+
+        if (mask & CPU_BIT(i))
+        {
+            if (AT_SYNCPOINT(i_regs))
+            {
+                /* Remove CPU already at syncpoint */
+                mask ^= CPU_BIT(i);
+            }
+            else
+            {
+                /* Update count of active processors */
+                ++n;
+
+                /* Test and set interrupt pending conditions */
+                ON_IC_INTERRUPT(i_regs);
+                if (SIE_MODE(i_regs))
+                    ON_IC_INTERRUPT(i_regs->guestregs);
+            }
+        }
+    }
+
+    /* If any interrupts are pending with active processors, other than
+     * self, open an interrupt window for those processors prior to
+     * considering self as synchronized.
+     */
+    if (n && mask)
+    {
+        sysblk.sync_mask = mask;
+        sysblk.syncing = 1;
+        sysblk.intowner = LOCK_OWNER_NONE;
+        wait_condition(&sysblk.sync_cond, &sysblk.intlock);
+        sysblk.intowner = (regs)->hostregs->cpuad;
+        sysblk.syncing = 0;
+        broadcast_condition(&sysblk.sync_bc_cond);
+    }
+    /* All active processors other than self, are now waiting at their
+     * respective sync point. We may now safely proceed doing whatever
+     * it is we need to do.
+     */
+}
+
+static INLINE void
+wakeup_cpu(REGS* regs)
+{
+    signal_condition(&regs->intcond);
+}
+
+static INLINE void
+wakeup_cpu_mask(CPU_BITMAP mask)
+{
+    REGS   *current_regs;
+    REGS   *lru_regs = NULL;
+    TOD     current_waittod;
+    TOD     lru_waittod;
+    int     i;
+
+    if (mask)
+    {
+        for (i = 0; mask; mask >>= 1, ++i)
+        {
+            if (mask & 1)
+            {
+                current_regs = sysblk.regs[i];
+                current_waittod = current_regs->waittod;
+
+                /* Select least recently used CPU
+                 *
+                 * The LRU CPU is chosen to keep the CPU threads active
+                 * and to distribute the I/O load across the available
+                 * CPUs.
+                 *
+                 * The current_waittod should never be zero; however,
+                 * we check it in case the cache from another processor
+                 * has not yet been written back to memory, which can
+                 * happen once the lock structure is updated for
+                 * individual CPU locks. (OBTAIN/RELEASE_INTLOCK(regs)
+                 * at present locks ALL CPUs, despite the specification
+                 * of regs.)
+                 */
+                if (lru_regs == NULL ||
+                    (current_waittod > 0 &&
+                     (current_waittod < lru_waittod ||
+                      (current_waittod == lru_waittod &&
+                       current_regs->waittime >= lru_regs->waittime))))
+                {
+                    lru_regs = current_regs;
+                    lru_waittod = current_waittod;
+                }
+            }
+        }
+
+        /* Wake up the least recently used CPU */
+        wakeup_cpu(lru_regs);
+    }
+}
+
+static INLINE void
+wakeup_cpus_mask(CPU_BITMAP mask)
+{
+    int i;
+
+    for (i = 0; mask; mask >>= 1, i++)
+    {
+        if (mask & 1)
+            wakeup_cpu(sysblk.regs[i]);
+    }
+}
 
 #endif // _HINLINES_H

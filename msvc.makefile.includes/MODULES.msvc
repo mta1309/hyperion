@@ -27,6 +27,7 @@ MODULES = \
     $(X)hdt3525.dll  \
     $(X)hdteq.dll    \
     $(X)hdtqeth.dll  \
+    $(X)hdtptp.dll   \
     $(X)hdtzfcp.dll  \
     $(X)dyninst.dll  \
     $(X)s37x.dll     \
@@ -39,7 +40,6 @@ EXECUTABLES = \
     $(X)cckdcomp.exe \
     $(X)cckddiag.exe \
     $(X)cckdswap.exe \
-    $(X)cmpsctst.exe \
     $(X)conspawn.exe \
     $(X)dasdcat.exe  \
     $(X)dasdconv.exe \

@@ -22,6 +22,7 @@
 #include "hstdinc.h"
 #include "hercules.h"  /* need Hercules control blocks               */
 #include "tapedev.h"   /* Main tape handler header file              */
+#include "ftlib.h"     /* Main faketape header file                  */
 
 //#define  ENABLE_TRACING_STMTS   1       // (Fish: DEBUGGING)
 //#include "dbgtrace.h"                   // (Fish: DEBUGGING)
@@ -281,24 +282,9 @@ U16             curblkl;                /* Current block length      */
     /* Read the block header to obtain the current block length */
     rc = readhdr_faketape (dev, blkpos, NULL, &curblkl, unitstat,code);
     if (rc < 0) return -1; /* (error message already issued) */
-    /* ASSERT( curblkl >= 0 );  curblkl is unsigned */
 
     /* Calculate the offset of the next block header */
     blkpos += sizeof(FAKETAPE_BLKHDR) + curblkl;
-
-#if 0
-    /*BHE following code will never be true!!*/
-
-    /* Check that block length will not exceed buffer size */
-    if (curblkl > MAX_BLKLEN)
-    {
-        WRMSG (HHC00202, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, "fake", (int)MAX_BLKLEN, blkpos);
-
-        /* Set unit check with data check */
-        build_senseX(TAPE_BSENSE_READFAIL,dev,unitstat,code);
-        return -1;
-    }
-#endif
 
     /* If not a tapemark, read the data block */
     if (curblkl > 0)
@@ -408,7 +394,7 @@ char            sblklen[8];             /* work buffer               */
 /* If successful, return value is zero.                              */
 /* If error, return value is -1 and unitstat is set to CE+DE+UC      */
 /*-------------------------------------------------------------------*/
-int write_faketape (DEVBLK *dev, BYTE *buf, U16 blklen,
+int write_faketape (DEVBLK *dev, BYTE *buf, U32 blklen,
                         BYTE *unitstat,BYTE code)
 {
 int             rc;                     /* Return code               */
@@ -463,7 +449,7 @@ U16             prvblkl;                /* Length of previous block  */
 
     /* Write the data block */
     rc = write (dev->fd, buf, blklen);
-    if (rc < blklen)
+    if (rc < (int)blklen)
     {
         WRMSG (HHC00204, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, "fake", "write()", blkpos, strerror(errno));
         if(errno==ENOSPC)

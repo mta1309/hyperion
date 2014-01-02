@@ -24,19 +24,31 @@
 
 static const char *build_info[] = {
 
-#if defined(_MSVC_)
-    "Windows (MSVC) "
-  #if defined(DEBUG)
-    "** DEBUG ** "
-  #endif
-    "build for " QSTR(HOST_ARCH)
-  #if defined(CUSTOM_BUILD_STRING)
-    ": \"" CUSTOM_BUILD_STRING "\""
-  #endif
-    ,
-#elif defined(CUSTOM_BUILD_STRING)
+#if defined(CUSTOM_BUILD_STRING)
     CUSTOM_BUILD_STRING,
 #endif
+
+#if !defined(HOST_ARCH)
+  #error HOST_ARCH is undefined
+#endif
+
+#if defined(_MSVC_)
+  #define QSTR_HOST_ARCH    QSTR(HOST_ARCH)
+#else
+  #define QSTR_HOST_ARCH         HOST_ARCH
+#endif
+
+#if defined(_MSVC_)
+    "Windows MSVC "
+#else
+    "*Nix "
+#endif
+    QSTR_HOST_ARCH
+    " "
+#if defined(DEBUG)
+    "** DEBUG ** "
+#endif
+    "host architecture build",
 
 #if !defined(_ARCHMODE2)
     "Mode:"
@@ -73,13 +85,9 @@ static const char *build_info[] = {
 #endif
 
 #if defined( OPTION_FTHREADS )
-    "Using   fthreads Threading Model",
+    "Using   Fish threads Threading Model",
 #else
-    #if defined( OPTION_WTHREADS )
-        "Using   Windows Native Threading Model",
-    #else
-        "Using   POSIX threads Threading Model",
-    #endif
+    "Using   POSIX threads Threading Model",
 #endif
 
 #if        OPTION_MUTEX_DEFAULT == OPTION_MUTEX_NORMAL
@@ -92,8 +100,10 @@ static const char *build_info[] = {
     "Using   (undefined) Mutex Locking Model",
 #endif
 
-#if defined( OPTION_FISHIO)
-    "Using   FishIO",
+#if defined(OPTION_SYNCIO)
+    "With    Syncio support",
+#else
+    "Without Syncio support",
 #endif
 
 #if defined(OPTION_DYNAMIC_LOAD)
@@ -186,11 +196,7 @@ static const char *build_info[] = {
     "Without Automatic Operator support",
 #endif
 
-#if defined(ENABLE_NLS)
-    "With    National Language Support",
-#else
     "Without National Language Support",
-#endif
 
     "Machine dependent assists:"
 #if !defined( ASSIST_CMPXCHG1  ) \

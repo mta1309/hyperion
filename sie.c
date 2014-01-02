@@ -280,16 +280,16 @@ U64     dreg;
 
      /* Initialize guestregs if first time */
      if (GUESTREGS == NULL)
-     {
-        GUESTREGS = calloc (1, sizeof(REGS));
+    {
+        GUESTREGS = calloc_aligned(sizeof(REGS), 4096);
         if (GUESTREGS == NULL)
-         {
-             logmsg(MSG(HHC00813, "E", PTYPSTR(regs->cpuad), regs->cpuad, "calloc()", strerror(errno)));
+        {
+            logmsg(MSG(HHC00813, "E", PTYPSTR(regs->cpuad), regs->cpuad, "calloc()", strerror(errno)));
 #if !defined(NO_SIGABEND_HANDLER)
-             signal_thread(sysblk.cputid[regs->cpuad], SIGUSR1);
+            signal_thread(sysblk.cputid[regs->cpuad], SIGUSR1);
 #endif
-             return;
-         }
+            return;
+        }
         cpu_init (regs->cpuad, GUESTREGS, regs);
      }
 
@@ -561,11 +561,11 @@ U64     dreg;
 
     /* Load the TOD clock offset for this guest */
     FETCH_DW(GUESTREGS->sie_epoch, STATEBK->epoch);
-    GUESTREGS->tod_epoch = regs->tod_epoch + (GUESTREGS->sie_epoch >> 8);
+    GUESTREGS->tod_epoch = regs->tod_epoch + tod2etod(GUESTREGS->sie_epoch);
 
     /* Load the clock comparator */
     FETCH_DW(GUESTREGS->clkc, STATEBK->clockcomp);
-    GUESTREGS->clkc >>= 8; /* Internal Hercules format */
+    GUESTREGS->clkc = tod2etod(GUESTREGS->clkc);    /* Internal Hercules format */
 
     /* Load TOD Programmable Field */
     FETCH_HW(GUESTREGS->todpr, STATEBK->todpf);
@@ -676,7 +676,7 @@ U64     dreg;
         OBTAIN_INTLOCK(regs);
 
         /* CPU timer */
-        if(CPU_TIMER(GUESTREGS) < 0)
+        if(cpu_timer(GUESTREGS) < 0)
             ON_IC_PTIMER(GUESTREGS);
 
         /* Clock comparator */
@@ -743,14 +743,12 @@ void ARCH_DEP(sie_exit) (REGS *regs, int code)
 {
 int     n;
 
-#if defined(OPTION_PTTRACE)
     if(pttclass & PTT_CL_SIE)
     {
     U32  nt1 = 0, nt2 = 0;
     BYTE *ip;
         if(!GUESTREGS->instinvalid)
         {
-
             if(GUESTREGS->ip[0] == 0x44
 #if defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)
                || (GUESTREGS->ip[0] == 0xc6 && !(GUESTREGS->ip[1] & 0x0f))
@@ -771,7 +769,6 @@ int     n;
 
         PTT(PTT_CL_SIE,"*SIE", nt1, nt2, code);
     }
-#endif /*defined(OPTION_PTTRACE)*/
 
 #if defined(SIE_DEBUG)
     logmsg(_("SIE: interception code %d\n"),code);
@@ -846,7 +843,7 @@ int     n;
     STORE_DW(STATEBK->cputimer, cpu_timer(GUESTREGS));
 
     /* Save clock comparator */
-    STORE_DW(STATEBK->clockcomp, GUESTREGS->clkc << 8);
+    STORE_DW(STATEBK->clockcomp, etod2tod(GUESTREGS->clkc));
 
 #if defined(_FEATURE_INTERVAL_TIMER) && !defined(FEATURE_ESAME)
     /* If this is a S/370 guest, and the interval timer is enabled
@@ -979,10 +976,8 @@ static int ARCH_DEP(run_sie) (REGS *regs)
     BYTE  oldv;     /* siebk->v change check reference */
     BYTE *ip;       /* instruction pointer             */
     const zz_func *current_opcode_table;
-#ifdef OPTION_CAPPING
     register    int     *caplocked = &sysblk.caplocked[regs->cpuad];
                 LOCK    *caplock = &sysblk.caplock[regs->cpuad];
-#endif
 
     SIE_PERFMON(SIE_PERF_RUNSIE);
 
@@ -1080,17 +1075,20 @@ static int ARCH_DEP(run_sie) (REGS *regs)
 #endif
                             sysblk.waiting_mask |= regs->cpubit;
                             sysblk.intowner = LOCK_OWNER_NONE;
-#if defined( OPTION_WTHREADS )
-                            timed_wait_condition
-                                 ( &regs->intcond, &sysblk.intlock, 3 );
-#else
                             timed_wait_condition
                                  ( &regs->intcond, &sysblk.intlock, &waittime );
-#endif
                             while (sysblk.syncing)
                                  wait_condition (&sysblk.sync_bc_cond, &sysblk.intlock);
                             sysblk.intowner = regs->cpuad;
-                            sysblk.waiting_mask ^= regs->cpubit;
+
+                            /* Remove CPU from the waiting mask; AND
+                             * must be used to handle the rare case
+                             * where the CPU was already removed from
+                             * sysblk.waiting_mask during
+                             * wait_condition.
+                             */
+                            sysblk.waiting_mask &= ~(regs->cpubit);
+
 #ifdef OPTION_MIPS_COUNTING
                             regs->waittime += host_tod() - regs->waittod;
                             regs->waittod = 0;
@@ -1140,14 +1138,12 @@ static int ARCH_DEP(run_sie) (REGS *regs)
                 }
                 regs->instcount += i * 2;
 
-#if defined(OPTION_CAPPING)
                 if (caplocked[0])
                 {
                     obtain_lock(caplock);
                     /* Greg must be proud of me */
                     release_lock(caplock);
                 }
-#endif // OPTION_CAPPING
 
             } while( unlikely(!SIE_I_HOST(regs)
                             && !SIE_I_WAIT(GUESTREGS)

@@ -53,6 +53,7 @@
 #define HSO_EINVAL              WSAEINVAL
 #define HSO_EMFILE              WSAEMFILE
 #define HSO_EWOULDBLOCK         WSAEWOULDBLOCK
+#define HSO_EAGAIN              WSAEWOULDBLOCK
 #define HSO_EINPROGRESS         WSAEINPROGRESS
 #define HSO_EALREADY            WSAEALREADY
 #define HSO_ENOTSOCK            WSAENOTSOCK
@@ -108,6 +109,7 @@
 #define HSO_EINVAL              EINVAL
 #define HSO_EMFILE              EMFILE
 #define HSO_EWOULDBLOCK         EWOULDBLOCK
+#define HSO_EAGAIN              EAGAIN
 #define HSO_EINPROGRESS         EINPROGRESS
 #define HSO_EALREADY            EALREADY
 #define HSO_ENOTSOCK            ENOTSOCK
@@ -153,5 +155,6 @@
 
 HSOCK_DLL_IMPORT int read_socket(int fd, void *ptr, int nbytes);
 HSOCK_DLL_IMPORT int write_socket(int fd, const void *ptr, int nbytes);
+HSOCK_DLL_IMPORT int disable_nagle(int fd);
 
 #endif /*!defined(_HSOCKET_H)*/

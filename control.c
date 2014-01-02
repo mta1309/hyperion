@@ -31,6 +31,7 @@
 /*      ESAME BSA instruction - Roger Bowler                    v209c*/
 /*      ASN-and-LX-reuse facility - Roger Bowler            June 2004*/
 /*      SIGP orders 11,12.2,13,15 - Fish                     Oct 2005*/
+/*      Configuration topology facility fixes by PaoloG      Oct 2013*/
 /*-------------------------------------------------------------------*/
 
 #include "hstdinc.h"
@@ -46,10 +47,6 @@
 #include "hercules.h"
 #include "opcode.h"
 #include "inline.h"
-
-#if defined(OPTION_FISHIO)
-#include "w32chan.h"
-#endif // defined(OPTION_FISHIO)
 
 /* Temporary debug */
 extern  int     ipending_cmd(int,void *,void *);
@@ -4637,7 +4634,7 @@ S64     dreg;                           /* Timer value               */
     set_cpu_timer(regs, dreg);
 
     /* reset the cpu timer pending flag according to its value */
-    if( CPU_TIMER(regs) < 0 )
+    if( unlikely( dreg < 0 ) )
         ON_IC_PTIMER(regs);
     else
         OFF_IC_PTIMER(regs);
@@ -6177,9 +6174,6 @@ static char *ordername[] = {
             } /* end if(!status) */
 
             sysblk.dummyregs.arch_mode = sysblk.arch_mode;
-#if defined(OPTION_FISHIO)
-            ios_arch_mode = sysblk.arch_mode;
-#endif // defined(OPTION_FISHIO)
 
             /* Invalidate the ALB and TLB */
             ARCH_DEP(purge_tlb) (regs);
@@ -6401,7 +6395,6 @@ DEF_INST(store_cpu_id)
 {
 int     b2;                             /* Base of effective addr    */
 VADR    effective_addr2;                /* Effective address         */
-U64     dreg;                           /* Double word workarea      */
 
     S(inst, regs, b2, effective_addr2);
 
@@ -6411,25 +6404,8 @@ U64     dreg;                           /* Double word workarea      */
 
     DW_CHECK(effective_addr2, regs);
 
-    /* Load the CPU ID */
-    dreg = sysblk.cpuid;
-
-    /* If fmt1 cpuid and the digits are zero, insert the two digit lpar id */
-    if((dreg & 0x8000ULL) && !(dreg & 0x00FF000000000000ULL))
-        dreg |= ((U64)(sysblk.lparnum & 0xFF) << 48);
-    else
-    {
-        /* For fmt0 Insert a single digit lpar id */
-        if(!(dreg & 0x000F000000000000ULL))
-            dreg |= ((U64)(sysblk.lparnum & 0xF) << 48);
-
-        /* If first digit of serial is zero, insert processor id */
-        if(!(dreg & 0x00F0000000000000ULL))
-            dreg |= (U64)(regs->cpuad & 0x0F) << 52;
-    }
-    
     /* Store CPU ID at operand address */
-    ARCH_DEP(vstore8) ( dreg, effective_addr2, b2, regs );
+    ARCH_DEP(vstore8) ( regs->cpuid, effective_addr2, b2, regs );
 
 }
 
@@ -6460,7 +6436,7 @@ S64     dreg;                           /* Double word workarea      */
     dreg = cpu_timer(regs);
 
     /* reset the cpu timer pending flag according to its value */
-    if( CPU_TIMER(regs) < 0 )
+    if( unlikely( dreg < 0 ) )
     {
         ON_IC_PTIMER(regs);
 
@@ -6511,29 +6487,190 @@ VADR    effective_addr2;                /* Effective address         */
 
 
 /*-------------------------------------------------------------------*/
-/* Calculate CPU capability indicator for STSI instruction           */
+/* Calculate real CPU capability indicator for the STSI instruction  */
 /*                                                                   */
-/* The CPU capability indicator is 32-bit value which is calculated  */
-/* dynamically. A lower value indicates a faster CPU. The value may  */
-/* be either an unsigned binary integer or a floating point number.  */
-/* If bits 0-8 are zero, it is an integer in the range 0 to 2**23-1. */
-/* If bits 0-8 are nonzero, is is a 32-bit short BFP number.         */
+/* The CPU capability indicators are generated as two different,     */
+/* dynamically generated 32-bit values, based on the total MIPS per  */
+/* real CPU second:                                                  */
+/*                                                                   */
+/* 1) An MSU value (straight-line generated, rather than assigned    */
+/*    by a marketing group); this value is used for an ascending     */
+/*    performance indicator.                                         */
+/*                                                                   */
+/* 2) A performance value with a lower value indicating a faster     */
+/*    CPU. The value may be either an unsigned binary integer or a   */
+/*    floating point number. If bits 0-8 are zero, it is an integer  */
+/*    in the range 0 to 2**23-1. If bits 0-8 are nonzero, it is a    */
+/*    32-bit short BFP number.                                       */
+/*                                                                   */
+/* The generated values are stored in a static area, refreshed on    */
+/* type 111 calls, to keep consistency between data areas.           */
+/*                                                                   */
+/*                                                                   */
+/* Notes:                                                            */
+/*                                                                   */
+/* 1) The real CPU capability indicators may fluctuate due to a      */
+/*    variety of reasons during operation.                           */
+/*                                                                   */
+/* 2) A real CPU second is defined to be time consumed in the host   */
+/*    user state for a given thread.                                 */
+/*                                                                   */
+/* 3) Host kernel time is considered to be part of management and    */
+/*    overhead times.                                                */
+/*                                                                   */
 /*-------------------------------------------------------------------*/
 #if !defined(_STSI_CAPABILITY)
 #define _STSI_CAPABILITY
-static inline U32 stsi_capability (REGS *regs)
+
+
+/*-------------------------------------------------------------------*/
+/*  MIPSreal - Gather and generate MIPS per real CPU second          */
+/*-------------------------------------------------------------------*/
+enum
 {
-U64               dreg;                /* work doubleword            */
-struct rusage     usage;               /* RMF type data              */
+    stsicap_current,                    /* Current performance       */
+    stsicap_nominal                     /* Real values, if capped    */
+} stsicap_type;
 
-#define SUSEC_PER_MIPS 48              /* One MIPS eq 48 SU          */
+long double MIPSreal (const int stsicap_type)
+{
+    U64             instcount = 0;     /* Combined instruction count */
+    U64             cputime = 0;       /* Combined CPU time in us    */
+    int             cpu;               /* CPU loop variable          */
+    long double     result;
 
-        getrusage(RUSAGE_SELF,&usage);
-        dreg = (U64)(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec);
-        dreg = (dreg * 1000000) + (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
-        dreg = INSTCOUNT(regs) / (dreg ? dreg : 1);
-        dreg *= SUSEC_PER_MIPS;
-        return 0x800000 / (dreg ? dreg : 1);
+    /* If capping, use MIPS per processor cap value
+     * as MIPS per real second and return.
+     */
+    if (sysblk.capvalue)
+    {
+        if (stsicap_type == stsicap_current)
+            return (sysblk.capvalue);
+    }
+    else if (stsicap_type == stsicap_nominal)
+        return (0);
+
+    /* Gather real CPU time and instruction count for each processor.
+     * Since the real CPU time is managed by the clock, only the
+     * corresponding previous instruction counts are used.
+     */
+    for ( cpu = 0; cpu < sysblk.maxcpu; ++cpu )
+    {
+        /* Loop through online CP CPUs */
+        if ( IS_CPU_ONLINE(cpu) &&
+             sysblk.ptyp[cpu] == SCCB_PTYP_CP )
+        {
+            REGS* regs = sysblk.regs[cpu];
+
+            cputime   += regs->rcputime;
+            instcount += regs->prevcount;
+        }
+    }
+
+    /* Calculate MIPS per real CPU second
+     *
+     * Dividing the total instruction count by the time in microseconds
+     * yields the average MIPS per real CPU second.
+     */
+    result = (long double)instcount /
+             (long double)cputime;
+
+    return (result);
+}
+
+
+/*-------------------------------------------------------------------*/
+/*  stsi_capability - Generate capability matrix                     */
+/*-------------------------------------------------------------------*/
+
+enum
+{
+    stsicap_refresh,
+    stsicap_read
+}   stsicap_request;
+
+static void stsi_capability (const int stsicap_request)
+{
+    /* The MSU and CPU factors used are estimates; actual MSUs assigned
+     * to the hardware are determined by exhaustive testing and vendor
+     * marketing requirements.
+     */
+
+    static const long double    CPU_Factor = 764748;
+    static const long double    MSU_Factor_Multiplier =
+                                    9.99209649643744627640427E-1L;
+
+    static long double  MSU_Factor;
+    static int          RealCPUs;
+
+    long double     MIPScpu_current;   /* MIPS per CPU               */
+    long double     MIPScpu_nominal;   /* ...                        */
+
+    /* If valid data and a read request, just return */
+    if (sysblk.cpmcap &&
+        stsicap_request == stsicap_read)
+        return;
+
+    /* Initialize current real CP CPU count; that is the lessor of the
+     * number of online CP engines plus reserved (possible CP) CPU
+     * count, or the number of host real logical processors.
+     */
+    RealCPUs = get_RealCPCount();
+
+    /* Create an MSU factor based on the number of possible CPs */
+    MSU_Factor  = 0.125 * pow(MSU_Factor_Multiplier,
+                              MIN(RealCPUs, 1) - 1);
+
+    /* Request MIPS per real CPU second */
+    MIPScpu_current = MIPSreal(stsicap_current);
+    MIPScpu_nominal = MIPSreal(stsicap_nominal);
+
+    /* Generate a rough MSU and CPU capabilities based on current MIPS
+     * per real CPU second, with a range of 1 - 2**23-1.
+     */
+    sysblk.cpmcap = (U32)(CPU_Factor / MIPScpu_current) & 0x007FFFFFU;
+    if (!sysblk.cpmcap)
+        sysblk.cpmcap = 1;
+
+    sysblk.cpmcr = MIPScpu_current * RealCPUs * MSU_Factor;
+
+    /* Generate a rough MSU and CPU capabilities based on nominal MIPS
+     * per real CPU second, with a range of 0 - 2**23-1.
+     */
+    if (MIPScpu_nominal)
+    {
+        sysblk.cpcai = (MIN((MIPScpu_current / MIPScpu_nominal),
+                            1) * 100) + 0.5;
+        if (sysblk.cpcai < 100)
+        {
+            sysblk.cpncap = (U32)(CPU_Factor / MIPScpu_nominal) &
+                            0x007FFFFFU;
+            if (!sysblk.cpncap)
+                sysblk.cpncap = 1;
+            sysblk.cpncr = MIPScpu_nominal * RealCPUs * MSU_Factor;
+        }
+        else
+        {
+            /* Limit rates and capacity to not exceed 100%. This may
+             * occur when the capping rate exceeds the hardware
+             * capabilities.
+             */
+            sysblk.cpncr  = sysblk.cpmcr;
+            sysblk.cpncap = sysblk.cpmcap;
+        }
+    }
+    else
+    {
+        sysblk.cpncap = sysblk.cpmcap;
+        sysblk.cpccr = sysblk.cpcai = sysblk.cpncr = 0;
+    }
+
+    sysblk.cpmpcr = sysblk.cpmtcr = sysblk.cpmcr;
+    sysblk.cpnpcr = sysblk.cpntcr = sysblk.cpncr;
+    sysblk.cpscap = sysblk.cpmcap;
+    sysblk.cpacap = 0;
+
+    return;
 
 } /* end function stsi_capability */
 #endif /*!defined(_STSI_CAPABILITY)*/
@@ -6561,17 +6698,19 @@ SYSIBVMDB *sysibvmdb;                   /* VM description block      */
 
 #if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
 SYSIB1512 *sysib1512;                   /* Configuration Topology    */
+BYTE      *tle;                         /* Pointer to next TLE       */
+TLECNTNR  *tlecntnr;                    /* Container TLE pointer     */
 TLECPU    *tlecpu;                      /* CPU TLE Type              */
 U64        cpumask;                     /* work                      */
 int        cputype;                     /* work                      */
+U16        cpuad;                       /* CPU address               */
+BYTE       cntnrid;                     /* Container ID              */
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
 
                            /*  "0    1    2    3    4    5    6    7" */
 static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                            /*  "8    9    A    B    C    D    E    F" */
                               0xF8,0xF9,0xC1,0xC2,0xC3,0xC4,0xC5,0xC6 };
-
-#define STSI_CAPABILITY   stsi_capability(regs)
 
     S(inst, regs, b2, effective_addr2);
 
@@ -6665,19 +6804,25 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 || (regs->GR_L(1) & STSI_GPR1_SEL2_MASK) >  2
                )
            )
+#if defined(_FEATURE_HYPERVISOR)
         || ((regs->GR_L(0) & STSI_GPR0_FC_MASK) == STSI_GPR0_FC_LPAR
             && (0
+                || !FACILITY_ENABLED(LOGICAL_PARTITION,regs)
+                || !sysblk.lparmode
                 || (regs->GR_L(0) & STSI_GPR0_SEL1_MASK) != 2
                 || (regs->GR_L(1) & STSI_GPR1_SEL2_MASK) == 0
                 || (regs->GR_L(1) & STSI_GPR1_SEL2_MASK) >  2
                )
            )
+#endif /*defined(_FEATURE_HYPERVISOR*/
+#if defined(_FEATURE_EMULATE_VM)
         || ((regs->GR_L(0) & STSI_GPR0_FC_MASK) == STSI_GPR0_FC_VM
             && (0
                 || (regs->GR_L(0) & STSI_GPR0_SEL1_MASK) != 2
                 || (regs->GR_L(1) & STSI_GPR1_SEL2_MASK) != 2
                )
            )
+#endif /*defined(_FEATURE_EMULATE_VM)*/
 #if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
         || ((regs->GR_L(0) & STSI_GPR0_FC_MASK) == STSI_GPR0_FC_CURRINFO
             && (0
@@ -6699,7 +6844,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
     switch(regs->GR_L(0) & STSI_GPR0_FC_MASK) {
 
     case STSI_GPR0_FC_BASIC:
-        
+
         /* Obtain absolute address of main storage block,
            check protection, and set reference and change bits */
         m = MADDR (effective_addr2, b2, regs, ACCTYPE_WRITE, regs->psw.pkey);
@@ -6714,12 +6859,13 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 /* Basic-machine configuration */
                 sysib111 = (SYSIB111*)(m);
                 memset(sysib111, 0, MAX(sizeof(SYSIB111),64*4));
+                stsi_capability(stsicap_refresh);
                 sysib111->flag1 |= SYSIB111_PFLAG;
                 get_manufacturer(sysib111->manufact);
                 get_model(sysib111->model);
                 for(i = 0; i < 4; i++)
                     sysib111->type[i] =
-                        hexebcdic[(sysblk.cpuid >> (28 - (i*4))) & 0x0F];
+                        hexebcdic[(sysblk.cpumodel >> (12 - (i*4))) & 0x0F];
                 get_modelcapa(sysib111->modcapaid);
                 if (sysib111->modcapaid[0] == '\0')
                     memcpy(sysib111->modcapaid, sysib111->model, sizeof(sysib111->model));
@@ -6728,14 +6874,22 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 memset(sysib111->seqc,0xF0,sizeof(sysib111->seqc));
                 for(i = 0; i < 6; i++)
                     sysib111->seqc[(sizeof(sysib111->seqc) - 6) + i] =
-                    hexebcdic[(sysblk.cpuid >> (52 - (i*4))) & 0x0F];
+                    hexebcdic[(sysblk.cpuserial >> (20 - (i*4))) & 0x0F];
                 get_plant(sysib111->plant);
-                STORE_FW(sysib111->mcaprating,  STSI_CAPABILITY);
-                STORE_FW(sysib111->mpcaprating, STSI_CAPABILITY);
-                STORE_FW(sysib111->mtcaprating, STSI_CAPABILITY);
+                STORE_FW(sysib111->mcaprating,  sysblk.cpmcr);
+                STORE_FW(sysib111->mpcaprating, sysblk.cpmpcr);
+                STORE_FW(sysib111->mtcaprating, sysblk.cpmtcr);
                 for(i=0;i<5;i++)
                 {
                     sysib111->typepct[i] = 100;
+                }
+                if (sysblk.cpcai)
+                {
+                    sysib111->ccr = 1;
+                    sysib111->cai = sysblk.cpcai;
+                    STORE_FW(sysib111->ncaprating,  sysblk.cpncr);
+                    STORE_FW(sysib111->npcaprating, sysblk.cpnpcr);
+                    STORE_FW(sysib111->ntcaprating, sysblk.cpntcr);
                 }
                 regs->psw.cc = 0;
                 break;
@@ -6757,7 +6911,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 memset(sysib121->seqc,0xF0,sizeof(sysib121->seqc));
                 for(i = 0; i < 6; i++)
                     sysib121->seqc[(sizeof(sysib121->seqc) - 6) + i] =
-                        hexebcdic[sysblk.cpuid >> (52 - (i*4)) & 0x0F];
+                        hexebcdic[sysblk.cpuserial >> (20 - (i*4)) & 0x0F];
                 get_plant(sysib121->plant);
                 STORE_HW(sysib121->cpuad,regs->cpuad);
                 regs->psw.cc = 0;
@@ -6767,17 +6921,26 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 /* Basic-machine All CPUs */
                 sysib122 = (SYSIB122*)(m);
                 memset(sysib122, 0, MAX(sizeof(SYSIB122),64*4));
-                sysib122->format = 1;
-                offset = (U16)(sysib122->accap - (BYTE*)sysib122);
-                STORE_HW(sysib122->accoff, offset);
-                STORE_FW(sysib122->sccap, STSI_CAPABILITY);
-                STORE_FW(sysib122->cap,   STSI_CAPABILITY);
-                STORE_HW(sysib122->totcpu, sysblk.maxcpu);
+                stsi_capability(stsicap_read);
+                if (0)  /* Change -0- to the proper test when Hercules supports alternate CPUs */
+                {
+                    sysib122->format = 1;
+                    offset = (U16)(sysib122->accap - (BYTE*)sysib122);
+                    STORE_HW(sysib122->accoff, offset);
+                }
+                STORE_FW(sysib122->nccap, sysblk.cpncap);
+                STORE_FW(sysib122->sccap, sysblk.cpscap);
+                STORE_FW(sysib122->cap,   sysblk.cpmcap);
+                STORE_HW(sysib122->totcpu, MAX_CPU_ENGINES);
                 STORE_HW(sysib122->confcpu, sysblk.cpus);
                 STORE_HW(sysib122->sbcpu, sysblk.maxcpu - sysblk.cpus);
+                STORE_HW(sysib122->resvcpu, MAX_CPU_ENGINES - sysblk.maxcpu);
                 get_mpfactors((BYTE*)sysib122->mpfact);
-                STORE_FW(sysib122->accap, STSI_CAPABILITY);
-                get_mpfactors((BYTE*)sysib122->ampfact);
+                if (sysib122->format)
+                {
+                    STORE_FW(sysib122->accap, sysblk.cpacap);
+                    get_mpfactors((BYTE*)sysib122->ampfact);
+                }
                 regs->psw.cc = 0;
                 break;
 
@@ -6794,7 +6957,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
         break;
 
     case STSI_GPR0_FC_LPAR:
-        
+
 #if defined(_FEATURE_HYPERVISOR)
          if(!FACILITY_ENABLED(LOGICAL_PARTITION,regs))
          {
@@ -6821,7 +6984,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 memset(sysib221->seqc,0xF0,sizeof(sysib111->seqc));
                 for(i = 0; i < 6; i++)
                     sysib221->seqc[(sizeof(sysib221->seqc) - 6) + i] =
-                    hexebcdic[(sysblk.cpuid >> (52 - (i*4))) & 0x0F];
+                    hexebcdic[(regs->cpuserial >> (20 - (i*4))) & 0x0F];
                 get_plant(sysib221->plant);
                 STORE_HW(sysib221->lcpuid,regs->cpuad);
                 STORE_HW(sysib221->cpuad,regs->cpuad);
@@ -6832,12 +6995,19 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 /* Logical-partition All CPUs */
                 sysib222 = (SYSIB222 *)(m);
                 memset(sysib222, 0, MAX(sizeof(SYSIB222),64*4));
-                STORE_HW(sysib222->lparnum,1);
-                sysib222->lcpuc = SYSIB222_LCPUC_SHARED;
-                STORE_HW(sysib222->totcpu,sysblk.maxcpu);
+                STORE_HW(sysib222->lparnum,sysblk.lparnum);
+                sysib222->lcpuc = SYSIB222_LCPUC_SHARED |
+                                  sysblk.capvalue ? SYSIB222_LCPUC_CAPPED : 0;
+                STORE_HW(sysib222->totcpu, MAX_CPU_ENGINES);
                 STORE_HW(sysib222->confcpu,sysblk.cpus);
                 STORE_HW(sysib222->sbcpu,sysblk.maxcpu - sysblk.cpus);
+                STORE_HW(sysib222->resvcpu, MAX_CPU_ENGINES - sysblk.maxcpu);
                 get_lparname(sysib222->lparname);
+                /* FIXME: Should be a percentage of 1000, where 1000
+                 *        represents 1.000 and capable of full CPU
+                 *        utilization. This usually is NOT the case for
+                 *        an LPAR, by definition.
+                 */
                 STORE_FW(sysib222->lparcaf,1000);   /* Full capability factor */
                 STORE_FW(sysib222->mdep[0],1000);   /* ZZ nonzero value */
                 STORE_FW(sysib222->mdep[1],1000);   /* ZZ nonzero value */
@@ -6856,30 +7026,31 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
             regs->psw.cc = 3;
         } /* selector 1 */
         break;
-        
+
     case STSI_GPR0_FC_VM:
-        
+
         /* Obtain absolute address of main storage block,
            check protection, and set reference and change bits */
         m = MADDR (effective_addr2, b2, regs, ACCTYPE_WRITE, regs->psw.pkey);
-        
+
         sysib322 = (SYSIB322 *)(m);
         memset(sysib322, 0, sizeof(SYSIB322));
-        sysib322->dbct = 0x01;
+        sysib322->dbct = 1;
         sysibvmdb = (SYSIBVMDB *)&sysib322->vmdb[0];
-        STORE_HW(sysibvmdb->totcpu,sysblk.maxcpu);
-        STORE_HW(sysibvmdb->confcpu,sysblk.cpus);
-        STORE_HW(sysibvmdb->sbcpu,sysblk.maxcpu - sysblk.cpus);
+        STORE_HW(sysibvmdb->totcpu, MAX_CPU_ENGINES);
+        STORE_HW(sysibvmdb->confcpu, sysblk.cpus);
+        STORE_HW(sysibvmdb->sbcpu, sysblk.maxcpu - sysblk.cpus);
+        STORE_HW(sysibvmdb->resvcpu, MAX_CPU_ENGINES - sysblk.maxcpu);
         get_vmid(sysibvmdb->vmname);
         STORE_FW(sysibvmdb->vmcaf,1000);   /* Full capability factor */
         get_cpid(sysibvmdb->cpid);
-        
+
         regs->psw.cc = 0;
         break;
 
 #if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
     case STSI_GPR0_FC_CURRINFO:
-        
+
         /* Obtain absolute address of main storage block,
            check protection, and set reference and change bits */
         m = MADDR (effective_addr2, b2, regs, ACCTYPE_WRITE, regs->psw.pkey);
@@ -6895,16 +7066,26 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 sysib1512 = (SYSIB1512 *)(m);
                 memset(sysib1512, 0, sizeof(SYSIB1512));
 
-                // PROGRAMMING NOTE: we only support horizontal polarization,
-                // not vertical.
+                sysib1512->mnest = 2;
+                sysib1512->mag[4] = 1;
+                sysib1512->mag[5] = sysblk.maxcpu;
 
-                sysib1512->mnest = 1;
-                sysib1512->mag[5] = sysblk.cpus;
-                tlecpu = (TLECPU *)(sysib1512->tles);
+                tle = sysib1512->tles;
+                cntnrid = 1;
+                cpuad = 0;
 
-                /* For each type of CPU... */
+                /* Build a container TLE */
+                tlecntnr = (TLECNTNR *)tle;
+                memset(tlecntnr, 0x00, sizeof(TLECNTNR));
+                tlecntnr->nl = 1;
+                tlecntnr->cntnrid = cntnrid;
+                tle += sizeof(TLECNTNR);
+
+                /* For each type of CPU */
                 for (cputype = 0; cputype <= SCCB_PTYP_MAX; cputype++)
                 {
+                    tlecpu = (TLECPU *)tle;
+
                     /* For each CPU of this type */
                     cpumask = 0;
                     for (i=0; i < sysblk.hicpu; i++)
@@ -6920,8 +7101,12 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                             {
                                 memset(tlecpu, 0, sizeof(TLECPU));
                                 tlecpu->nl = 0;
-                                tlecpu->flags = CPUTLE_FLAG_DEDICATED;
-                                tlecpu->cpuadorg = 0;
+                                if (sysblk.topology == TOPOLOGY_VERT) {
+                                    tlecpu->flags = CPUTLE_FLAG_VERTMED;
+                                } else {
+                                    tlecpu->flags = CPUTLE_FLAG_HORIZ;
+                                }
+                                tlecpu->cpuadorg = cpuad;
                                 tlecpu->cputype = cputype;
                             }
                             /* Update CPU mask field for this type */
@@ -6932,12 +7117,12 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                     if (cpumask)
                     {
                         STORE_DW( &tlecpu->cpumask, cpumask );
-                        tlecpu++;
+                        tle += sizeof(TLECPU);
                     }
                 }
 
                 /* Save the length of this System Information Block */
-                STORE_HW(sysib1512->len,(U16)((BYTE*)tlecpu - (BYTE*)sysib1512));
+                STORE_HW(sysib1512->len,(U16)(tle - (BYTE*)sysib1512));
 
                 /* Successful completion */
                 regs->psw.cc = 0;
@@ -6988,7 +7173,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
 
 
 /*-------------------------------------------------------------------*/
-/* AC   STNSM - Store Then And Systen Mask                      [SI] */
+/* AC   STNSM - Store Then And System Mask                      [SI] */
 /*-------------------------------------------------------------------*/
 DEF_INST(store_then_and_system_mask)
 {
@@ -7026,7 +7211,7 @@ VADR    effective_addr1;                /* Effective address         */
 
 
 /*-------------------------------------------------------------------*/
-/* AD   STOSM - Store Then Or Systen Mask                       [SI] */
+/* AD   STOSM - Store Then Or System Mask                       [SI] */
 /*-------------------------------------------------------------------*/
 DEF_INST(store_then_or_system_mask)
 {

@@ -56,6 +56,7 @@ void ARCH_DEP(checkstop_cpu)(REGS *regs)
     regs->checkstop=1;
     ON_IC_INTERRUPT(regs);
 }
+
 /*-------------------------------------------------------------------*/
 /* Put all the CPUs in the configuration in check-stop state         */
 /*-------------------------------------------------------------------*/
@@ -452,6 +453,7 @@ static char *pgmintname[] = {
         {
             sie_ilc = likely(!realregs->guestregs->execflag) ? 2 :
                     realregs->guestregs->exrl ? 6 : 4;
+            realregs->guestregs->psw.IA += sie_ilc; /* IanWorthington regression restored from 20081205 */
             realregs->guestregs->psw.ilc = sie_ilc;
         }
     }
@@ -1042,22 +1044,33 @@ DBLWRD  csw;                            /* CSW for S/370 channels    */
     }
 
 #ifdef FEATURE_S370_CHANNEL
-    /* Store the channel status word at PSA+X'40' */
-    memcpy (psa->csw, csw, 8);
+    /* CSW has already been stored at PSA+X'40' */
 
-    /* Set the interrupt code to the I/O device address */
-    regs->psw.intcode = ioid;
-
-    /* For ECMODE, store the I/O device address at PSA+X'B8' */
-    if (ECMODE(&regs->psw))
-        STORE_FW(psa->ioid, ioid);
+    if (sysblk.arch_mode == ARCH_370 &&
+        ECMODE(&regs->psw))
+    {
+        /* For ECMODE, store the I/O device address at PSA+X'B8' */
+        STORE_FW(psa->ioid,
+                 ((((U32)psa->ioid[0] << 8) |
+                   ((U32)SSID_TO_LCSS(ioid >> 16) & 0x07)) << 16) |
+                 (ioid & 0x0000FFFFUL));
+    }
+    else
+    {
+        /* Set the interrupt code to the I/O device address */
+        regs->psw.intcode = ioid;
+    }
 
     /* Trace the I/O interrupt */
     if (CPU_STEPPING_OR_TRACING(regs, 0))
+    {
+        BYTE*   csw = psa->csw;
+
         WRMSG (HHC00804, "I", PTYPSTR(regs->cpuad), regs->cpuad,
-                regs->psw.intcode,
+                SSID_TO_LCSS(ioid >> 16) & 0x07, ioid,
                 csw[0], csw[1], csw[2], csw[3],
                 csw[4], csw[5], csw[6], csw[7]);
+    }
 #endif /*FEATURE_S370_CHANNEL*/
 
 #ifdef FEATURE_CHANNEL_SUBSYSTEM
@@ -1193,16 +1206,12 @@ static REGS *(* run_cpu[GEN_MAXARCH]) (int cpu, REGS *oldregs) =
 /*-------------------------------------------------------------------*/
 /* CPU instruction execution thread                                  */
 /*-------------------------------------------------------------------*/
-void *cpu_thread (int *ptr)
+void *cpu_thread (void *ptr)
 {
 REGS *regs = NULL;
-int   cpu  = *ptr;
+int   cpu  = *(int*)ptr;
 char  cpustr[40];
 int   rc;
-
-#if defined(USE_GETTID)
-    sysblk.cputidp[cpu] = gettid();
-#endif /*defined(USE_GETTID)*/
 
     OBTAIN_INTLOCK(NULL);
 
@@ -1238,6 +1247,7 @@ int   rc;
     /* Display thread started message on control panel */
     MSGBUF( cpustr, "Processor %s%02X", PTYPSTR( cpu ), cpu );
     WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), cpustr);
+    SET_THREAD_NAME_ID(-1, cpustr);
 
     /* Execute the program in specified mode */
     do {
@@ -1300,6 +1310,17 @@ int i;
 
     regs->cpuad = cpu;
     regs->cpubit = CPU_BIT(cpu);
+
+    /* Set initial CPU ID by REGS context */
+    setCpuIdregs(regs, cpu, -1, -1, -1, -1);
+
+    /* Save CPU creation time without epoch set, as epoch may change. When using
+     * the field, subtract the current epoch from any time being used in
+     * relation to the creation time to yield the correct result.
+     */
+    if (sysblk.cpucreateTOD[cpu] == 0)
+        sysblk.cpucreateTOD[cpu] = host_tod(); /* tod_epoch is zero at this point */
+
     regs->arch_mode = sysblk.arch_mode;
     regs->mainstor = sysblk.mainstor;
     regs->sysblk = &sysblk;
@@ -1371,19 +1392,25 @@ int i;
 /*-------------------------------------------------------------------*/
 void *cpu_uninit (int cpu, REGS *regs)
 {
-    if (regs->host)
+    int processHostRegs = (regs->host &&
+                           regs == sysblk.regs[cpu]);
+
+    if (processHostRegs)
     {
         obtain_lock (&sysblk.cpulock[cpu]);
+
+        /* If pointing to guest REGS structure, free the guest REGS
+         * structure ONLY if it is not ourself, and set the guest REGS
+         * pointer to NULL;
+         */
         if (regs->guestregs)
-        {
-            cpu_uninit (cpu, regs->guestregs);
-            free (regs->guestregs);
-        }
+            regs->guestregs = regs == regs->guestregs ? NULL :
+                              cpu_uninit (cpu, regs->guestregs);
     }
 
     destroy_condition(&regs->intcond);
 
-    if (regs->host)
+    if (processHostRegs)
     {
 #ifdef FEATURE_VECTOR_FACILITY
         /* Mark Vector Facility offline */
@@ -1395,10 +1422,43 @@ void *cpu_uninit (int cpu, REGS *regs)
         sysblk.started_mask &= ~CPU_BIT(cpu);
         sysblk.waiting_mask &= ~CPU_BIT(cpu);
         sysblk.regs[cpu] = NULL;
+        sysblk.cpucreateTOD[cpu] = 0;
         release_lock (&sysblk.cpulock[cpu]);
     }
 
+    /* Free the REGS structure */
+    free_aligned(regs);
+
     return NULL;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* CPU Wait - Core wait routine for both CPU Wait and Stopped States */
+/*                                                                   */
+/* Locks Held                                                        */
+/*      sysblk.intlock                                               */
+/*-------------------------------------------------------------------*/
+void
+CPU_Wait (REGS* regs)
+{
+    /* Indicate we are giving up intlock */
+    sysblk.intowner = LOCK_OWNER_NONE;
+
+    /* Wait while SYNCHRONIZE_CPUS is in progress */
+    while (sysblk.syncing)
+    {
+        sysblk.sync_mask &= ~regs->hostregs->cpubit;
+        if (!sysblk.sync_mask)
+            signal_condition(&sysblk.sync_cond);
+        wait_condition (&sysblk.sync_bc_cond, &sysblk.intlock);
+    }
+
+    /* Wait for interrupt */
+    wait_condition (&regs->intcond, &sysblk.intlock);
+
+    /* And we're the owner of intlock once again */
+    sysblk.intowner = regs->cpuad;
 }
 
 
@@ -1463,6 +1523,7 @@ void (ATTR_REGPARM(1) ARCH_DEP(process_interrupt))(REGS *regs)
     if (unlikely(regs->cpustate == CPUSTATE_STOPPING))
     {
         /* Change CPU status to stopped */
+cpustate_stopping:
         regs->opinterv = 0;
         regs->cpustate = CPUSTATE_STOPPED;
 
@@ -1518,19 +1579,12 @@ void (ATTR_REGPARM(1) ARCH_DEP(process_interrupt))(REGS *regs)
     /* This is where a stopped CPU will wait */
     if (unlikely(regs->cpustate == CPUSTATE_STOPPED))
     {
-        S64 saved_timer = cpu_timer(regs);
+        TOD saved_timer = cpu_timer(regs);
         regs->ints_state = IC_INITIAL_STATE;
         sysblk.started_mask ^= regs->cpubit;
-        sysblk.intowner = LOCK_OWNER_NONE;
 
-        /* Wait while we are STOPPED */
-        wait_condition (&regs->intcond, &sysblk.intlock);
+        CPU_Wait(regs);
 
-        /* Wait while SYNCHRONIZE_CPUS is in progress */
-        while (sysblk.syncing)
-            wait_condition (&sysblk.sync_bc_cond, &sysblk.intlock);
-
-        sysblk.intowner = regs->cpuad;
         sysblk.started_mask |= regs->cpubit;
         regs->ints_state |= sysblk.ints_state;
         set_cpu_timer(regs,saved_timer);
@@ -1554,9 +1608,8 @@ void (ATTR_REGPARM(1) ARCH_DEP(process_interrupt))(REGS *regs)
     /* Test for wait state */
     if (WAITSTATE(&regs->psw))
     {
-#ifdef OPTION_MIPS_COUNTING
         regs->waittod = host_tod();
-#endif
+        set_cpu_timer_mode(regs);
 
         /* Test for disabled wait PSW and issue message */
         if( IS_IC_DISABLED_WAIT_PSW(regs) )
@@ -1568,26 +1621,30 @@ void (ATTR_REGPARM(1) ARCH_DEP(process_interrupt))(REGS *regs)
             longjmp(regs->progjmp, SIE_NO_INTERCEPT);
         }
 
-        /* Indicate we are giving up intlock */
-        sysblk.intowner = LOCK_OWNER_NONE;
+        /* Indicate waiting and invoke CPU wait */
         sysblk.waiting_mask |= regs->cpubit;
+        CPU_Wait(regs);
 
-        /* Wait for interrupt */
-        wait_condition (&regs->intcond, &sysblk.intlock);
+        /* Turn off the waiting bit .
+         *
+         * Note: ANDing off of the CPU waiting bit, rather than using
+         * XOR, is required to handle the remote and rare case when the
+         * CPU is removed from the sysblk.waiting_mask while in
+         * wait_condition (intlock is NOT held; use of XOR incorrectly
+         * turns the CPU waiting bit back on).
+         */
+        sysblk.waiting_mask &= ~(regs->cpubit);
 
-        /* Wait while SYNCHRONIZE_CPUS is in progress */
-        while (sysblk.syncing)
-            wait_condition (&sysblk.sync_bc_cond, &sysblk.intlock);
-
-        /* Indicate we now own intlock */
-        sysblk.waiting_mask ^= regs->cpubit;
-        sysblk.intowner = regs->cpuad;
-
-#ifdef OPTION_MIPS_COUNTING
         /* Calculate the time we waited */
         regs->waittime += host_tod() - regs->waittod;
         regs->waittod = 0;
-#endif
+
+        set_cpu_timer_mode(regs);
+
+        /* If late state change to stopping, go reprocess */
+        if (unlikely(regs->cpustate == CPUSTATE_STOPPING))
+            goto cpustate_stopping;
+
         RELEASE_INTLOCK(regs);
         longjmp(regs->progjmp, SIE_NO_INTERCEPT);
     } /* end if(wait) */
@@ -1603,37 +1660,42 @@ void (ATTR_REGPARM(1) ARCH_DEP(process_interrupt))(REGS *regs)
 /*-------------------------------------------------------------------*/
 REGS *ARCH_DEP(run_cpu) (int cpu, REGS *oldregs)
 {
-int     i;
+const zz_func   *current_opcode_table;
+register REGS   *regs;
 BYTE   *ip;
-REGS    regs;
-const zz_func *current_opcode_table;
+int     i;
 int     aswitch;
-
-#ifdef OPTION_CAPPING
 register int    *caplocked = &sysblk.caplocked[cpu];
          LOCK   *caplock = &sysblk.caplock[cpu];
-#endif
+
+    /* Assign new regs if not already assigned */
+    regs = sysblk.regs[cpu] ?
+           sysblk.regs[cpu] :
+           malloc_aligned(((sizeof(REGS)+4095)&~((size_t)0x0FFF)), 4096);
 
     if (oldregs)
     {
-        memcpy (&regs, oldregs, sizeof(REGS));
-        free (oldregs);
-        regs.blkloc = swap_byte_U64((U64)((uintptr_t)&regs));
-        regs.hostregs = &regs;
-        if (regs.guestregs)
-            regs.guestregs->hostregs = &regs;
-        sysblk.regs[cpu] = &regs;
-        release_lock(&sysblk.cpulock[cpu]);
-        WRMSG (HHC00811, "I", PTYPSTR(cpu), cpu, get_arch_mode_string(&regs));
+        if (oldregs != regs)
+        {
+            memcpy (regs, oldregs, sizeof(REGS));
+            free_aligned(oldregs);
+            regs->blkloc = swap_byte_U64((U64)((uintptr_t)regs));
+            regs->hostregs = regs;
+            if (regs->guestregs)
+                regs->guestregs->hostregs = regs;
+            sysblk.regs[cpu] = regs;
+            release_lock(&sysblk.cpulock[cpu]);
+            WRMSG (HHC00811, "I", PTYPSTR(cpu), cpu, get_arch_mode_string(regs));
+        }
     }
     else
     {
-        memset(&regs, 0, sizeof(REGS));
+        memset(regs, 0, sizeof(REGS));
 
-        if (cpu_init (cpu, &regs, NULL))
+        if (cpu_init (cpu, regs, NULL))
             return NULL;
 
-        WRMSG (HHC00811, "I", PTYPSTR(cpu), cpu, get_arch_mode_string(&regs));
+        WRMSG (HHC00811, "I", PTYPSTR(cpu), cpu, get_arch_mode_string(regs));
 
 #ifdef FEATURE_VECTOR_FACILITY
         if (regs->vf->online)
@@ -1641,30 +1703,30 @@ register int    *caplocked = &sysblk.caplocked[cpu];
 #endif /*FEATURE_VECTOR_FACILITY*/
     }
 
-    regs.program_interrupt = &ARCH_DEP(program_interrupt);
+    regs->program_interrupt = &ARCH_DEP(program_interrupt);
 #if defined(FEATURE_TRACING)
-    regs.trace_br = (func)&ARCH_DEP(trace_br);
+    regs->trace_br = (func)&ARCH_DEP(trace_br);
 #endif
 
-    regs.tracing = (sysblk.inststep || sysblk.insttrace);
-    regs.ints_state |= sysblk.ints_state;
+    regs->tracing = (sysblk.inststep || sysblk.insttrace);
+    regs->ints_state |= sysblk.ints_state;
 
     /* Establish longjmp destination for cpu thread exit */
-    if (setjmp(regs.exitjmp))
-        return cpu_uninit(cpu, &regs);
+    if (setjmp(regs->exitjmp))
+        return cpu_uninit(cpu, regs);
 
     /* Establish longjmp destination for architecture switch */
-    aswitch = setjmp(regs.archjmp);
+    aswitch = setjmp(regs->archjmp);
 
     /* Switch architecture mode if appropriate */
-    if(sysblk.arch_mode != regs.arch_mode)
+    if(sysblk.arch_mode != regs->arch_mode)
     {
-        PTT(PTT_CL_INF,"*SETARCH",regs.arch_mode,sysblk.arch_mode,cpu);
-        regs.arch_mode = sysblk.arch_mode;
-        oldregs = malloc (sizeof(REGS));
+        PTT(PTT_CL_INF,"*SETARCH",regs->arch_mode,sysblk.arch_mode,cpu);
+        regs->arch_mode = sysblk.arch_mode;
+        oldregs = malloc_aligned(sizeof(REGS), 4096);
         if (oldregs)
         {
-            memcpy(oldregs, &regs, sizeof(REGS));
+            memcpy(oldregs, regs, sizeof(REGS));
             obtain_lock(&sysblk.cpulock[cpu]);
         }
         else
@@ -1672,43 +1734,40 @@ register int    *caplocked = &sysblk.caplocked[cpu];
             char buf[40];
             MSGBUF(buf, "malloc(%d)", (int)sizeof(REGS));
             WRMSG (HHC00813, "E", PTYPSTR(cpu), cpu, buf, strerror(errno));
-            cpu_uninit (cpu, &regs);
+            cpu_uninit (cpu, regs);
         }
         return oldregs;
     }
 
     /* Initialize Architecture Level Set */
-    init_als(&regs);
-    current_opcode_table=regs.ARCH_DEP(runtime_opcode_xxxx);
+    init_als(regs);
+    current_opcode_table=regs->ARCH_DEP(runtime_opcode_xxxx);
 
     /* Signal cpu has started */
     if(!aswitch)
         signal_condition (&sysblk.cpucond);
 
-    RELEASE_INTLOCK(&regs);
+    RELEASE_INTLOCK(regs);
 
     /* Establish longjmp destination for program check */
-    setjmp(regs.progjmp);
+    setjmp(regs->progjmp);
 
     /* Set `execflag' to 0 in case EXecuted instruction did a longjmp() */
-    regs.execflag = 0;
+    regs->execflag = 0;
 
     do {
-        if (INTERRUPT_PENDING(&regs))
-            ARCH_DEP(process_interrupt)(&regs);
-
-#ifdef OPTION_CAPPING
+        if (INTERRUPT_PENDING(regs))
+            ARCH_DEP(process_interrupt)(regs);
         else if (caplocked[0])
         {
             obtain_lock(caplock);
             release_lock(caplock);
         }
-#endif /* #ifdef OPTION_CAPPING */
 
-        ip = INSTRUCTION_FETCH(&regs, 0);
+        ip = INSTRUCTION_FETCH(regs, 0);
 
-        EXECUTE_INSTRUCTION(current_opcode_table, ip, &regs);
-        regs.instcount++;
+        EXECUTE_INSTRUCTION(current_opcode_table, ip, regs);
+        regs->instcount++;
 
         /* BHe: I have tried several settings. But 2 unrolled */
         /* executes gives (core i7 at my place) the best results. */
@@ -1716,10 +1775,10 @@ register int    *caplocked = &sysblk.caplocked[cpu];
         /* and without the 'i' was slower. That surprised me. */
         for(i = 0; i < 128; i++)
         {
-            UNROLLED_EXECUTE(current_opcode_table, &regs);
-            UNROLLED_EXECUTE(current_opcode_table, &regs);
+            UNROLLED_EXECUTE(current_opcode_table, regs);
+            UNROLLED_EXECUTE(current_opcode_table, regs);
         }
-        regs.instcount += i * 2;
+        regs->instcount += i * 2;
 
     } while (1);
 
@@ -1755,7 +1814,7 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
     if (shouldstep)
     {
         REGS *hostregs = regs->hostregs;
-        S64 saved_timer[2];
+        TOD saved_timer[2];
 
         OBTAIN_INTLOCK(hostregs);
 #ifdef OPTION_MIPS_COUNTING
@@ -1763,8 +1822,8 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
 #endif
         /* The CPU timer is not decremented for a CPU that is in
            the manual state (e.g. stopped in single step mode) */
-        saved_timer[0] = cpu_timer(regs);
-        saved_timer[1] = cpu_timer(hostregs);
+        save_cpu_timers(hostregs, &saved_timer[0],
+                        regs,     &saved_timer[1]);
         hostregs->cpustate = CPUSTATE_STOPPED;
         sysblk.started_mask &= ~hostregs->cpubit;
         hostregs->stepwait = 1;
@@ -1776,8 +1835,8 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
         sysblk.intowner = hostregs->cpuad;
         hostregs->stepwait = 0;
         sysblk.started_mask |= hostregs->cpubit;
-        set_cpu_timer(regs,saved_timer[0]);
-        set_cpu_timer(hostregs,saved_timer[1]);
+        set_cpu_timers(hostregs, saved_timer[0],
+                       regs,     saved_timer[1]);
 #ifdef OPTION_MIPS_COUNTING
         hostregs->waittime += host_tod() - hostregs->waittod;
         hostregs->waittod = 0;

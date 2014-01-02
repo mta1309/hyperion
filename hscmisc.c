@@ -21,6 +21,7 @@
 #include "opcode.h"
 #include "inline.h"
 #include "hconsole.h"
+#include "esa390io.h"
 
 #define  DISPLAY_INSTRUCTION_OPERANDS
 
@@ -125,6 +126,17 @@ static void do_shutdown_now()
 
     sysblk.shutdown = TRUE;  // (system shutdown initiated)
 
+    /* Wakeup I/O subsystem to start I/O subsystem shutdown */
+    {
+        int n;
+
+        for (n = 0; sysblk.devtnbr && n < 100; ++n)
+        {
+            signal_condition(&sysblk.ioqcond);
+            usleep(10000);
+        }
+    }
+
 //#if defined(_MSVC_)
     WRMSG(HHC01423, "I");
 
@@ -186,11 +198,13 @@ static void do_shutdown_now()
    the above do_shutdown_now function to perform the actual shutdown
    (which releases the device configuration, etc)
 */
-static void do_shutdown_wait()
+static void* do_shutdown_wait(void* arg)
 {
+    UNREFERENCED( arg );
     WRMSG(HHC01426, "I");
     wait_sigq_resp();
     do_shutdown_now();
+    return NULL;
 }
 
 /*                 *****  do_shutdown  *****
@@ -202,8 +216,8 @@ static void do_shutdown_wait()
 void do_shutdown()
 {
 TID tid;
-    if ( sysblk.shutimmed ) 
-        do_shutdown_now();                   
+    if ( sysblk.shutimmed )
+        do_shutdown_now();
     else
     {
         if(is_wait_sigq_pending())
@@ -303,16 +317,16 @@ static int display_regs64(char *hdr,U16 cpuad,U64 *r,int numcpus,char *buf,int b
 int display_inst_regs (REGS *regs, BYTE *inst, BYTE opcode, char *buf, int buflen, char *hdr)
 {
     int len=0;
-    
+
     /* Display the general purpose registers */
-    if (!(opcode == 0xB3 || (opcode >= 0x20 && opcode <= 0x3F)) 
+    if (!(opcode == 0xB3 || (opcode >= 0x20 && opcode <= 0x3F))
         || (opcode == 0xB3 && (
                 (inst[1] >= 0x80 && inst[1] <= 0xCF)
                 || (inst[1] >= 0xE1 && inst[1] <= 0xFE)
            )))
     {
         len += display_regs (regs, buf + len, buflen - len - 1, hdr);
-        if (sysblk.showregsfirst) 
+        if (sysblk.showregsfirst)
             len += snprintf(buf + len, buflen - len - 1, "\n");
     }
 
@@ -320,7 +334,7 @@ int display_inst_regs (REGS *regs, BYTE *inst, BYTE opcode, char *buf, int bufle
     if (!REAL_MODE(&regs->psw) || opcode == 0xB2)
     {
         len += display_cregs (regs, buf + len, buflen - len - 1, hdr);
-        if (sysblk.showregsfirst) 
+        if (sysblk.showregsfirst)
             len += snprintf(buf + len, buflen - len - 1, "\n");
     }
 
@@ -328,7 +342,7 @@ int display_inst_regs (REGS *regs, BYTE *inst, BYTE opcode, char *buf, int bufle
     if (!REAL_MODE(&regs->psw) && ACCESS_REGISTER_MODE(&regs->psw))
     {
         len += display_aregs (regs, buf + len, buflen - len - 1, hdr);
-        if (sysblk.showregsfirst) 
+        if (sysblk.showregsfirst)
             len += snprintf(buf + len, buflen - len - 1, "\n");
     }
 
@@ -343,7 +357,7 @@ int display_inst_regs (REGS *regs, BYTE *inst, BYTE opcode, char *buf, int bufle
        )
     {
         len += display_fregs (regs, buf + len, buflen - len - 1, hdr);
-        if (sysblk.showregsfirst) 
+        if (sysblk.showregsfirst)
             len += snprintf(buf + len, buflen - len - 1, "\n");
     }
     return(len);
@@ -426,7 +440,7 @@ int display_aregs (REGS *regs, char *buf, int buflen, char *hdr)
 {
     int i;
     U32 ars[16];
-    
+
     for(i=0;i<16;i++)
     {
         ars[i]=regs->AR(i);
@@ -441,7 +455,7 @@ int display_aregs (REGS *regs, char *buf, int buflen, char *hdr)
 /*-------------------------------------------------------------------*/
 int display_fregs (REGS *regs, char *buf, int buflen, char *hdr)
 {
-char cpustr[32] = "";               
+char cpustr[32] = "";
 
     if(sysblk.cpus>1)
         MSGBUF(cpustr, "%s%s%02X: ", hdr, PTYPSTR(regs->cpuad), regs->cpuad);
@@ -483,115 +497,167 @@ char cpustr[32] = "";
 /*-------------------------------------------------------------------*/
 int display_subchannel (DEVBLK *dev, char *buf, int buflen, char *hdr)
 {
-    char devstr[128] = {0};      /* "0:0000 D/T0000" */
+    static const char*  status_type[3] = {"Device Status    ",
+                                          "Unit Status      ",
+                                          "Subchannel Status"};
+
     struct BITS { U8 b7:1; U8 b6:1; U8 b5:1; U8 b4:1; U8 b3:1; U8 b2:1; U8 b1:1; U8 b0:1; };
     union ByteToBits { struct BITS b; U8 status; } u;
     int len = 0;
-    
-    MSGBUF(devstr, "%s%1d:%04X D/T%04X", hdr, SSID_TO_LCSS(dev->ssid), dev->devnum, dev->devtype);
+
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s%1d:%04X D/T%04X\n",
+        hdr, SSID_TO_LCSS(dev->ssid), dev->devnum, dev->devtype);
 
     if (ARCH_370 == sysblk.arch_mode)
     {
         len+=snprintf(buf+len,buflen-len-1,
-                "%s CSW Flags:%2.2X CCW:%2.2X%2.2X%2.2X "
-                "US:%2.2X CS:%2.2X Count:%2.2X%2.2X\n",
-                devstr,
-                dev->csw[0], dev->csw[1], dev->csw[2], dev->csw[3],
-                dev->csw[4], dev->csw[5], dev->csw[6], dev->csw[7]);
-
-        u.status = (U8)dev->csw[4];
-        len+=snprintf(buf+len,buflen-len-1,"%s    Unit Status    %s%s%s%s%s%s%s%s%s\n", 
-            hdr,
-            u.status == 0 ? "is Normal" : "",
-            u.b.b0 ? "Attention " : "",
-            u.b.b1 ? "SM " : "",
-            u.b.b2 ? "CUE " : "",
-            u.b.b3 ? "Busy " : "",
-            u.b.b4 ? "CE " : "",
-            u.b.b5 ? "DE " : "",
-            u.b.b6 ? "UC " : "",
-            u.b.b7 ? "UE " : "");
-
-        u.status = (U8)dev->csw[5];
-        len+=snprintf(buf+len,buflen-len-1,"%s    Channel Status %s%s%s%s%s%s%s%s%s\n", 
-            hdr,
-            u.status == 0 ? "is Normal" : "",
-            u.b.b0 ? "PCI " : "",
-            u.b.b1 ? "IL " : "",
-            u.b.b2 ? "PC " : "",
-            u.b.b3 ? "ProtC " : "",
-            u.b.b4 ? "CDC " : "",
-            u.b.b5 ? "CCC " : "",
-            u.b.b6 ? "ICC " : "",
-            u.b.b7 ? "CC " : "");
-
-    } 
-    else 
-    {
-        len+=snprintf(buf+len,buflen-len-1,
-                "%s Subchannel Number[%04X]\n"
-                "%s    Path Management Control Word (PMCW)\n"
-                "%s  IntParm:%2.2X%2.2X%2.2X%2.2X\n"
-                "%s    Flags:%2.2X%2.2X        Dev:%2.2X%2.2X\n"
-                "%s      LPM:%2.2X PNOM:%2.2X LPUM:%2.2X PIM:%2.2X\n"
-                "%s      MBI:%2.2X%2.2X        POM:%2.2X PAM:%2.2X\n"
-                "%s   CHPID0:%2.2X    1:%2.2X    2:%2.2X   3:%2.2X\n"
-                "%s        4:%2.2X    5:%2.2X    6:%2.2X   7:%2.2X\n"
-                "%s     Misc:%2.2X%2.2X%2.2X%2.2X\n",
-                devstr, dev->subchan, 
-                hdr, 
-                hdr, dev->pmcw.intparm[0], dev->pmcw.intparm[1],
-                dev->pmcw.intparm[2], dev->pmcw.intparm[3],
-                hdr, dev->pmcw.flag4, dev->pmcw.flag5,
-                dev->pmcw.devnum[0], dev->pmcw.devnum[1],
-                hdr, dev->pmcw.lpm, dev->pmcw.pnom, dev->pmcw.lpum, dev->pmcw.pim,
-                hdr, dev->pmcw.mbi[0], dev->pmcw.mbi[1],
-                dev->pmcw.pom, dev->pmcw.pam,
-                hdr, dev->pmcw.chpid[0], dev->pmcw.chpid[1],
-                dev->pmcw.chpid[2], dev->pmcw.chpid[3],
-                hdr, dev->pmcw.chpid[4], dev->pmcw.chpid[5],
-                dev->pmcw.chpid[6], dev->pmcw.chpid[7],
-                hdr,dev->pmcw.zone, dev->pmcw.flag25,
-                dev->pmcw.flag26, dev->pmcw.flag27);
-
-        len+=snprintf(buf+len,buflen-len-1,
-                "%s    Subchannel Status Word (SCSW)\n"
-                "%s    Flags:%2.2X%2.2X SCHC:%2.2X%2.2X "
-                    "DS:%2.2X SS:%2.2X Count:%2.2X%2.2X "
-                    "CCW:%2.2X%2.2X%2.2X%2.2X\n",
-                hdr, hdr, dev->scsw.flag0, dev->scsw.flag1,
-                dev->scsw.flag2, dev->scsw.flag3,
-                dev->scsw.unitstat, dev->scsw.chanstat,
-                dev->scsw.count[0], dev->scsw.count[1],
-                dev->scsw.ccwaddr[0], dev->scsw.ccwaddr[1],
-                dev->scsw.ccwaddr[2], dev->scsw.ccwaddr[3]);
-
-        u.status = (U8)dev->scsw.unitstat;
-        len+=snprintf(buf+len,buflen-len-1,
-            "%s    Device Status     %s%s%s%s%s%s%s%s%s\n", 
-            hdr, u.status == 0 ? "is Normal" : "",
-            u.b.b0 ? "Attention " : "",
-            u.b.b1 ? "SM " : "",
-            u.b.b2 ? "CUE " : "",
-            u.b.b3 ? "Busy " : "",
-            u.b.b4 ? "CE " : "",
-            u.b.b5 ? "DE " : "",
-            u.b.b6 ? "UC " : "",
-            u.b.b7 ? "UE " : "");
-        
-        u.status = (U8)dev->scsw.chanstat;
-        len+=snprintf(buf+len,buflen-len-1,
-            "%s    Subchannel Status %s%s%s%s%s%s%s%s%s\n", 
-            hdr, u.status == 0 ? "is Normal" : "",
-            u.b.b0 ? "PCI " : "",
-            u.b.b1 ? "IL " : "",
-            u.b.b2 ? "PC " : "",
-            u.b.b3 ? "ProtC " : "",
-            u.b.b4 ? "CDC " : "",
-            u.b.b5 ? "CCC " : "",
-            u.b.b6 ? "ICC " : "",
-            u.b.b7 ? "CC " : "");
+            "%s  CSW Flags:%2.2X CCW:%2.2X%2.2X%2.2X            Flags\n"
+            "%s         US:%2.2X  CS:%2.2X Count:%2.2X%2.2X       (Key) Subchannel key          %1.1X\n"
+            "%s                                       (S)   Suspend control         %1.1X\n"
+            "%s                                       (L)   Extended format         %1.1X\n"
+            "%s  Subchannel Internal Management       (CC)  Deferred condition code %1.1X\n",
+            hdr, dev->scsw.flag0,
+                 dev->scsw.ccwaddr[1], dev->scsw.ccwaddr[2], dev->scsw.ccwaddr[3],
+            hdr, dev->scsw.unitstat, dev->scsw.chanstat,
+                 dev->scsw.count[0], dev->scsw.count[1],
+                 (dev->scsw.flag0 & SCSW0_KEY)      >> 4,
+            hdr, (dev->scsw.flag0 & SCSW0_S)        >> 3,
+            hdr, (dev->scsw.flag0 & SCSW0_L)        >> 2,
+            hdr, (dev->scsw.flag0 & SCSW0_CC));
     }
+
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s  Subchannel Number[%04X]\n"
+        "%s    Path Management Control Word (PMCW)\n"
+        "%s  IntParm:%2.2X%2.2X%2.2X%2.2X\n"
+        "%s    Flags:%2.2X%2.2X        Dev:%2.2X%2.2X\n"
+        "%s      LPM:%2.2X PNOM:%2.2X LPUM:%2.2X PIM:%2.2X\n"
+        "%s      MBI:%2.2X%2.2X        POM:%2.2X PAM:%2.2X\n"
+        "%s  CHPID 0:%2.2X    1:%2.2X    2:%2.2X   3:%2.2X\n"
+        "%s        4:%2.2X    5:%2.2X    6:%2.2X   7:%2.2X\n"
+        "%s     Misc:%2.2X%2.2X%2.2X%2.2X\n",
+        hdr, dev->subchan,
+        hdr,
+        hdr, dev->pmcw.intparm[0], dev->pmcw.intparm[1],
+        dev->pmcw.intparm[2], dev->pmcw.intparm[3],
+        hdr, dev->pmcw.flag4, dev->pmcw.flag5,
+        dev->pmcw.devnum[0], dev->pmcw.devnum[1],
+        hdr, dev->pmcw.lpm, dev->pmcw.pnom, dev->pmcw.lpum, dev->pmcw.pim,
+        hdr, dev->pmcw.mbi[0], dev->pmcw.mbi[1],
+        dev->pmcw.pom, dev->pmcw.pam,
+        hdr, dev->pmcw.chpid[0], dev->pmcw.chpid[1],
+        dev->pmcw.chpid[2], dev->pmcw.chpid[3],
+        hdr, dev->pmcw.chpid[4], dev->pmcw.chpid[5],
+        dev->pmcw.chpid[6], dev->pmcw.chpid[7],
+        hdr,dev->pmcw.zone, dev->pmcw.flag25,
+        dev->pmcw.flag26, dev->pmcw.flag27);
+
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s  Subchannel Status Word (SCSW)\n"
+        "%s    Flags: %2.2X%2.2X  Subchan Ctl: %2.2X%2.2X     (FC)  Function Control\n"
+        "%s      CCW: %2.2X%2.2X%2.2X%2.2X                          Start                   %1.1X\n"
+        "%s       DS: %2.2X  SS: %2.2X  Count: %2.2X%2.2X           Halt                    %1.1X\n"
+        "%s                                             Clear                   %1.1X\n"
+        "%s    Flags                              (AC)  Activity Control\n"
+        "%s      (Key) Subchannel key          %1.1X        Resume pending          %1.1X\n"
+        "%s      (S)   Suspend control         %1.1X        Start pending           %1.1X\n"
+        "%s      (L)   Extended format         %1.1X        Halt pending            %1.1X\n"
+        "%s      (CC)  Deferred condition code %1.1X        Clear pending           %1.1X\n"
+        "%s      (F)   CCW-format control      %1.1X        Subchannel active       %1.1X\n"
+        "%s      (P)   Prefetch control        %1.1X        Device active           %1.1X\n"
+        "%s      (I)   Initial-status control  %1.1X        Suspended               %1.1X\n"
+        "%s      (A)   Address-limit control   %1.1X  (SC)  Status Control\n"
+        "%s      (U)   Suppress-suspend int.   %1.1X        Alert                   %1.1X\n"
+        "%s    Subchannel Control                       Intermediate            %1.1X\n"
+        "%s      (Z)   Zero condition code     %1.1X        Primary                 %1.1X\n"
+        "%s      (E)   Extended control (ECW)  %1.1X        Secondary               %1.1X\n"
+        "%s      (N)   Path not operational    %1.1X        Status pending          %1.1X\n"
+        "%s      (Q)   QDIO active             %1.1X\n",
+        hdr,
+        hdr, dev->scsw.flag0, dev->scsw.flag1, dev->scsw.flag2, dev->scsw.flag3,
+        hdr, dev->scsw.ccwaddr[0], dev->scsw.ccwaddr[1],
+             dev->scsw.ccwaddr[2], dev->scsw.ccwaddr[3],
+             (dev->scsw.flag2 & SCSW2_FC_START) >> 6,
+        hdr, dev->scsw.unitstat, dev->scsw.chanstat,
+             dev->scsw.count[0], dev->scsw.count[1],
+             (dev->scsw.flag2 & SCSW2_FC_HALT)  >> 5,
+        hdr, (dev->scsw.flag2 & SCSW2_FC_CLEAR) >> 4,
+        hdr,
+        hdr, (dev->scsw.flag0 & SCSW0_KEY)      >> 4,
+             (dev->scsw.flag2 & SCSW2_AC_RESUM) >> 3,
+        hdr, (dev->scsw.flag0 & SCSW0_S)        >> 3,
+             (dev->scsw.flag2 & SCSW2_AC_START) >> 2,
+        hdr, (dev->scsw.flag0 & SCSW0_L)        >> 2,
+             (dev->scsw.flag2 & SCSW2_AC_HALT)  >> 1,
+        hdr, (dev->scsw.flag0 & SCSW0_CC),
+             (dev->scsw.flag2 & SCSW2_AC_CLEAR),
+        hdr, (dev->scsw.flag1 & SCSW1_F)        >> 7,
+             (dev->scsw.flag3 & SCSW3_AC_SCHAC) >> 7,
+        hdr, (dev->scsw.flag1 & SCSW1_P)        >> 6,
+             (dev->scsw.flag3 & SCSW3_AC_DEVAC) >> 6,
+        hdr, (dev->scsw.flag1 & SCSW1_I)        >> 5,
+             (dev->scsw.flag3 & SCSW3_AC_SUSP)  >> 5,
+        hdr, (dev->scsw.flag1 & SCSW1_A)        >> 4,
+        hdr, (dev->scsw.flag1 & SCSW1_U)        >> 3,
+             (dev->scsw.flag3 & SCSW3_SC_ALERT) >> 4,
+        hdr, (dev->scsw.flag3 & SCSW3_SC_INTER) >> 3,
+        hdr, (dev->scsw.flag1 & SCSW1_Z)        >> 2,
+             (dev->scsw.flag3 & SCSW3_SC_PRI)   >> 2,
+        hdr, (dev->scsw.flag1 & SCSW1_E)        >> 1,
+             (dev->scsw.flag3 & SCSW3_SC_SEC)   >> 1,
+        hdr, (dev->scsw.flag1 & SCSW1_N),
+             (dev->scsw.flag3 & SCSW3_SC_PEND),
+        hdr, (dev->scsw.flag2 & SCSW2_Q)        >> 7);
+
+    u.status = (U8)dev->scsw.unitstat;
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s    %s %s%s%s%s%s%s%s%s%s\n",
+        hdr, status_type[(sysblk.arch_mode == ARCH_370)],
+        u.status == 0 ? "is Normal" : "",
+        u.b.b0 ? "Attention " : "",
+        u.b.b1 ? "SM " : "",
+        u.b.b2 ? "CUE " : "",
+        u.b.b3 ? "Busy " : "",
+        u.b.b4 ? "CE " : "",
+        u.b.b5 ? "DE " : "",
+        u.b.b6 ? "UC " : "",
+        u.b.b7 ? "UE " : "");
+
+    u.status = (U8)dev->scsw.chanstat;
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s    %s %s%s%s%s%s%s%s%s%s\n",
+        hdr, status_type[2],
+        u.status == 0 ? "is Normal" : "",
+        u.b.b0 ? "PCI " : "",
+        u.b.b1 ? "IL " : "",
+        u.b.b2 ? "PC " : "",
+        u.b.b3 ? "ProtC " : "",
+        u.b.b4 ? "CDC " : "",
+        u.b.b5 ? "CCC " : "",
+        u.b.b6 ? "ICC " : "",
+        u.b.b7 ? "CC " : "");
+
+    len+=snprintf(buf+len,buflen-len-1,
+        "%s  DEVBLK Status\n"
+        "%s    busy             %1.1X    shared        %1.1X\n"
+        "%s    suspended        %1.1X    console       %1.1X    rlen3270 %5d\n"
+        "%s    pending          %1.1X    connected     %1.1X\n"
+        "%s    pcipending       %1.1X    readpending   %1.1X\n"
+        "%s    attnpending      %1.1X    connecting    %1.1X\n"
+        "%s    startpending     %1.1X    localhost     %1.1X\n"
+        "%s    resumesuspended  %1.1X    reserved      %1.1X\n"
+        "%s    tschpending      %1.1X    locked        %1.1X\n",
+        hdr,
+        hdr, dev->busy,               dev->shared,
+        hdr, dev->suspended,          dev->console,     dev->rlen3270,
+        hdr, dev->pending,            dev->connected,
+        hdr, dev->pcipending,         dev->readpending,
+        hdr, dev->attnpending,        dev->connecting,
+        hdr, dev->startpending,       dev->localhost,
+        hdr, dev->resumesuspended,    dev->reserved,
+        hdr, dev->tschpending,        test_lock(&dev->lock) ? 1 : 0);
+
     return(len);
 
 } /* end function display_subchannel */
@@ -729,7 +795,7 @@ static REGS  *copy_regs (REGS *regs)
  size_t size;
 
     size = (SIE_MODE(regs) || SIE_ACTIVE(regs)) ? 2*sizeof(REGS) : sizeof(REGS);
-    newregs = malloc(size);
+    newregs = malloc_aligned(size, 4096);
     if (newregs == NULL)
     {
         char buf[64];
@@ -842,7 +908,7 @@ static const BYTE  numerc  =  _countof( erctab );
         if (n < bufsz)
             *(buf + n) = 0;             // (null terminate)
 
-        if (n > 0 && 
+        if (n > 0 &&
             *(buf + n - 1) == ',')      // (remove trailing comma)
             *(buf + n - 1) = 0;         // (remove trailing comma)
     }
@@ -1051,6 +1117,571 @@ size_t  n;
 }
 
 
+/*-------------------------------------------------------------------*/
+/* Format SDC (Self Describing Component) information                */
+/*-------------------------------------------------------------------*/
+
+static BYTE
+sdcchar(BYTE c)
+{
+    /* This  suberfuge  resolved a compiler bug that leads to a slew */
+    /* of warnings about c possibly being undefined.                 */
+    c = guest_to_host( c );
+    return isgraph(c) ? c : '?';
+}
+
+const char* FormatSDC( SDC* sdc, char* buf, size_t bufsz )
+{
+    size_t n;
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !sdc)
+        return buf;
+
+    #define SDCCHAR(fld, n) sdcchar(sdc->fld[n])
+
+    n = (size_t) snprintf( buf, bufsz-1,
+
+        "SDC: type/model:%c%c%c%c%c%c-%c%c%c mfg:%c%c%c plant:%c%c seq/serial:%c%c%c%c%c%c%c%c%c%c%c%c\n"
+
+        , SDCCHAR(type,0),SDCCHAR(type,1),SDCCHAR(type,2),SDCCHAR(type,3),SDCCHAR(type,4),SDCCHAR(type,5)
+        , SDCCHAR(model,0),SDCCHAR(model,1),SDCCHAR(model,2)
+        , SDCCHAR(mfr,0),SDCCHAR(mfr,1),SDCCHAR(mfr,2)
+        , SDCCHAR(plant,0),SDCCHAR(plant,1)
+        , SDCCHAR(serial,0),SDCCHAR(serial,1),SDCCHAR(serial,2),SDCCHAR(serial,3),SDCCHAR(serial,4),SDCCHAR(serial,5)
+        , SDCCHAR(serial,6),SDCCHAR(serial,7),SDCCHAR(serial,8),SDCCHAR(serial,9),SDCCHAR(serial,10),SDCCHAR(serial,11)
+    );
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* NEQ (Node-Element Qualifier) type table                           */
+/*-------------------------------------------------------------------*/
+static const char* NED_NEQ_type[] =
+{
+    "UNUSED", "NEQ", "GENEQ", "NED",
+};
+
+
+/*-------------------------------------------------------------------*/
+/* Format NED (Node-Element Descriptor)                              */
+/*-------------------------------------------------------------------*/
+const char* FormatNED( NED* ned, char* buf, size_t bufsz )
+{
+    size_t  n;
+    const char* typ;
+    char bad_typ[4];
+    char sdc_info[256];
+    static const char* sn_ind[] = { "NEXT", "UNIQUE", "NODE", "CODE3" };
+    static const char* ned_type[] = { "UNSPEC", "DEVICE", "CTLUNIT" };
+    static const char* dev_class[] =
+    {
+        "UNKNOWN",
+        "DASD",
+        "TAPE",
+        "READER",
+        "PUNCH",
+        "PRINTER",
+        "COMM",
+        "DISPLAY",
+        "CONSOLE",
+        "CTCA",
+        "SWITCH",
+        "PROTO",
+    };
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !ned)
+        return buf;
+
+    if (ned->type < _countof( ned_type ))
+        typ = ned_type[ ned->type ];
+    else
+    {
+        snprintf( bad_typ, sizeof(bad_typ)-1, "%u", ned->type );
+        bad_typ[3] = 0;
+        typ = bad_typ;
+    }
+
+
+    if (ned->type == NED_TYP_DEVICE)
+    {
+        const char* cls;
+        char bad_class[4];
+
+        if (ned->cls < _countof( dev_class ))
+            cls = dev_class[ ned->cls ];
+        else
+        {
+            snprintf( bad_class, sizeof(bad_class)-1, "%u", ned->cls );
+            bad_class[3] = 0;
+            cls = bad_class;
+        }
+
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "NED:%s%styp:%s cls:%s lvl:%s sn:%s tag:%02X%02X\n     %s"
+
+            , (ned->flags & 0x20) ? "*" : " "
+            , (ned->flags & 0x01) ? "(EMULATED) " : ""
+            , typ
+            , cls
+            , (ned->lvl & 0x01) ? "UNRELATED" : "RELATED"
+            , sn_ind[ (ned->flags >> 3) & 0x03 ]
+            , ned->tag[0], ned->tag[1]
+            , FormatSDC( &ned->info, sdc_info, sizeof(sdc_info))
+        );
+    }
+    else
+    {
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "NED:%s%styp:%s lvl:%s sn:%s tag:%02X%02X\n     %s"
+
+            , (ned->flags & 0x20) ? "*" : " "
+            , (ned->flags & 0x01) ? "(EMULATED) " : ""
+            , typ
+            , (ned->lvl & 0x01) ? "UNRELATED" : "RELATED"
+            , sn_ind[ (ned->flags >> 3) & 0x03 ]
+            , ned->tag[0], ned->tag[1]
+            , FormatSDC( &ned->info, sdc_info, sizeof(sdc_info))
+        );
+    }
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format NEQ (Node-Element Qualifier)                               */
+/*-------------------------------------------------------------------*/
+const char* FormatNEQ( NEQ* neq, char* buf, size_t bufsz )
+{
+    size_t  n;
+    BYTE* byte = (BYTE*) neq;
+    U16 iid;
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !neq)
+        return buf;
+
+    iid = fetch_hw( &neq->iid );
+
+    n = (size_t) snprintf( buf, bufsz-1,
+
+        "NEQ: typ:%s IID:%02X%02X DDTO:%u\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+
+        , NED_NEQ_type[ neq->flags >> 6 ]
+        , (BYTE)(iid >> 8), (BYTE)(iid & 0xFF)
+        , neq->ddto
+        , byte[ 0],byte[ 1],byte[ 2],byte[ 3],  byte[ 4],byte[ 5],byte[ 6],byte[ 7]
+        , byte[ 8],byte[ 9],byte[10],byte[11],  byte[12],byte[13],byte[14],byte[15]
+        , byte[16],byte[17],byte[18],byte[19],  byte[20],byte[21],byte[22],byte[23]
+        , byte[24],byte[25],byte[26],byte[27],  byte[28],byte[29],byte[30],byte[31]
+    );
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Helper function to format data as just individual BYTES           */
+/*-------------------------------------------------------------------*/
+static void FormatBytes( BYTE* data, int len, char* buf, size_t bufsz )
+{
+    char temp[4];
+    int  i;
+
+    for (i=0; i < len; ++i)
+    {
+        if (i == 4)
+            strlcat( buf, " ", bufsz );
+        MSGBUF( temp, "%02X", data[i] );
+        strlcat( buf, temp, bufsz );
+    }
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Helper function to remove trailing blanks including CRLF          */
+/*-------------------------------------------------------------------*/
+static void TrimEnd( char* buf )
+{
+    size_t n; char* p;
+
+    for (n = strlen(buf), p = buf+n-1; p > buf && isspace((BYTE)*p); --p, --n)
+        ; // (nop)
+    p[1] = 0;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format RCD (Read Configuration Data) response                     */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT const char* FormatRCD( BYTE* rcd, int len, char* buf, size_t bufsz )
+{
+    size_t  n;
+    char temp[256];
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !rcd || !len)
+        return buf;
+
+    for (; len > 0; rcd += sizeof(NED), len -= sizeof(NED))
+    {
+        if (len < (int)sizeof(NED))
+        {
+            FormatBytes( rcd, len, buf, bufsz );
+            break;
+        }
+
+        switch (rcd[0] >> 6)
+        {
+        case FIELD_IS_NEQ:
+        case FIELD_IS_GENEQ:
+
+            FormatNEQ( (NEQ*)rcd, temp, sizeof(temp)-1);
+            break;
+
+        case FIELD_IS_NED:
+
+            FormatNED( (NED*)rcd, temp, sizeof(temp)-1);
+            break;
+
+        case FIELD_IS_UNUSED:
+
+            n = (size_t) snprintf( temp, sizeof(temp)-1, "n/a\n" );
+            if (n < sizeof(temp))
+                temp[n] = 0;
+            break;
+        }
+
+        strlcat( buf, temp, bufsz );
+    }
+
+    TrimEnd( buf );
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format ND (Node Descriptor)                                       */
+/*-------------------------------------------------------------------*/
+const char* FormatND( ND* nd, char* buf, size_t bufsz )
+{
+    size_t  n;
+    const char* val;
+    const char* cls;
+    const char* by3;
+    const char* typ;
+    char bad_cls[4];
+    char sdc_info[256];
+    static const char* css_class[] = { "UNKNOWN", "CHPATH", "CTCA" };
+    static const char* val_type[] =
+    {
+        "VALID", "UNSURE", "INVALID", "3", "4", "5", "6", "7",
+    };
+    static const char* dev_class[] =
+    {
+        "UNKNOWN",
+        "DASD",
+        "TAPE",
+        "READER",
+        "PUNCH",
+        "PRINTER",
+        "COMM",
+        "DISPLAY",
+        "CONSOLE",
+        "CTCA",
+        "SWITCH",
+        "PROTO",
+    };
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !nd)
+        return buf;
+
+    val = val_type[ nd->flags >> 5 ];
+
+    switch (nd->flags >> 5)
+    {
+    case ND_VAL_VALID:
+    case ND_VAL_UNSURE:
+
+        cls = NULL;
+        if (nd->flags & 0x01)
+        {
+            typ = "CSS";
+            by3 = "CHPID";
+            if (nd->cls < _countof( css_class ))
+                cls = css_class[ nd->cls ];
+        }
+        else
+        {
+            typ = "DEV";
+            by3 = (nd->cls == ND_DEV_PROTO) ? "LINK" : "BYTE3";
+            if (nd->cls < _countof( dev_class ))
+                cls = dev_class[ nd->cls ];
+        }
+        if (!cls)
+        {
+            snprintf( bad_cls, sizeof(bad_cls)-1, "%u", nd->cls );
+            bad_cls[3] = 0;
+            cls = bad_cls;
+        }
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "ND:  val:%s typ:%s cls:%s %s:%02X tag:%02X%02X\n     %s"
+
+            , val
+            , typ
+            , cls
+            , by3, nd->ua
+            , nd->tag[0], nd->tag[1]
+            , FormatSDC( &nd->info, sdc_info, sizeof(sdc_info))
+        );
+        break;
+
+    case ND_VAL_INVALID:
+
+        n = (size_t) snprintf( buf, bufsz-1, "ND:  val:INVALID\n" );
+        break;
+
+    default:
+
+        n = (size_t) snprintf( buf, bufsz-1, "ND:  val:%u (invalid)\n",
+            (int)(nd->flags >> 5) );
+        break;
+    }
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format NQ (Node Qualifier)                                        */
+/*-------------------------------------------------------------------*/
+const char* FormatNQ( NQ* nq, char* buf, size_t bufsz )
+{
+    size_t  n;
+    BYTE* byte = (BYTE*) nq;
+    static const char* type[] =
+    {
+        "IIL", "MODEP", "2", "3", "4", "5", "6", "7",
+    };
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !nq)
+        return buf;
+
+    n = (size_t) snprintf( buf, bufsz-1,
+
+        "NQ:  %02X%02X%02X%02X %02X%02X%02X%02X  (typ:%s)\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+        "     %02X%02X%02X%02X %02X%02X%02X%02X\n"
+
+        , byte[ 0],byte[ 1],byte[ 2],byte[ 3],  byte[ 4],byte[ 5],byte[ 6],byte[ 7]
+        , type[ nq->flags >> 5 ]
+        , byte[ 8],byte[ 9],byte[10],byte[11],  byte[12],byte[13],byte[14],byte[15]
+        , byte[16],byte[17],byte[18],byte[19],  byte[20],byte[21],byte[22],byte[23]
+        , byte[24],byte[25],byte[26],byte[27],  byte[28],byte[29],byte[30],byte[31]
+    );
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format RNI (Read Node Identifier) response                        */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT const char* FormatRNI( BYTE* rni, int len, char* buf, size_t bufsz )
+{
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !rni || !len)
+        return buf;
+
+    if (len >= (int)sizeof(ND))
+    {
+        char work[256];
+
+        register ND* nd = (ND*) rni;
+
+        FormatND( nd, work, sizeof(work)-1);
+        strlcat( buf, work, bufsz );
+
+        len -= sizeof(ND);
+        rni += sizeof(ND);
+
+        if (len >= (int)sizeof(NQ))
+        {
+            register NQ* nq = (NQ*) rni;
+
+            FormatNQ( nq, work, sizeof(work)-1);
+            strlcat( buf, work, bufsz );
+
+            len -= sizeof(NQ);
+            rni += sizeof(NQ);
+
+            if (len)
+                FormatBytes( rni, len, buf, bufsz );
+        }
+        else
+            FormatBytes( rni, len, buf, bufsz );
+    }
+    else
+        FormatBytes( rni, len, buf, bufsz );
+
+    TrimEnd( buf );
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format CIW (Command Information Word)                             */
+/*-------------------------------------------------------------------*/
+const char* FormatCIW( BYTE* ciw, char* buf, size_t bufsz )
+{
+    size_t  n;
+    static const char* type[] =
+    {
+        "RCD", "SII", "RNI", "3  ", "4  ", "5  ", "6  ", "7  ",
+        "8  ", "9  ", "10 ", "11 ", "12 ", "13 ", "14 ", "15 ",
+    };
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !ciw)
+        return buf;
+
+    if ((ciw[0] & 0xC0) == 0x40)
+    {
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "CIW: %02X%02X%02X%02X  typ:%s op:%02X len:%u\n"
+
+            , ciw[0], ciw[1], ciw[2], ciw[3]
+            , type[ ciw[0] & 0x0F ]
+            , ciw[1]
+            , fetch_hw( ciw+2 )
+        );
+    }
+    else
+    {
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "CIW: %02X%02X%02X%02X  not a CIW\n"
+
+            , ciw[0]
+            , ciw[1]
+            , ciw[2]
+            , ciw[3]
+        );
+    }
+
+    if (n < bufsz)
+        buf[n] = 0;
+
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Format SID (Sense ID) response                                    */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT const char* FormatSID( BYTE* ciw, int len, char* buf, size_t bufsz )
+{
+    size_t  n;
+    char temp[128];
+
+    if (!buf)
+        return NULL;
+    if (bufsz)
+        buf[0] = 0;
+    if (bufsz <= 1 || !ciw || !len)
+        return buf;
+
+    if (len < 8)
+        FormatBytes( ciw, len, buf, bufsz );
+    else
+    {
+        n = (size_t) snprintf( buf, bufsz-1,
+
+            "%02X CU=%02X%02X-%02X DEV=%02X%02X-%02X %02X\n"
+
+            , ciw[0]
+            , ciw[1], ciw[2], ciw[3]
+            , ciw[4], ciw[5], ciw[6]
+            , ciw[7]
+        );
+
+        if (n < bufsz)
+            buf[n] = 0;
+
+        ciw += 8;
+        len -= 8;
+
+        for (; len >= 4; ciw += 4, len -= 4)
+        {
+            FormatCIW( ciw, temp, sizeof(temp)-1);
+            strlcat( buf, temp, bufsz );
+        }
+
+        if (len)
+            FormatBytes( ciw, len, buf, bufsz );
+
+        TrimEnd( buf );
+    }
+
+    return buf;
+}
+
 #endif /*!defined(_HSCMISC_C)*/
 
 
@@ -1126,7 +1757,7 @@ BYTE    c;                              /* Character work area       */
     }
 
     aaddr = APPLY_PREFIXING (raddr, regs->PX);
-    if (aaddr > regs->mainlim)
+    if (regs->mainlim == 0 || aaddr > regs->mainlim)
     {
         n += snprintf (buf+n, bufl-n-1, "%s", " Real address is not valid");
         return n;
@@ -1165,7 +1796,7 @@ RADR    raddr;                          /* Real address              */
 int     n;                              /* Number of bytes in buffer */
 int     stid;                           /* Segment table indication  */
 
-    n = snprintf (buf, bufl-1, "%s%c:"F_VADR":", hdr, 
+    n = snprintf (buf, bufl-1, "%s%c:"F_VADR":", hdr,
                  ar == USE_REAL_ADDR ? 'R' : 'V', vaddr);
     *xcode = ARCH_DEP(virt_to_abs) (&raddr, &stid,
                                     vaddr, ar, regs, acctype);
@@ -1235,6 +1866,12 @@ char    buf[512];
     /* Parse the range or alteration operand */
     len = parse_range (opnd, maxadr, &saddr, &eaddr, NULL);
     if (len < 0) return;
+
+    if (regs->mainlim == 0)
+    {
+        WRMSG(HHC02289, "I", "Real address is not valid");
+        return;
+    }
 
     /* Display real storage */
     for (i = 0; i < 999 && saddr <= eaddr; i++)
@@ -1307,16 +1944,10 @@ int     i;                              /* Loop counter              */
 BYTE    newval[32];                     /* Storage alteration value  */
 char    buf[512];                       /* Message buffer            */
 
-UNREFERENCED(cmdline);
+    UNREFERENCED(argc);
+    UNREFERENCED(argv);
 
-    /* We require only one operand */
-    if (argc != 1)
-    {
-        // "Missing or invalid argument(s)"
-        WRMSG( HHC17000, "E" );
-        return;
-    }
-    opnd = argv[0];
+    opnd = cmdline+1;
 
     /* Set limit for address range */
   #if defined(FEATURE_ESAME)
@@ -1330,6 +1961,12 @@ UNREFERENCED(cmdline);
     if (len < 0) return;
     raddr = saddr;
 
+    if (regs->mainlim == 0)
+    {
+        WRMSG(HHC02290, "I", "Real address is not valid");
+        return;
+    }
+
     /* Alter real storage */
     if (len > 0)
     {
@@ -1337,6 +1974,14 @@ UNREFERENCED(cmdline);
         {
             aaddr = raddr + i;
             aaddr = APPLY_PREFIXING (aaddr, regs->PX);
+
+            /* Validate real address */
+            if (aaddr > regs->mainlim)
+            {
+                WRMSG(HHC02290, "I", "Addressing exception");
+                return;
+            }
+
             regs->mainstor[aaddr] = newval[i];
             STORAGE_KEY(aaddr, regs) |= (STORKEY_REF | STORKEY_CHANGE);
         } /* end for(i) */
@@ -1375,18 +2020,11 @@ BYTE    newval[32];                     /* Storage alteration value  */
 char    buf[512];                       /* Message buffer            */
 char    type;
 
-    UNREFERENCED(cmdline);
-
-    /* We require only one operand */
-    if (argc != 1)
-    {
-        // "Missing or invalid argument(s)"
-        WRMSG( HHC17000, "E" );
-        return;
-    }
+    UNREFERENCED(argc);
+    UNREFERENCED(argv);
 
     /* Parse optional address-space prefix */
-    opnd = argv[0];
+    opnd = cmdline+1;
     type = toupper( *opnd );
 
     if (1
@@ -1416,6 +2054,13 @@ char    type;
     /* Parse the range or alteration operand */
     len = parse_range (opnd, maxadr, &saddr, &eaddr, newval);
     if (len < 0) return;
+
+    if (regs->mainlim == 0)
+    {
+        WRMSG(HHC02291, "I", "Real address is not valid");
+        return;
+    }
+
     vaddr = saddr;
 
     /* Alter virtual storage */
@@ -1430,6 +2075,14 @@ char    type;
             ARCH_DEP(virt_to_abs) (&raddr, &stid, vaddr+i, arn,
                                     regs, ACCTYPE_LRA);
             aaddr = APPLY_PREFIXING (raddr, regs->PX);
+
+            /* Validate real address */
+            if (aaddr > regs->mainlim)
+            {
+                WRMSG(HHC02291, "I", "Addressing exception");
+                return;
+            }
+
             regs->mainstor[aaddr] = newval[i];
             STORAGE_KEY(aaddr, regs) |= (STORKEY_REF | STORKEY_CHANGE);
         } /* end for(i) */
@@ -1492,6 +2145,13 @@ char    buf2[512];
 int     n;                              /* Number of bytes in buffer */
 REGS   *regs;                           /* Copied regs               */
 
+    /* Ensure storage exists to attempt the display */
+    if (iregs->mainlim == 0)
+    {
+        WRMSG(HHC02267, "I", "Real address is not valid");
+        return;
+    }
+
 #if defined(OPTION_MSGCLR) || defined(OPTION_MSGHLD)
     if ( !(sysblk.emsg & EMSG_TEXT) )
         n = snprintf(buf, sizeof(buf)-1, "HHC02267I ");
@@ -1528,12 +2188,12 @@ REGS   *regs;                           /* Copied regs               */
 
     if ( sysblk.cpus > 1 )
         n += snprintf (buf + n, sizeof(buf)-n-1, "%s%02X: ", PTYPSTR(regs->cpuad), regs->cpuad);
-    n += snprintf (buf + n, sizeof(buf)-n-1, 
+    n += snprintf (buf + n, sizeof(buf)-n-1,
                 "PSW=%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X ",
                 qword[0], qword[1], qword[2], qword[3],
                 qword[4], qword[5], qword[6], qword[7]);
   #if defined(FEATURE_ESAME)
-    n += snprintf (buf + n, sizeof(buf)-n-1, 
+    n += snprintf (buf + n, sizeof(buf)-n-1,
                 "%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X%2.2X ",
                 qword[8], qword[9], qword[10], qword[11],
                 qword[12], qword[13], qword[14], qword[15]);
@@ -1551,7 +2211,8 @@ REGS   *regs;                           /* Copied regs               */
 #endif
             n += display_regs (regs, buf + n, sizeof(buf)-n-1, "");
 
-        if (!iregs->ghostregs) free(regs);
+        if (!iregs->ghostregs)
+            free_aligned( regs );
         writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", "%s", buf);
         return;
     }
@@ -1665,7 +2326,7 @@ REGS   *regs;                           /* Copied regs               */
         || opcode == 0xC6)
     {
         S64 offset = 2LL*(S32)(fetch_fw(inst+2));
-        addr1 = (likely(!regs->execflag)) ? 
+        addr1 = (likely(!regs->execflag)) ?
                         PSW_IA(regs, offset) : \
                         (regs->ET + offset) & ADDRESS_MAXWRAP(regs);
         b1 = 0;
@@ -1679,7 +2340,7 @@ REGS   *regs;                           /* Copied regs               */
                                                 ACCTYPE_READ, "", &xcode);
         else
             ARCH_DEP(display_virt) (regs, addr1, buf2, sizeof(buf2), b1,
-                                (opcode == 0x44 
+                                (opcode == 0x44
 #if defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)
                                  || (opcode == 0xc6 && !(inst[1] & 0x0f))
 #endif /*defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)*/
@@ -1693,7 +2354,7 @@ REGS   *regs;                           /* Copied regs               */
 
         if ( sysblk.cpus > 1 )
         {
-            n += snprintf(buf + n, sizeof(buf)-n-1, "%s%02X: ", 
+            n += snprintf(buf + n, sizeof(buf)-n-1, "%s%02X: ",
                           PTYPSTR(regs->cpuad), regs->cpuad );
         }
         n += snprintf(buf+n, sizeof(buf)-n-1, "%s\n", buf2);
@@ -1718,10 +2379,10 @@ REGS   *regs;                           /* Copied regs               */
         if ( !(sysblk.emsg & EMSG_TEXT) )
             n += snprintf(buf+n, sizeof(buf)-n-1, "HHC02267I ");
 #endif
-        
+
         if ( sysblk.cpus > 1 )
         {
-            n += snprintf(buf + n, sizeof(buf)-n-1, "%s%02X: ", 
+            n += snprintf(buf + n, sizeof(buf)-n-1, "%s%02X: ",
                           PTYPSTR(regs->cpuad), regs->cpuad );
         }
         n += snprintf(buf + n, sizeof(buf)-n-1, "%s\n", buf2);
@@ -1741,7 +2402,7 @@ REGS   *regs;                           /* Copied regs               */
     }
 
     if (!iregs->ghostregs)
-        free (regs);
+        free_aligned( regs );
     writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", "%s", buf);
 
 } /* end function display_inst */
@@ -1809,7 +2470,7 @@ void alter_display_virt (REGS *iregs, int argc, char *argv[], char *cmdline)
     }
 
     if (!iregs->ghostregs)
-        free(regs);
+        free_aligned( regs );
 } /* end function alter_display_virt */
 
 
@@ -1841,7 +2502,7 @@ void display_inst(REGS *iregs, BYTE *inst)
     }
 
     if (!iregs->ghostregs)
-        free (regs);
+        free_aligned( regs );
 }
 
 
@@ -1873,7 +2534,7 @@ void disasm_stor(REGS *iregs, int argc, char *argv[], char *cmdline)
     }
 
     if (!iregs->ghostregs)
-        free(regs);
+        free_aligned( regs );
 }
 
 /*-------------------------------------------------------------------*/

@@ -32,14 +32,17 @@ and how they are used.
     ####################################################################
 
 
-    #
-    #     <a href="#system_parameters">System parameters</a>
-    #
+    #------------------------------------------------------------------
+    #                       <a href="#system_parameters">SYSTEM PARAMETERS</a>
+    #------------------------------------------------------------------
 
+    <a href="#ARCHLVL">##ARCHMODE</a>   ESA/390                                            (deprecated)
+    <a href="#ASN_AND_LX_REUSE">##ASN_AND_LX_REUSE</a>  disable                                     (deprecated)
 
-    <a href="#ARCHLVL">ARCHLVL</a>   ESA/390
+    <a href="#ARCHLVL">ARCHLVL</a>    ESA/390
     <a href="#OSTAILOR">OSTAILOR</a>   OS/390
     <a href="#LOADPARM">LOADPARM</a>   0120....
+    <a href="#ARCHLVL_FACILITY">ARCHLVL</a>    DISABLE  ASN_LX_REUSE
 
     <a href="#CPUSERIAL">CPUSERIAL</a>  000611
     <a href="#CPUMODEL">CPUMODEL</a>   3090
@@ -58,6 +61,9 @@ and how they are used.
     <a href="#SYSEPOCH">SYSEPOCH</a>   1900
     <a href="#YROFFSET">YROFFSET</a>   -28
     <a href="#TZOFFSET">TZOFFSET</a>   -0500
+
+    <a href="#HTTPPORT">##HTTPPORT</a>   8081 NOAUTH                                        (deprecated)
+    <a href="#HTTPROOT">##HTTPROOT</a>   /usr/local/share/hercules/                         (deprecated)
 
     <a href="#HTTPPORT">HTTP</a>       port 8081 NOAUTH
     <a href="#HTTPROOT">HTTP</a>       root /usr/local/share/hercules/
@@ -98,7 +104,6 @@ and how they are used.
 
     <a href="#PGMPRDOS">PGMPRDOS</a>   restricted
     <a href="#ECPSVM">ECPSVM</a>     no
-    <a href="#ASN_AND_LX_REUSE">ASN_AND_LX_REUSE</a>  disable
 
     <a href="#SCSIMOUNT">SCSIMOUNT</a>  no
     <a href="#MOUNTED_TAPE_REINIT">MOUNTED_TAPE_REINIT</a>  allow
@@ -108,10 +113,10 @@ and how they are used.
     <a href="#INCLUDE">INCLUDE</a>    optdevs.cfg
 
 
-    #
-    #     <a href="#device_stmts">Device statements</a>
-    #
-
+    #------------------------------------------------------------------
+    #                     <a href="#device_stmts">DEVICE STATEMENTS</a>
+    #             (see supported <a href="#device_types_table">device types</a> table)
+    #------------------------------------------------------------------
 
     0009      <a href="#consysc">3215-C</a>  /
 
@@ -142,11 +147,13 @@ and how they are used.
     0401      <a href="#CTCT">CTCT</a>    30881  192.168.100.2  30881  2048
     0420.2    <a href="#CTCI">CTCI</a>    192.168.200.1  192.168.200.2
     0430.2    <a href="#CTCI">CTCI</a>    tun0
-    0440.2    <a href="#LCS">LCS</a>      -n   /dev/net/tun   192.168.200.2
+    0440.2    <a href="#LCS">LCS</a>     -n   /dev/net/tun   192.168.200.2
+    0460.2    <a href="#PTP">PTP</a>     192.168.200.1  192.168.200.2/24
+    0470.2    <a href="#PTP">PTP</a>     tun0
     0A00.3    <a href="#QETH">QETH</a>    iface /dev/net/tun
 
-    0580      <a href="#3420">3420</a>    /dev/nst0   # SCSI  (Linux or Windows)
-    0581      <a href="#3420">3420</a>    \\.\Tape0   # SCSI  (Windows only)
+    0580      <a href="#3420">3420</a>    /dev/nst0   # <a href="#SCSI">SCSI</a>  (Linux or Windows)
+    0581      <a href="#3420">3420</a>    \\.\Tape0   # <a href="#SCSI">SCSI</a>  (Windows only)
     0582      <a href="#3420">3420</a>    ickdsf.aws  <a href="#noautomount">noautomount</a>
     0583      <a href="#3420">3420</a>    /cdrom/tapes/uaa196.tdf
     0584-0587 <a href="#3420">3420</a>    <a href="#subs">$(TAPEDIR)</a>/volumes.<a href="#subs">$(CUU)</a> maxsizeM=170 eotmargin=131072
@@ -206,9 +213,17 @@ and how they are used.
     For the time being however, <code>ARCHMODE</code> is still accepted and is treated as
     simply a synonym for the <code>ARCHLVL</code> statement.
     <p>
+<a name="ARCHLVL_FACILITY"></a>
 <dt><code>ARCHLVL &nbsp; ENABLE &#124; DISABLE &#124; QUERY <em>facility</em></code>
 <dd><p>
-    specifies a particular facility to be enabled or disabled, or the current setting queried.
+    specifies a particular STFLE facility to be enabled or disabled, or the current setting queried.
+    Use <code>QUERY ALL</code> to obtain a list of valid <code><em>facility</em></code> &nbsp; names
+    that may be used.
+   <p>
+    Alternatively, you can also specify the actual STFLE bit number to be turned off or on
+    (disabled or enabled) using the format <code><em>BITnn</em></code> &nbsp; where 'nn'
+    corresponds to the exact STFLE facility bit you wish to be forced on or off. A popular
+    one among the VM crowd is <code>ENABLE BIT44</code> to force the PFPO Facility bit on.
    <p>
 
 
@@ -401,10 +416,6 @@ and how they are used.
     </blockquote>
     <p>
 
-    Iconv single byte codepages may also be used (e.g. <code>UTF8/EBCDIC-CP-NL</code>)
-    if the host environment supports iconv.
-    <p>
-
     If no codepage is specified then the environment variable HERCULES_CP
     will be inspected. The default codepage mapping is <code>default</code>.
 
@@ -501,8 +512,13 @@ and how they are used.
 <a name="CPUSERIAL"></a>
 <dt><code>CPUSERIAL &nbsp; <em>xxxxxx</em></code>
 <dd><p>
-    specifies the 6 hexadecimal digit CPU serial
-    number stored by the STIDP instruction
+    specifies the 6 hexadecimal digit CPU serial number stored by the
+    STIDP instruction. In BASIC mode, the high-order digit may be
+    replaced with the processor number when MAXCPU > 1; in LPAR mode,
+    the two high-order digits are replaced with either the LPAR number
+    or the CPU number and LPAR number with the full serial number
+    available via the STSI instruction.
+    The default serial number is 000001.
     <p>
 
 <a name="CPUVERID"></a>
@@ -801,13 +817,17 @@ and how they are used.
     <p>
 
 <a name="LPARNUM"></a>
-<dt><code>LPARNUM &nbsp; <em>xx</em></code>
+<dt><code>LPARNUM &nbsp; <em>xx</em> &#124; BASIC</code>
 <dd><p>
-    specifies the one- or two-digit hexadecimal LPAR identification number
-    stored by the STIDP instruction.
-    If a one-digit number is specified then STIDP stores a format-0 CPU ID.
-    If a two-digit number is specified then STIDP stores a format-1 CPU ID.
-    If LPARNUM is not specified, then STIDP stores a basic-mode CPU ID.
+    specifies the one- or two-digit hexadecimal LPAR identification
+    number stored by the STIDP instruction, or BASIC. If a one-digit
+    number from 1 to F (hexadecimal) is specified, then STIDP stores a
+    format-0 CPU ID unless a subsequent CPUIDFMT 1 statement is
+    specified. If zero or a a two-digit hexadecimal number, except 10
+    (hexadecimal), is specified, then STIDP stores a format-1 CPU ID.
+    For LPARNUM 10, the current CPUIDFMT is not changed. If LPARNUM is
+    BASIC, then STIDP stores a basic-mode CPU ID.
+    The default is LPARNUM 1 with a format-0 CPU ID.
     <p>
 
 <a name="MAINSIZE"></a>
@@ -1129,6 +1149,12 @@ and how they are used.
     is 'NO', which results in a traditional device list display. This statement
     has no effect when no operand is given and instead simply echos the current
     setting to the console.
+    <p>
+    <i>
+    <b>Note:</b> &nbsp; support for this command/statement must be specifically
+    generated by enabling the </i><code>#define OPTION_SHOWDVOL1</code><i>
+    statement in source header 'featall.h' and then rebuilding Hercules.
+    </i>
     <p>
 
 <a name="SHRDPORT"></a>
@@ -1931,6 +1957,20 @@ and how they are used.
 
             <tr>
                 <td>
+                        (( <a href="#PTP">PTP</a> ))
+                </td>
+                <td>
+                        MPCPTP/MPCPTP6 Channel to Channel link
+                </td>
+                <td>
+                        <a href="#PTP">"PTP" TUN/TAP Driver</a>
+                </td>
+            </tr>
+
+
+
+            <tr>
+                <td>
                         (( <a href="#QETH">QETH</a> ))
                 </td>
                 <td>
@@ -1939,7 +1979,7 @@ and how they are used.
                             TAP Adapter must be bridged to a local LAN.
                 </td>
                 <td>
-                        <a href="#QETH">"QETH" (OSA/QDIO Ethernet Adapter)
+                        <a name="#QETH">"QETH" (OSA/QDIO Ethernet Adapter)
                         <br>TUN/TAP Driver</a>
                 </td>
             </tr>
@@ -2419,9 +2459,14 @@ and how they are used.
 
 <a name="3420"></a>
 <a name="tapedev"></a>
-<dt><em>Emulated tape devices</em>
+<dt><em>Tape devices</em>
 <dd><p>
-    Five types of tape emulation are supported (see further below).
+    Five types of tape emulation are supported (see further below): &nbsp;
+    <a href="#AWS"><b>AWS</b></a>, &nbsp;
+    <a href="#HET"><b>HET</b></a>, &nbsp;
+    <a href="#FAKETAPE"><b>FakeTape</b></a>, &nbsp;
+    <a href="#OMA"><b>Optical Media Attach (OMA)</b></a>, &nbsp; and &nbsp;
+    <a href="#SCSI"><b>real SCSI</b></a> .
     <p>
 
     The only required parameter is the device filename. All other parameters
@@ -2458,175 +2503,14 @@ and how they are used.
     Refer to the distributed source-code's "<b>README.TAPE</b>" document for
     additional information regarding system and application programming for tape
     devices and instructions regarding use of the emulated <b>ACF</b> (Automatic
-    Cartridge Feeder) and <b><a href="#AUTOMOUNT">AUTOMOUNT</a></b> features
+    Cartridge Feeder) and <a href="#AUTOMOUNT">AUTOMOUNT</a> features
     for virtual (non-SCSI) tape devices.
     <p>
 
     <dl> <!-- begin Emulated tape types of emulation -->
 
-    <dt><b>SCSI tape drives</b>
-    <dd><p>
-        These are real tape drives attached to the host machine via a SCSI
-        interface. Hercules emulation always makes the drive appear as a
-        channel attached device such as 3420 or 3480, although the underlying
-        physical drive may be any type of SCSI attached tape drive, including
-        4mm or 8mm DAT, DLT, SCSI attached 3480/3490 cartridge drives, and
-        SCSI attached 3420 open reel tape drives.
-        <p>
-        Host-attached SCSI tapes are read and written using variable length
-        EBCDIC blocks and filemarks exactly like a mainframe tape volume, and
-        as a result can be freely used/exchanged on either (i.e. SCSI tapes
-        created on a real mainframe can subsequently be read by Hercules just
-        fine, and a SCSI tape created by Hercules can be subsequently read on
-        a mainframe just fine, thus providing a convenient means of exchanging
-        data between the two).
-        <p>
-        If you plan on using SCSI tapes with Hercules you might also be interested
-        in the <a href="#AUTO_SCSI_MOUNT">AUTO_SCSI_MOUNT</a> configuration option.
-        <p>
-        The only <i>required</i> device statement parameter for SCSI attached tape
-        drives is the name of the device as it is known
-        by the host operating system,
-        usually &nbsp;"<code><b>/dev/nst0</b></code>"&nbsp; <i>(for Linux or
-        Windows)</i> or &nbsp;"<code><b>\\.\Tape0</b></code>" &nbsp; <i>(for
-        Windows only)</i>, where '0' means tape drive number
-        0 (your first or only host-attached SCSI tape drive), '1' means your
-        second host-attached SCSI tape drive, etc.
-        <p>
-        Depending on what actual model of SCSI tape drive you
-        actually have and how it behaves, you may need to specify one or more
-        additional optional parameters for Hercules to provide proper emulation
-        of the desired device type.
-        For example: a <b>Quantum 'DLT' (Digital Linear Tape) SCSI</b> tape drive does
-        not return nor use a block-id format compatible with 3480/3490 drives
-        (it instead uses a full 32-bit block-id just like the model 3590 does).
-        It also does not support the Erase Gap CCW at all.
-        <p>
-        Thus, in order to use, for example, a Quantum DLT drive with Hercules,
-        you <i>MUST</i> specify some special additional options to prevent the
-        Erase Gap command from being issued to the drive as well as to inform
-        Hercules that the drive uses 32-bit block-ids.
-        <p>
-        <b>Please note</b> that the below options define how the actual SCSI hardware
-        device behaves, which is completely different from the way the <i>emulated</i>
-        device will appear to behave to your guest. That is to say, if you define
-        your tape drive to Hercules as a 3480 device, then Hercules will perform
-        3480 device type emulation such that the device appears to your guest o/s
-        as if it were a 3480 device. If the <i>actual</i> SCSI device behaves as
-        a 3590 device however (perhaps using/returning 32-bit block-ids instead
-        of the expected 22-bit format block-ids that 3480's use), then you <i>MUST</i>
-        specify the <code>--blkid-32</code> special option on your Hercules device
-        statement so that Hercules's emulation logic can know that it needs to
-        translate 22-bit block-ids to 32-bit ones before sending them to the
-        actual SCSI hardware (and vice versa: to translate 32-bit block-ids from
-        the actual SCSI drive into 22-bit format block-ids that your guest expects
-        from a 3480 device).
-        <br>
-<a name="Quantum"></a>
-        <br>
-                <center><h4>Special options for SCSI tapes</h4></center>
-        <p>
-        As explained just above, certain model SCSI tape drives such as the Quantum
-        DLT series may require special handling in order to provide the desired proper
-        device type emulation. These special options are:
-        <p>
-        <dl>
-        <dt><code>--no-erg</code>
-        <dd><p>
-            This option is intended to prevent issuance of the Erase Gap
-            command to those SCSI tape drives which do not support it (such
-            as the Quantum DLT series). It causes Hercules's device emulation
-            logic to ignore any Erase Gap commands issued to the drive and
-            to return immediate 'success' instead.
-            <p>
-            This option should
-            only be used (specified) for drives such as the Quantum, which
-            support switching from read mode to write mode in the middle of
-            a data stream without the need of an intervening Erase Gap command.
-            Specifying it for any other model SCSI drive may cause incorrect
-            functioning as a result of the Erase Gap command not being issued
-            to the actual SCSI hardware.
-            <p>
-            Check the manufacturer information for your particular model of
-            SCSI-attached tape drive (and/or use Fish's
-            "<a href="http://www.softdevlabs.com/Hercules">ftape</a>"
-            Windows utility)
-            to determine whether or not this option is needed for your
-            particular drive.
-            <p>
-        <dt><code>--blkid-32</code>
-        <dd><p>
-            This option indicates that your SCSI-attached tape drive only
-            supports 32-bit block-ids (as used by 3590 drives) and not the 22-bit
-            format used by 3480/3490 drives. You should only specify this option
-            if you intend to define the drive as a model 3480 or 3490 device, and
-            then only if your actual SCSI drive uses 32-bit block-ids of course.
-            If you define your Hercules tape drive as a model 3590 device however,
-            then this option is of course not needed since model 3590 drives
-            are already presumed to use 32-bit block-ids.
-            <p>
-            Specifying this option on a 3480/3490 device statement will cause
-            Hercules device emulation logic to automatically translate the actual
-            SCSI tape drive's 32-bit block-id into 22-bit format before returning
-            it back to the guest operating system (since that is the format it
-            expects it to be in for a model 3480/3490 drive), and to translate the
-            guest's 22-bit format block-id into 32-bit format before sending it
-            to the actual SCSI hardware (since that is the format that the actual
-            hardware requires it to be in).
-            <p>
-        <dt><code>--blkid-22</code>
-        <dd><p>
-            The complete opposite of the above <code>--blkid-32</code> option.
-        </dl>
-        <p><br>
-
-    <dt><b>Optical Media Attach (OMA) virtual files</b>
-    <dd><p>
-        These are read-only files which usually reside on CDROM.
-        OMA virtual tapes consist of one CDROM file corresponding
-        to each physical file of the emulated tape.  An ASCII text
-        file called the tape descriptor file (TDF) specifies the
-        names of the files which make up the virtual tape.
-        The argument specifies the name of the tape descriptor
-        file (for example <code>/cdrom/tapes/uaa196.tdf</code>)
-        <p>
-
-        Each file on the virtual tape can be in one of three formats:
-        <p>
-
-        <dl>
-        <dt><code>TEXT</code>
-        <dd><p>
-            <b><i>TEXT</i></b> files consist of variable length
-            ASCII records delimited by carriage return line feed
-            sequences at the end of each record.  Each record is
-            translated to EBCDIC and presented to the program as
-            one physical tape block.
-            <p>
-
-        <dt><code>FIXED <em>nnnnn</em></code>
-        <dd><p>
-            <b><i>FIXED</i></b> files consist of fixed length
-            EBCDIC blocks of the specified length
-            (<code><em>nnnnn</em></code>)
-            <p>
-
-        <dt><code>HEADERS</code>
-        <dd><p>
-            <b><i>HEADERS</i></b> files consist of variable
-            length EBCDIC blocks.  Each block is preceded by a
-            12-byte header.
-            <p>
-
-        </dl>
-        <p>
-
-        If you have any IBM manuals in Bookmanager format on CDROM,
-        you can see some examples of TDF files in the
-        <code>\TAPES</code> directory on the CDROM.
-        <p><br>
-
-    <dt><b>AWSTAPE virtual files</b>
+<a name="AWS"></a>
+    <dt><b>AWSTAPE virtual tape files</b>
     <dd><p>
         These contain a complete tape in one file.  AWSTAPE files
         consist of variable length EBCDIC blocks.  Each block is
@@ -2635,9 +2519,10 @@ and how they are used.
         used by the P/390.
         The argument specifies the location of the AWSTAPE file
         (for example <code>ickdsf.aws</code>)
-        <p><br>
+    <p>
 
-    <dt><b>FakeTape virtual files</b>
+<a name="FAKETAPE"></a>
+    <dt><b>FakeTape virtual tape files</b>
     <dd><p>
         These contain a complete tape in one file.  FakeTape files
         consist of variable length EBCDIC blocks.  Each block is
@@ -2647,9 +2532,10 @@ and how they are used.
         The argument specifies the location of the FakeTape file
         (for example <code>ickdsf.fkt</code>). Note: "FLEX-ES" and
         "FakeTape" are trademarks of Fundamental Software, Inc.
-        <p><br>
+    <p>
 
-    <dt><b>HET virtual files</b> &nbsp;&nbsp; (<b>H</b>ercules <b>E</b>mulated <b>T</b>ape)
+<a name="HET"></a>
+    <dt><b>HET virtual tape files</b> &nbsp;&nbsp; (<b>H</b>ercules <b>E</b>mulated <b>T</b>ape)
     <dd><p>
         These contain a complete tape in one file and have the same
         structure as the AWSTAPE format with the added ability to have
@@ -2719,15 +2605,15 @@ and how they are used.
 
         </dl> <!-- end Additional HET arguments -->
 
-    </dl> <!-- begin Emulated tape types of emulation -->
-
-    <p><br>
-
-    The following parameters apply to <b>AWS</b>, <b>HET</b> and <b>FakeTape</b> emulation files:
     <p>
 
-    <blockquote>
-        <dl>
+    <dt>The following additional parameters apply to
+        <b><a href="#AWS">AWS</a></b>, <b><a href="#HET">HET</a></b>
+        and <b><a href="#FAKETAPE">FakeTape</a></b> virtual tape files:
+    <dd><p>
+
+        <dl> <!-- begin Additional AWS/HET/FAKE parameters -->
+
         <dt><code>MAXSIZE</code>=<i>n[s]</i> &nbsp;&#124;&nbsp; <code>MAXSIZEK</code>=<i>n</i>
              &nbsp;&#124;&nbsp; <code>MAXSIZEM</code>=<i>n</i>
         <dd><p>
@@ -2862,8 +2748,178 @@ and how they are used.
             A sample guest automount program called <code>TMOUNT</code> for
             the DOS/VSE operating system is provided in the
             <code>util</code> subdirectory of the distributed source code.
+
+        </dl> <!-- end Additional AWS/HET/FAKE parameters -->
+
+    <p>
+
+<a name="OMA"></a>
+    <dt><b>Optical Media Attach (OMA) virtual tape files</b>
+    <dd><p>
+        These are read-only files which usually reside on CDROM.
+        OMA virtual tapes consist of one CDROM file corresponding
+        to each physical file of the emulated tape.  An ASCII text
+        file called the tape descriptor file (TDF) specifies the
+        names of the files which make up the virtual tape.
+        The argument specifies the name of the tape descriptor
+        file (for example <code>/cdrom/tapes/uaa196.tdf</code>)
+        <p>
+
+        Each file on the virtual tape can be in one of three formats:
+        <p>
+
+        <dl>
+        <dt><code>TEXT</code>
+        <dd><p>
+            <b><i>TEXT</i></b> files consist of variable length
+            ASCII records delimited by carriage return line feed
+            sequences at the end of each record.  Each record is
+            translated to EBCDIC and presented to the program as
+            one physical tape block.
+            <p>
+
+        <dt><code>FIXED <em>nnnnn</em></code>
+        <dd><p>
+            <b><i>FIXED</i></b> files consist of fixed length
+            EBCDIC blocks of the specified length
+            (<code><em>nnnnn</em></code>)
+            <p>
+
+        <dt><code>HEADERS</code>
+        <dd><p>
+            <b><i>HEADERS</i></b> files consist of variable
+            length EBCDIC blocks.  Each block is preceded by a
+            12-byte header.
+            <p>
+
         </dl>
-    </blockquote>
+        <p>
+
+        If you have any IBM manuals in Bookmanager format on CDROM,
+        you can see some examples of TDF files in the
+        <code>\TAPES</code> directory on the CDROM.
+
+    <p>
+
+<a name="SCSI"></a>
+    <dt><b>Real SCSI attached tape drives</b>
+    <dd><p>
+        These are real tape drives attached to the host machine via a SCSI
+        interface. Hercules emulation always makes the drive appear as a
+        channel attached device such as 3420 or 3480, although the underlying
+        physical drive may be any type of SCSI attached tape drive, including
+        4mm or 8mm DAT, DLT, SCSI attached 3480/3490 cartridge drives, and
+        SCSI attached 3420 open reel tape drives.
+        <p>
+        Host-attached SCSI tapes are read and written using variable length
+        EBCDIC blocks and filemarks exactly like a mainframe tape volume, and
+        as a result can be freely used/exchanged on either (i.e. SCSI tapes
+        created on a real mainframe can subsequently be read by Hercules just
+        fine, and a SCSI tape created by Hercules can be subsequently read on
+        a mainframe just fine, thus providing a convenient means of exchanging
+        data between the two).
+        <p>
+        If you plan on using SCSI tapes with Hercules you might also be interested
+        in the <a href="#SCSIMOUNT">SCSIMOUNT</a> configuration option.
+        <p>
+        The only <i>required</i> device statement parameter for SCSI attached tape
+        drives is the name of the device as it is known
+        by the host operating system,
+        usually &nbsp;"<code><b>/dev/nst0</b></code>"&nbsp; <i>(for Linux or
+        Windows)</i> or &nbsp;"<code><b>\\.\Tape0</b></code>" &nbsp; <i>(for
+        Windows only)</i>, where '0' means tape drive number
+        0 (your first or only host-attached SCSI tape drive), '1' means your
+        second host-attached SCSI tape drive, etc.
+        <p>
+        Depending on what actual model of SCSI tape drive you
+        actually have and how it behaves, you may need to specify one or more
+        additional optional parameters for Hercules to provide proper emulation
+        of the desired device type.
+        For example: a <b>Quantum 'DLT' (Digital Linear Tape) SCSI</b> tape drive does
+        not return nor use a block-id format compatible with 3480/3490 drives
+        (it instead uses a full 32-bit block-id just like the model 3590 does).
+        It also does not support the Erase Gap CCW at all.
+        <p>
+        Thus, in order to use, for example, a Quantum DLT drive with Hercules,
+        you <i>MUST</i> specify some special additional options to prevent the
+        Erase Gap command from being issued to the drive as well as to inform
+        Hercules that the drive uses 32-bit block-ids.
+        <p>
+        <b>Please note</b> that the below options define how the actual SCSI hardware
+        device behaves, which is completely different from the way the <i>emulated</i>
+        device will appear to behave to your guest. That is to say, if you define
+        your tape drive to Hercules as a 3480 device, then Hercules will perform
+        3480 device type emulation such that the device appears to your guest o/s
+        as if it were a 3480 device. If the <i>actual</i> SCSI device behaves as
+        a 3590 device however (perhaps using/returning 32-bit block-ids instead
+        of the expected 22-bit format block-ids that 3480's use), then you <i>MUST</i>
+        specify the <code>--blkid-32</code> special option on your Hercules device
+        statement so that Hercules's emulation logic can know that it needs to
+        translate 22-bit block-ids to 32-bit ones before sending them to the
+        actual SCSI hardware (and vice versa: to translate 32-bit block-ids from
+        the actual SCSI drive into 22-bit format block-ids that your guest expects
+        from a 3480 device).
+        <p>
+
+<a name="Quantum"></a>
+                <center><h4>Special options for SCSI tapes</h4></center>
+        <p>
+        As explained just above, certain model SCSI tape drives such as the Quantum
+        DLT series may require special handling in order to provide the desired proper
+        device type emulation. These special options are:
+        <p>
+        <dl>
+        <dt><code>--no-erg</code>
+        <dd><p>
+            This option is intended to prevent issuance of the Erase Gap
+            command to those SCSI tape drives which do not support it (such
+            as the Quantum DLT series). It causes Hercules's device emulation
+            logic to ignore any Erase Gap commands issued to the drive and
+            to return immediate 'success' instead.
+            <p>
+            This option should
+            only be used (specified) for drives such as the Quantum, which
+            support switching from read mode to write mode in the middle of
+            a data stream without the need of an intervening Erase Gap command.
+            Specifying it for any other model SCSI drive may cause incorrect
+            functioning as a result of the Erase Gap command not being issued
+            to the actual SCSI hardware.
+            <p>
+            Check the manufacturer information for your particular model of
+            SCSI attached tape drive (and/or use Fish's
+            "<a href="http://www.softdevlabs.com/Hercules">ftape</a>"
+            Windows utility)
+            to determine whether or not this option is needed for your
+            particular drive.
+            <p>
+        <dt><code>--blkid-32</code>
+        <dd><p>
+            This option indicates that your SCSI attached tape drive only
+            supports 32-bit block-ids (as used by 3590 drives) and not the 22-bit
+            format used by 3480/3490 drives. You should only specify this option
+            if you intend to define the drive as a model 3480 or 3490 device, and
+            then only if your actual SCSI drive uses 32-bit block-ids of course.
+            If you define your Hercules tape drive as a model 3590 device however,
+            then this option is of course not needed since model 3590 drives
+            are already presumed to use 32-bit block-ids.
+            <p>
+            Specifying this option on a 3480/3490 device statement will cause
+            Hercules device emulation logic to automatically translate the actual
+            SCSI tape drive's 32-bit block-id into 22-bit format before returning
+            it back to the guest operating system (since that is the format it
+            expects it to be in for a model 3480/3490 drive), and to translate the
+            guest's 22-bit format block-id into 32-bit format before sending it
+            to the actual SCSI hardware (since that is the format that the actual
+            hardware requires it to be in).
+            <p>
+        <dt><code>--blkid-22</code>
+        <dd><p>
+            The complete opposite of the above <code>--blkid-32</code> option.
+        </dl>
+
+    <p>
+
+    </dl> <!-- end Emulated tape types of emulation -->
 
 <hr width="50%"><p>
 
@@ -2905,7 +2961,7 @@ and how they are used.
         <p>
 
         <dl> <!-- begin CTCI parms -->
-        <dt>Linux using preconfigured interfaces:
+        <dt>Required for Linux when using a preconfigured interface:
 
         <dd><p>
             <dl>
@@ -2954,23 +3010,27 @@ and how they are used.
             <p>
 
             <dl> <!-- begin Optional for Windows -->
-            <dl> <!-- (begin INDENT) -->
+
+                <dt><code>-m <em>MAC address</em></code> &nbsp;&nbsp; or &nbsp; <code>--mac <em>MAC address</em></code>
+                <dd><p>
+                    where <em>'MAC address'</em> is the optional hardware address for
+                    the virtual interface in the format: hh:hh:hh:hh:hh:hh. The default value
+                    is '00:00:5E:nn:nn:nn' where the <i>:nn:nn:nn</i> portion is constructed
+                    from the last 3 octets of the specified <code><i>guestip</i></code>.
+                    <p>
 
                 <dt><code>-k &nbsp;<em>kernel-capture-buffer-size</em></code>
                     <dd>
                 <dt><code>-i &nbsp;<em>tuntap32-i/o-buffer-size</em></code>
-                    <dd>
-                <p>
+                <dd><p>
+                    See Fish's
+                    <a href="http://www.softdevlabs.com/Hercules/ctci-w32-index.html">CTCI-W32</a>
+                    page for further details and information.
+                    <p>
 
-            </dl> <!-- (end INDENT) -->
             </dl> <!-- end Optional for Windows -->
 
             <p>
-            See Fish's
-            <a href="http://www.softdevlabs.com/Hercules/ctci-w32-index.html">CTCI-W32</a>
-            page for further details and information.
-
-        <p>
 
         <dt>Optional for both Linux and Windows:
         <dd><p>
@@ -3002,14 +3062,6 @@ and how they are used.
                     document for more information about adapter binding order, and the
                     <a href="http://www.softdevlabs.com/Hercules/ctci-w32-readme.html#herccfg">CTCI-W32 Configuration</a>
                     web page for general information regarding CTCI-W32 configuration.
-                    <p>
-
-                <dt><code>-m <em>MAC address</em></code> &nbsp;&nbsp; or &nbsp; <code>--mac <em>MAC address</em></code>
-                <dd><p>
-                    where <em>'MAC address'</em> is the optional hardware address for
-                    the virtual interface in the format: hh:hh:hh:hh:hh:hh. The default value
-                    is '00:00:5E:nn:nn:nn' where the <i>:nn:nn:nn</i> portion is constructed
-                    from the last 3 octets of the specified <code><i>guestip</i></code>.
                     <p>
 
                 <dt><code>-s <em>netmask</em></code>
@@ -3135,9 +3187,9 @@ and how they are used.
                 <dt>(Windows)
                 <dd><p>
                     is either the IP or MAC address of the driving
-                    systems network card. TunTap32 will automatically select
-                    the first network card it finds if this option is
-                    omitted, this may not be desirable for some users.
+                    systems network card. Note: If this option is omitted,
+                    then TunTap32 automatically selects the first network card
+                    it finds, which may not be desirable for some users.
                     <p>
 
              </dl> <!-- end 'devname' -->
@@ -3146,11 +3198,11 @@ and how they are used.
 
         <dt><code>-o <em>filename</em></code> &nbsp;&nbsp; or &nbsp; <code>--oat <em>filename</em></code>
         <dd><p>
-            where <em>filename</em> specifies the filename of the Address
-            Translation file. If this option is specified, the optional
+            where <em>filename</em> specifies the filename of the
+            OSA Address Table (OAT). If this option is specified, the optional
             <code>--mac</code> and <em>guestip</em> entries are ignored in preference to
             statements in the OAT. (See further below for the <a href=#OAT>syntax
-            of the OAT file</a>)
+            of the OAT</a>)
             <p>
 
         <dt><code>-m <em>MAC Address</em></code> &nbsp;&nbsp; or &nbsp; <code>--mac <em>MAC address</em></code>
@@ -3170,9 +3222,9 @@ and how they are used.
             <p>
 
         <a name="OAT"></a>
-        <dt><b>OAT file syntax</b>
+        <dt><b>OAT syntax</b>
         <dd><p>
-            The syntax for the Address Translation file is as follows:
+            The syntax for the OSA Address Table (OAT) is as follows:
             <p>
 <table border=1 cellpadding=10><tr><td>
 <pre><code>
@@ -3194,7 +3246,7 @@ ROUTE  00  172.021.003.032  255.255.255.224
 </td></tr></table>
             <p>
 
-            <dl> <!-- begin LCS OATFILE parms -->
+            <dl> <!-- begin LCS OAT parms -->
             <dt>where:
             <dd><p>
                 <dl> <!-- (begin INDENT) -->
@@ -3212,7 +3264,7 @@ ROUTE  00  172.021.003.032  255.255.255.224
                     <dd>is the virtual (relative) adapter number.
                         <p>
                 </dl> <!-- (end INDENT) -->
-            </dl> <!-- end LCS OATFILE parms -->
+            </dl> <!-- end LCS OAT parms -->
 
             <p>
 
@@ -3247,8 +3299,8 @@ ROUTE  00  172.021.003.032  255.255.255.224
             <i><b>Note:</b> &nbsp;the SNA operation mode is NOT currently implemented.</i>
             <p>
 
-            Additionally, two other statements may be included in the
-            address translation file. The HWADD and ROUTE statements:
+            Additionally, a HWADD and/or ROUTE statement
+            may also be included in the OAT:
 
             <p>
             <dl> <!-- begin HWADD and ROUTE -->
@@ -3258,7 +3310,7 @@ ROUTE  00  172.021.003.032  255.255.255.224
                 <dd><p>
                     Use the HWADD to specify a hardware (MAC) address for a
                     virtual adapter. The first parameter after HWADD specifies
-                    with relative adapter for which the address is applied.
+                    the relative adapter for which the address is applied.
 
                     <p>
 
@@ -3267,8 +3319,8 @@ ROUTE  00  172.021.003.032  255.255.255.224
                     The ROUTE statement is included for convenience. This allows the
                     hercifc program to create a network route for this specified
                     virtual adapter. Please note that it is not necessary to include
-                    point-to-point routes for each IP address in the table. This is
-                    done automatically by the emulation module.
+                    point-to-point routes for each IP address in the table since this
+                    is done automatically by the emulation module.
 
                     <p>
 
@@ -3285,7 +3337,7 @@ ROUTE  00  172.021.003.032  255.255.255.224
 
         <p>
 
-        If no Address Translation file is specified, the emulation module
+        If no OAT is specified, the emulation module
         will create the following:
         <p>
 
@@ -3294,6 +3346,222 @@ ROUTE  00  172.021.003.032  255.255.255.224
             <li>Two device addresses will be defined (devnum and devnum + 1).
         </ul>
         <p>
+
+<p><br>
+
+<a name="PTP"></a>
+    <dt><b>PTP</b> &nbsp; &nbsp; (MPCPTP/MPCPTP6 Channel to Channel link)
+    <dd><p>
+        A point-to-point IP connection with the TCP/IP stack of the
+        host system on which Hercules is running.
+        From the point of view of the guest image running in the Hercules
+        machine it appears to be an MPCPTP and/or MPCPTP6 ESCON CTC link to
+        another image.
+        <p>
+        For *nix systems, such as Linux, BSD, and OSX, you may use
+        preconfigured interfaces or you may request Hercules to configure
+        the interface for you.
+        In the first case you must know and supply the name of the interface
+        to use; in the second case the kernel supplies an interface name.
+        See the <a href="herctcp.html">Hercules TCP/IP</a> page for more details.
+        <p>
+
+        <dl> <!-- begin PTP parms -->
+        <dt>Required for *nix when using a preconfigured interface:
+
+        <dd><p>
+            <dl> <!-- begin Required for *nix preconfigured -->
+                <dt>[<code>-x</code>/<code>--if</code>] <code><em>ifname</em></code>
+                <dd><p>
+                    specifies the interface name of a TUN interface that is
+                    already configured. 
+                    <p>
+                    Specify no host names or IP addresses or other arguments as
+                    the information is already configured into the interface.
+                    <p>
+            </dl> <!-- end Required for *nix preconfigured -->
+
+        <dt>Required for *nix when not using a preconfigured interface,
+        and for Windows:
+        <dd><p>
+            <dl> <!-- begin Required for both *nix not preconfigured and Windows -->
+                <dt><code><em>guest1</em></code>
+                <dd><p>
+                    specifies the host name or IP address of the guest
+                    operating system running under Hercules.
+                    <p>
+
+                <dt><code><em>host1</em></code>
+                <dd><p>
+                    specifies the host name or IP address of the host
+                    (Linux or Windows) side of the point-to-point link.
+                    <p>
+
+                <dt><code><em>guest2</em></code>
+                <dd><p>
+                    specifies the host name or IP address of the guest
+                    operating system running under Hercules.
+                    <p>
+
+                <dt><code><em>host2</em></code>
+                <dd><p>
+                    specifies the host name or IP address of the host
+                    (Linux or Windows) side of the point-to-point link.
+                    <p>
+
+                <dt><code><em>guest1</em></code> and <code><em>host1</em></code>
+                must both be of the same address family, i.e. both IPv4 or
+                both IPv6.
+                <p>
+
+                <dt><code><em>guest2</em></code> and <code><em>host2</em></code>,
+                if specified, must both be of the same address family, i.e. both
+                IPv4 or both IPv6, and must not be of the same address family as
+                <code><em>guest1</em></code> and <code><em>host1</em></code>.
+                <p>
+
+                <dt>If a host name is specified for <code><em>guest1</em></code>,
+                and the host name can be resolved to both an IPv4 and an IPv6
+                address, use either the <code>-4</code>/<code>--inet</code>
+                or the <code>-6</code>/<code>--inet6</code> option to
+                specify which address family should be used;
+                if neither the <code>-4</code>/<code>--inet</code> nor the
+                <code>-6</code>/<code>--inet6</code> option is specified,
+                whichever address family the resolver returns first will
+                be used.
+                <p>
+
+                <dt><code><em>host1</em></code> or <code><em>host2</em></code> can
+                be followed by the prefix size expressed in CIDR notation,
+                e.g. 192.168.1.1/24 or 2001:db8:3003:1::543:210f/48.
+                For IPv4 the prefix size can have a value from 0 to 32;
+                if not specified a value of 32 is assumed.
+                For IPv6 the prefix size can have a value from 0 to 128;
+                if not specified a value of 128 is assumed.
+                For IPv4 the prefix size is used to produce the equivalent
+                subnet mask; for example, a value of 24 produces a subnet
+                mask of 255.255.255.0.
+                <p>
+
+                <dt>If <code><em>guest1</em></code>, <code><em>host1</em></code>,
+                <code><em>guest2</em></code> or <code><em>host2</em></code>
+                are numeric IPv6 addresses, they can be between braces,
+                e.g. [2001:db8:3003:1::543:210f].
+                <p>
+
+            </dl> <!-- end Required for both *nix not preconfigured and Windows -->
+
+            <p>
+
+        <dt>Optional for *nix:
+        <dd><p>
+            If these arguments are specified, they must precede the required
+            arguments.
+            <p>
+
+            <dl> <!-- begin Optional for *nix -->
+
+                <dt><code>-t <em>size</em></code> &nbsp;&nbsp; or &nbsp; <code>--mtu <em>size</em></code>
+                <dd><p>
+                    where <code><em>size</em></code> is the maximum transmission
+                    unit size. The default size is 1500.
+                    <p>
+
+                <dt><code>-x <em>name</em></code> &nbsp;&nbsp; or &nbsp; <code>--if <em>name</em></code>
+                <dd><p>
+                    specifies the name of the TUN interface to use.
+                    There is no default for <code><em>name</em></code>.
+                    <p>
+
+            </dl> <!-- end Optional for *nix -->
+
+            <p>
+
+        <dt>Optional for Windows:
+        <dd><p>
+            If these arguments are specified, they must precede the required
+            arguments.
+            <p>
+
+            <dl> <!-- begin Optional for Windows -->
+
+                <dt><code>-m <em>MAC address</em></code> &nbsp;&nbsp; or &nbsp; <code>--mac <em>MAC address</em></code>
+                <dd><p>
+                    where <em>'MAC address'</em> is the optional hardware address for
+                    the virtual interface in the format: hh:hh:hh:hh:hh:hh. The default value
+                    is '00:00:5E:nn:nn:nn' where the <i>:nn:nn:nn</i> portion is constructed
+                    from the last 3 octets of the specified <code><i>guestip</i></code>.
+                    <p>
+
+                <dt><code>-k &nbsp;<em>kernel-capture-buffer-size</em></code>
+                    <dd>
+                <dt><code>-i &nbsp;<em>tuntap32-i/o-buffer-size</em></code>
+                <dd><p>
+                    See Fish's
+                    <a href="http://www.softdevlabs.com/Hercules/ctci-w32-index.html">CTCI-W32</a>
+                    page for further details and information.
+                    <p>
+
+            </dl> <!-- end Optional for Windows -->
+
+            <p>
+
+        <dt>Optional for both *nix and Windows:
+        <dd><p>
+            If these arguments are specified, they must precede the required
+            arguments:
+            <p>
+
+            <dl> <!-- begin Optional for both *nix and Windows -->
+
+                <dt><code>-n <em>name</em></code> &nbsp;&nbsp; or &nbsp; <code>--dev <em>name</em></code>
+                <dd><p>
+                    specifies the name of the tunnel device to use.
+                    <p>
+                    The default
+                    for Linux is <code>/dev/net/tun</code>
+                    (which is correct for version 2.4
+                    and above of the Linux kernel).
+                    The default for OSX is <code>/dev/tun0</code>.
+                    <p>
+                    For Windows, specify the IP address or MAC address of the
+                    real Windows adapter to emulate the virtual guest's adapter on.
+                    The default is the first adapter found according to Windows'
+                    adapter binding order, which may not be the one you want if
+                    you have multiple adapters.
+                    <p>
+                    See
+                    <a href="http://www.softdevlabs.com/Hercules/ctci-w32-faq.html#wireless">question #22
+                    of the CTCI-W32 F.A.Q. (Frequently Asked Questions)</a>
+                    document for more information about adapter binding order, and the
+                    <a href="http://www.softdevlabs.com/Hercules/ctci-w32-readme.html#herccfg">CTCI-W32 Configuration</a>
+                    web page for general information regarding CTCI-W32 configuration.
+                    <p>
+
+                <dt><code>-4</code> &nbsp;&nbsp; or &nbsp; <code>--inet</code>
+                <dd><p>
+                    indicates that when a host name is specified for
+                    <code><em>guest1</em></code>, the host name must
+                    resolve to an IPv4 address.
+
+                <dt><code>-6</code> &nbsp;&nbsp; or &nbsp; <code>--inet6</code>
+                <dd><p>
+                    indicates that when a host name is specified for
+                    <code><em>guest1</em></code>, the host name must
+                    resolve to an IPv6 address.
+
+                <dt><code>-d</code> &nbsp;&nbsp; or &nbsp; <code>--debug</code>
+                <dd><p>
+                    specifies that debugging output is to be produced on the
+                    Hercules control panel. This should normally be left
+                    unspecified.
+                    <p>
+
+            </dl> <!-- end Optional for both *nix and Windows -->
+
+        </dl> <!-- end PTP parms -->
+
+<p><br>
 
     </dl> <!-- end emulation types -->
     <p>

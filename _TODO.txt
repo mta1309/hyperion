@@ -10,6 +10,18 @@
 
 -------------------------------------------------------------------------------
 
+  Add 'const' to as many functions' arguments as possible.
+
+-------------------------------------------------------------------------------
+
+  modify fthread to maintain the thread's name in its FTHREAD list of
+  threads and provide a function to return a copy of that information
+  (linked list of thread ids and thread names), and then modify the
+  minidump BuildUserStreams function in bootstrap.c to save that info
+  so we can know which threads are which when we analyze a crash dump.
+
+-------------------------------------------------------------------------------
+
   Per Mark Gaubatz, we need a new dasd util to fix CE/SA alt cyl issue
   for existing dasds created using the old dasdinit.
 
@@ -136,14 +148,6 @@
 
   Generic native host SCSI support (mostly for tape,
   but having it opens other interesting possibilities)
-
--------------------------------------------------------------------------------
-
-  QDIO/QETH (custom Herc device driver to directly update guest storage)
-
--------------------------------------------------------------------------------
-
-  Large block support in channel subsystem (blocks > 64K ==> 2MB maximum?)
 
 -------------------------------------------------------------------------------
 

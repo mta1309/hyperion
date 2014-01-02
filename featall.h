@@ -55,14 +55,42 @@
 
 #define MAX_DEVICE_THREAD_IDLE_SECS 300 /* 5 Minute thread timeout   */
 
-#undef  OPTION_NO_INLINE_DAT            /* Performance option        */
-#undef  OPTION_NO_INLINE_LOGICAL        /* Performance option        */
-#undef  OPTION_NO_INLINE_VSTORE         /* Performance option        */
-#undef  OPTION_NO_INLINE_IFETCH         /* Performance option        */
-#define OPTION_SINGLE_CPU_DW            /* Performance option (ia32) */
+/*-------------------------------------------------------------------*\
+ *   The following set of default "OPTION_INLINE" settings were      *
+ *   determined based on testing performed in late May of 2013:      *
+ *      vstore/ifetch: inline,  logical/dat: DON'T inline.           *
+\*-------------------------------------------------------------------*/
+#if defined(    OPTION_INLINE_VSTORE ) && defined(  NO_OPTION_INLINE_VSTORE )
+  #error Either OPTION_INLINE_VSTORE or NO_OPTION_INLINE_VSTORE must be specified, not both
+#elif !defined( OPTION_INLINE_VSTORE ) && !defined( NO_OPTION_INLINE_VSTORE )
+  #define       OPTION_INLINE_VSTORE
+#endif
+#if defined(    OPTION_INLINE_IFETCH ) && defined(  NO_OPTION_INLINE_IFETCH )
+  #error Either OPTION_INLINE_IFETCH or NO_OPTION_INLINE_IFETCH must be specified, not both
+#elif !defined( OPTION_INLINE_IFETCH ) && !defined( NO_OPTION_INLINE_IFETCH )
+  #define       OPTION_INLINE_IFETCH
+#endif
+#if defined(    OPTION_INLINE_LOGICAL ) && defined(  NO_OPTION_INLINE_LOGICAL )
+  #error Either OPTION_INLINE_LOGICAL or NO_OPTION_INLINE_LOGICAL must be specified, not both
+#elif !defined( OPTION_INLINE_LOGICAL ) && !defined( NO_OPTION_INLINE_LOGICAL )
+  #undef        OPTION_INLINE_LOGICAL
+#endif
+#if defined(    OPTION_INLINE_DAT ) && defined(  NO_OPTION_INLINE_DAT )
+  #error Either OPTION_INLINE_DAT or NO_OPTION_INLINE_DAT must be specified, not both
+#elif !defined( OPTION_INLINE_DAT ) && !defined( NO_OPTION_INLINE_DAT )
+  #undef        OPTION_INLINE_DAT
+#endif
+/*-------------------------------------------------------------------*/
 
-#define OPTION_FAST_DEVLOOKUP           /* Fast devnum/subchan lookup*/
+#define OPTION_SINGLE_CPU_DW            /* Performance option (ia32) */
 #define OPTION_IODELAY_KLUDGE           /* IODELAY kludge for linux  */
+
+#if defined(OPTION_SYNCIO) && defined(OPTION_NOSYNCIO)
+  #error Either OPTION_SYNCIO or OPTION_NOSYNCIO must be specified, not both
+#elif !defined(OPTION_SYNCIO) && !defined(OPTION_NOSYNCIO)
+  #define OPTION_SYNCIO                 /* Synchronous local DASD    */
+#endif
+
 #undef  OPTION_FOOTPRINT_BUFFER /* 2048 ** Size must be a power of 2 */
 #undef  OPTION_INSTRUCTION_COUNTING     /* First use trace and count */
 #define OPTION_CKD_KEY_TRACING          /* Trace CKD search keys     */
@@ -73,22 +101,7 @@
 #define FEATURE_SIE_MAXZONES          8 /* Maximum SIE Zones         */
 #define FEATURE_LCSS_MAX              4 /* Number of supported lcss's*/
 // #define SIE_DEBUG_PERFMON            /* SIE performance monitor   */
-#define OPTION_LPARNAME                 /* DIAG 204 lparname         */
 #define OPTION_HTTP_SERVER              /* HTTP server support       */
-#define OPTION_WAKEUP_SELECT_VIA_PIPE   /* Use communication pipes to
-                                           interrupt selects instead
-                                           of inter-thread signaling */
-#define OPTION_TIMESTAMP_LOGFILE        /* Hardcopy logfile HH:MM:SS */
-#define OPTION_IPLPARM                  /* IPL PARM a la VM          */
-#define OPTION_CAPPING                  /* Enable capping cnf stmnt  */
-
-#ifndef OPTION_WTHREADS
-  #define OPTION_PTTRACE                /* Pthreads tracing          */
-#endif
-
-#define OPTION_SET_STSI_INFO            /* Set STSI info in cfg file */
-#define OPTION_TAPE_AUTOMOUNT           /* "Automount" CCWs support  */
-
 #define OPTION_CONFIG_SYMBOLS           /* $(defsym) support         */
 #define OPTION_BUILTIN_SYMBOLS          /* "LPARNAME", "DATE", etc.  */
 
@@ -118,7 +131,6 @@
                                            locked during execution   */
 #endif
 
-#define OPTION_ENHANCED_DEVICE_ATTACH   /* Multiple device att feat  */
 #define OPTION_OPTINST                  /* Optimized instructions    */
 #undef  OPTION_SHOWDVOL1                /* showdvol1 support         */
 
@@ -142,11 +154,15 @@
 /*                  Hercules Mutex Locks Model                       */
 /*********************************************************************/
 
-#define  OPTION_MUTEX_NORMAL       1        /* re-obtain == deadlock */
-#define  OPTION_MUTEX_ERRORCHECK   2        /* re-obtain == error    */
-#define  OPTION_MUTEX_RECURSIVE    3        /* re-obtain == allowed  */
+#define  OPTION_MUTEX_NORMAL       1    /* re-obtain == deadlock     */
+#define  OPTION_MUTEX_ERRORCHECK   2    /* re-obtain == error        */
+#define  OPTION_MUTEX_RECURSIVE    3    /* re-obtain == allowed      */
+
+#define  OPTION_RWLOCK_SHARED      4    /* public to all processes   */
+#define  OPTION_RWLOCK_PRIVATE     5    /* private to this process   */
 
 #define  OPTION_MUTEX_DEFAULT      OPTION_MUTEX_ERRORCHECK
+#define  OPTION_RWLOCK_DEFAULT     OPTION_RWLOCK_PRIVATE
 
 /*********************************************************************\
  *********************************************************************

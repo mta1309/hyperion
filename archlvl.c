@@ -16,10 +16,6 @@
 #include "opcode.h"
 #include "hostinfo.h"
 
-#ifdef OPTION_FISHIO
-#include "w32chan.h"
-#endif
-
 #if !defined(_GEN_ARCH)
 
 #if defined(_ARCHMODE3)
@@ -416,7 +412,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_900][fbyte] |= fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "en", _ARCH_900_NAME)); 
+                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "en", _ARCH_900_NAME));
             }
 #endif
     }
@@ -442,7 +438,7 @@ int fbyte, fbit;
 #endif
 #if defined(_900)
         if( ZARCH & mode )
-            if ( sysblk.facility_list[ARCH_900][fbyte] & fbit ) 
+            if ( sysblk.facility_list[ARCH_900][fbyte] & fbit )
             {
                 sysblk.facility_list[ARCH_900][fbyte] &= ~fbit;
                 if(MLVL(VERBOSE))
@@ -503,7 +499,7 @@ int fbyte, fbit;
         else
         {
             if ( !(facility->fixed & ESA390) )
-            {   
+            {
                 if ( sysblk.facility_list[ARCH_390][fbyte] & fbit )
                     sysblk.facility_list[ARCH_390][fbyte] &= ~fbit;
             }
@@ -522,13 +518,13 @@ int fbyte, fbit;
                 sysblk.facility_list[ARCH_900][fbyte] |= fbit;
 
             if(MLVL(VERBOSE))
-                logmsg(MSG(HHC00898, "I", facility->name, "en", _ARCH_900_NAME)); 
+                logmsg(MSG(HHC00898, "I", facility->name, "en", _ARCH_900_NAME));
         }
         else
-        { 
+        {
             if ( !(facility->fixed & ZARCH) )
             {
-                if ( sysblk.facility_list[ARCH_900][fbyte] & fbit ) 
+                if ( sysblk.facility_list[ARCH_900][fbyte] & fbit )
                     sysblk.facility_list[ARCH_900][fbyte] &= ~fbit;
 
                 if(MLVL(VERBOSE))
@@ -552,14 +548,14 @@ char c;
 const BYTE arch2als[] = {
 #if defined(_370)
  S370
-  #if defined(_390) || defined(_900) 
+  #if defined(_390) || defined(_900)
  ,
   #endif // defined(_390) || defined(_900)
 #endif
 
 #if defined(_390)
  ESA390
-  #if defined(_900) 
+  #if defined(_900)
  ,
   #endif // defined(_900)
 #endif
@@ -568,17 +564,17 @@ const BYTE arch2als[] = {
  ZARCH
 #endif
 };
-BYTE als = 
+BYTE als =
 #if defined(_370)
  S370
-  #if defined(_390) || defined(_900) 
+  #if defined(_390) || defined(_900)
  |
   #endif
 #endif
 
 #if defined(_390)
  ESA390
-  #if defined(_900) 
+  #if defined(_900)
  |
   #endif
 #endif
@@ -596,7 +592,7 @@ BYTE als =
     else
         return -1;
 
-    if(argc < 3) 
+    if(argc < 3)
     {
         logmsg(MSG(HHC00892, "E"));
         return 0;
@@ -621,7 +617,7 @@ BYTE als =
       && bitno >= 0 && bitno <= STFL_HMAX)
         force_facbit(bitno,enable,als);
     else
-        logmsg(MSG(HHC00893, "E", argv[2])); 
+        logmsg(MSG(HHC00893, "E", argv[2]));
 
     return 0;
 }
@@ -654,7 +650,7 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
         logmsg(MSG(HHC02203, "I", "archmode", get_arch_mode_string(NULL)));
         return 0;
     }
-    
+
     if ( argc > 4 )
     {
         logmsg(MSG(HHC02299, "E", argv[0]));
@@ -675,12 +671,12 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
         for(tb = factab; tb->name; tb++)
         {
         int fbyte, fbit;
-    
+
             fbyte = tb->bitno / 8;
             fbit = 0x80 >> (tb->bitno % 8);
 
             if( argc < 3 || CMD(argv[2],all,3) || !strcasecmp( argv[2], tb->name ) )
-            { 
+            {
                 fcnt++;
                 logmsg(MSG(HHC00890, "I", tb->name,
                        sysblk.facility_list[sysblk.arch_mode][fbyte] & fbit
@@ -693,13 +689,13 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
         int     bitno;
         char    c;
 
-            if(!strncasecmp("bit",argv[2],3) 
+            if(!strncasecmp("bit",argv[2],3)
               && isdigit(*(argv[2]+3))
-              && sscanf(argv[2]+3,"%d%c",&bitno, &c) == 1 
+              && sscanf(argv[2]+3,"%d%c",&bitno, &c) == 1
               && bitno >= 0 && bitno <= STFL_HMAX)
             {
             int fbyte, fbit;
-    
+
                 fbyte = bitno / 8;
                 fbit = 0x80 >> (bitno % 8);
                 logmsg(MSG(HHC00890, "I", get_facname(bitno),
@@ -712,12 +708,12 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
                 return -1;
             }
         }
-        
+
         return 0;
     }
 
     /* Make sure all CPUs are deconfigured or stopped */
-    
+
     OBTAIN_INTLOCK(NULL);
     if(sysblk.cpus)
         for(i = 0; i < sysblk.maxcpu; i++)
@@ -736,10 +732,11 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
             return -1;
         }
 
-#if defined(OPTION_FISHIO)
-    ios_arch_mode =
-#endif /* defined(OPTION_FISHIO) */
     sysblk.dummyregs.arch_mode = sysblk.arch_mode;
+
+    OBTAIN_INTLOCK(NULL);
+    system_reset (sysblk.pcpu, 0, sysblk.arch_mode);
+    RELEASE_INTLOCK(NULL);
 
     if ( argc == 2 )
     {

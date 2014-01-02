@@ -12,6 +12,7 @@
 
 #include "hercules.h"
 #include "opcode.h"
+#include "chsc.h"
 
 #if !defined(_GEN_ARCH)
 
@@ -26,11 +27,6 @@
  #include "config.c"
  #undef   _GEN_ARCH
 #endif
-
-#if defined(OPTION_FISHIO)
-#include "w32chan.h"
-#endif // defined(OPTION_FISHIO)
-
 
 #if defined(HAVE_MLOCKALL)
 int configure_memlock(int flags)
@@ -76,7 +72,7 @@ int i;
     {
         dev->mainstor = sysblk.mainstor;
         dev->storkeys = sysblk.storkeys;
-        dev->mainlim = sysblk.mainsize - 1;
+        dev->mainlim = sysblk.mainsize ? (sysblk.mainsize - 1) : 0;
     }
 
     /* Relocate storage for all online cpus */
@@ -85,7 +81,7 @@ int i;
         {
             sysblk.regs[i]->storkeys = sysblk.storkeys;
             sysblk.regs[i]->mainstor = sysblk.mainstor;
-            sysblk.regs[i]->mainlim  = sysblk.mainsize - 1;
+            sysblk.regs[i]->mainlim  = sysblk.mainsize ? (sysblk.mainsize - 1) : 0;
         }
 
 }
@@ -278,9 +274,9 @@ int cpu;
      * (sysblk.pcpu) is not configured (ie cpu_thread not started).
      */
     sysblk.dummyregs.mainstor = sysblk.mainstor;
-    sysblk.dummyregs.psa = (PSA*)sysblk.mainstor;
+    sysblk.dummyregs.psa = (PSA_3XX*)sysblk.mainstor;
     sysblk.dummyregs.storkeys = sysblk.storkeys;
-    sysblk.dummyregs.mainlim = sysblk.mainsize - 1;
+    sysblk.dummyregs.mainlim = sysblk.mainsize ? (sysblk.mainsize - 1) : 0;
     sysblk.dummyregs.dummy = 1;
     initial_cpu_reset (&sysblk.dummyregs);
     sysblk.dummyregs.arch_mode = sysblk.arch_mode;
@@ -441,44 +437,50 @@ int  cpu;
     return 0;
 }
 
-#if defined(OPTION_FAST_DEVLOOKUP)
 /* 4 next functions used for fast device lookup cache management */
-static void AddDevnumFastLookup(DEVBLK *dev,U16 lcss,U16 devnum)
+
+static void AddDevnumFastLookup( DEVBLK *dev, U16 lcss, U16 devnum )
 {
     unsigned int Channel;
-    if(sysblk.devnum_fl==NULL)
-    {
-        sysblk.devnum_fl=(DEVBLK ***)malloc(sizeof(DEVBLK **)*256*FEATURE_LCSS_MAX);
-        memset(sysblk.devnum_fl, 0, sizeof(DEVBLK **)*256*FEATURE_LCSS_MAX);
-    }
-    Channel=(devnum & 0xff00)>>8 | ((lcss & (FEATURE_LCSS_MAX-1))<<8);
-    if(sysblk.devnum_fl[Channel]==NULL)
-    {
-        sysblk.devnum_fl[Channel]=(DEVBLK **)malloc(sizeof(DEVBLK *)*256);
-        memset(sysblk.devnum_fl[Channel], 0, sizeof(DEVBLK *)*256);
-    }
-    sysblk.devnum_fl[Channel][devnum & 0xff]=dev;
+
+    BYTE bAlreadyHadLock = try_obtain_lock( &sysblk.config );
+
+    if (sysblk.devnum_fl == NULL)
+        sysblk.devnum_fl = (DEVBLK***)
+            calloc( 256 * FEATURE_LCSS_MAX, sizeof( DEVBLK** ));
+
+    Channel = (devnum >> 8) | ((lcss & (FEATURE_LCSS_MAX-1)) << 8);
+
+    if (sysblk.devnum_fl[Channel] == NULL)
+        sysblk.devnum_fl[Channel] = (DEVBLK**)
+            calloc( 256, sizeof( DEVBLK* ));
+
+    sysblk.devnum_fl[Channel][devnum & 0xff] = dev;
+
+    if (!bAlreadyHadLock)
+        release_lock( &sysblk.config );
 }
 
-
-static void AddSubchanFastLookup(DEVBLK *dev,U16 ssid, U16 subchan)
+static void AddSubchanFastLookup( DEVBLK *dev, U16 ssid, U16 subchan )
 {
     unsigned int schw;
-#if 0
-    logmsg(_("DEBUG : ASFL Adding %d\n"),subchan);
-#endif
-    if(sysblk.subchan_fl==NULL)
-    {
-        sysblk.subchan_fl=(DEVBLK ***)malloc(sizeof(DEVBLK **)*256*FEATURE_LCSS_MAX);
-        memset(sysblk.subchan_fl, 0, sizeof(DEVBLK **)*256*FEATURE_LCSS_MAX);
-    }
-    schw=((subchan & 0xff00)>>8)|(SSID_TO_LCSS(ssid)<<8);
-    if(sysblk.subchan_fl[schw]==NULL)
-    {
-        sysblk.subchan_fl[schw]=(DEVBLK **)malloc(sizeof(DEVBLK *)*256);
-        memset(sysblk.subchan_fl[schw], 0,sizeof(DEVBLK *)*256);
-    }
-    sysblk.subchan_fl[schw][subchan & 0xff]=dev;
+
+    BYTE bAlreadyHadLock = try_obtain_lock( &sysblk.config );
+
+    if (sysblk.subchan_fl == NULL)
+        sysblk.subchan_fl = (DEVBLK***)
+            calloc( 256 * FEATURE_LCSS_MAX, sizeof( DEVBLK** ));
+
+    schw = (subchan >> 8) | (SSID_TO_LCSS( ssid ) << 8);
+
+    if (sysblk.subchan_fl[schw] == NULL)
+        sysblk.subchan_fl[schw] = (DEVBLK**)
+            calloc( 256, sizeof( DEVBLK* ));
+
+    sysblk.subchan_fl[schw][subchan & 0xff] = dev;
+
+    if (!bAlreadyHadLock)
+        release_lock( &sysblk.config );
 }
 
 
@@ -515,8 +517,6 @@ static void DelSubchanFastLookup(U16 ssid, U16 subchan)
     }
     sysblk.subchan_fl[schw][subchan & 0xff]=NULL;
 }
-#endif
-
 
 static
 CHPBLK *fnd_chpblk(U16 css, BYTE chpid)
@@ -576,14 +576,20 @@ DEVBLK**dvpp;
 
     if(!dev)
     {
-        if (!(dev = (DEVBLK*)malloc(sizeof(DEVBLK))))
+        if (!(dev = (DEVBLK*)calloc_aligned((sizeof(DEVBLK)+4095) & ~4095,4096)))
         {
             char buf[64];
-            MSGBUF(buf, "malloc(%d)", (int)sizeof(DEVBLK));
+            MSGBUF(buf, "calloc(%d)", (int)sizeof(DEVBLK));
             WRMSG (HHC01460, "E", lcss, devnum, buf, strerror(errno));
             return NULL;
         }
-        memset (dev, 0, sizeof(DEVBLK));
+
+        /* Clear device block and initialize header */
+        strncpy((char*)dev->blknam, HDL_NAME_DEVBLK, sizeof(dev->blknam));
+        strncpy((char*)dev->blkver, HDL_VERS_DEVBLK, sizeof(dev->blkver));
+        dev->blkloc = (U64)(size_t)dev;
+        dev->blksiz = HDL_SIZE_DEVBLK;
+        strncpy((char*)dev->blkend, HDL_NAME_DEVBLK, sizeof(dev->blknam));
 
         /* Initialize the device lock and conditions */
 
@@ -615,19 +621,27 @@ DEVBLK**dvpp;
     dev->group = NULL;
     dev->member = 0;
 
+    memset(dev->filename, 0, sizeof(dev->filename));
+
     dev->cpuprio = sysblk.cpuprio;
     dev->devprio = sysblk.devprio;
     dev->hnd = NULL;
     dev->devnum = devnum;
     dev->chanset = lcss;
+    dev->chptype[0] = CHP_TYPE_EIO; /* Interim - default to emulated */
     dev->fd = -1;
+#ifdef OPTION_SYNCIO
     dev->syncio = 0;
+#endif // OPTION_SYNCIO
     dev->ioint.dev = dev;
     dev->ioint.pending = 1;
+    dev->ioint.priority = -1;
     dev->pciioint.dev = dev;
     dev->pciioint.pcipending = 1;
+    dev->pciioint.priority = -1;
     dev->attnioint.dev = dev;
     dev->attnioint.attnpending = 1;
+    dev->attnioint.priority = -1;
     dev->oslinux = sysblk.pgminttr == OS_LINUX;
 
     /* Initialize storage view */
@@ -648,14 +662,6 @@ DEVBLK**dvpp;
 #if defined(OPTION_SHARED_DEVICES)
     dev->shrdwait = -1;
 #endif /*defined(OPTION_SHARED_DEVICES)*/
-
-#ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Indicate a CRW is pending for this device */
-#if defined(_370)
-    if (sysblk.arch_mode != ARCH_370)
-#endif /*defined(_370)*/
-        dev->crwpending = 1;
-#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
 #ifdef EXTERNALGUI
     if ( !dev->pGUIStat )
@@ -679,6 +685,13 @@ DEVBLK**dvpp;
 static
 void ret_devblk(DEVBLK *dev)
 {
+    /* PROGRAMMING NOTE: the device buffer will be freed by the
+       'attach_device' function whenever it gets reused and not
+       here where you would normally expect it to be done since
+       doing it here might cause Hercules to crash due to poorly
+       written device handlers that still access the buffer for
+       a brief period after the device has been detached.
+    */
     /* Mark device invalid */
     dev->allocated = 0;
     dev->pmcw.flag5 &= ~PMCW5_V;
@@ -696,17 +709,16 @@ int     i;                              /* Loop index                */
     /* Obtain the device lock */
     obtain_lock(&dev->lock);
 
-#if defined(OPTION_FAST_DEVLOOKUP)
     DelSubchanFastLookup(dev->ssid, dev->subchan);
     if(dev->pmcw.flag5 & PMCW5_V)
         DelDevnumFastLookup(SSID_TO_LCSS(dev->ssid),dev->devnum);
-#endif
 
     /* Close file or socket */
     if ((dev->fd > 2) || dev->console)
         /* Call the device close handler */
         (dev->hnd->close)(dev);
 
+    /* Free the argv array */
     for (i = 0; i < dev->argc; i++)
         if (dev->argv[i])
             free(dev->argv[i]);
@@ -715,7 +727,7 @@ int     i;                              /* Loop index                */
 
     free(dev->typname);
 
-    // detach all devices in group
+    /* detach all devices in group */
     if(dev->group)
     {
     int i;
@@ -741,6 +753,14 @@ int     i;                              /* Loop index                */
     }
 
     ret_devblk(dev);
+
+#ifdef _FEATURE_CHANNEL_SUBSYSTEM
+    /* Build Channel Report */
+#if defined(_370)
+    if (sysblk.arch_mode != ARCH_370)
+#endif
+        build_detach_chrpt( dev );
+#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
     return 0;
 } /* end function detach_devblk */
@@ -803,13 +823,11 @@ int     cpu;
                 detach_subchan(SSID_TO_LCSS(dev->ssid), dev->subchan, dev->devnum);
         }
 
-#if !defined(OPTION_FISHIO)
     /* Terminate device threads */
     obtain_lock (&sysblk.ioqlock);
     sysblk.devtwait=0;
     broadcast_condition (&sysblk.ioqcond);
     release_lock (&sysblk.ioqlock);
-#endif
 
     /* release storage          */
     sysblk.lock_mainstor = 0;
@@ -823,8 +841,6 @@ int     cpu;
 
 } /* end function release_config */
 
-
-#if defined(OPTION_CAPPING)
 int configure_capping(U32 value)
 {
     if(sysblk.capvalue)
@@ -863,9 +879,15 @@ int configure_capping(U32 value)
     }
     return HNOERROR;
 }
-#endif // OPTION_CAPPING
 
 #ifdef OPTION_SHARED_DEVICES
+static void* shrdport_connecting_thread(void* arg)
+{
+    DEVBLK* dev = (DEVBLK*) arg;
+    dev->hnd->init( dev, 0, NULL );
+    return NULL;
+}
+
 int configure_shrdport(U16 shrdport)
 {
 int rc;
@@ -906,7 +928,7 @@ int rc;
             if (dev->connecting)
             {
                 rc = create_thread (&tid, DETACHED,
-                           *dev->hnd->init, dev, "device connecting thread");
+                           shrdport_connecting_thread, dev, "device connecting thread");
                 if (rc)
                 {
                     WRMSG(HHC00102, "E", strerror(rc));
@@ -955,13 +977,7 @@ int cpu;
     for(cpu = 0; cpu < MAX_CPU_ENGINES; cpu++)
         if(sysblk.cputid[cpu])
         {
-            if(setpriority(PRIO_PROCESS,
-#if defined(USE_GETTID)
-                                        sysblk.cputidp[cpu],
-#else /*!defined(USE_GETTID)*/
-                                        sysblk.cputid[cpu],
-#endif /*!defined(USE_GETTID)*/
-                                                            prio))
+            if(setpriority(PRIO_PROCESS, sysblk.cputid[cpu], prio))
                 WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
         }
 
@@ -994,13 +1010,7 @@ int configure_tod_priority(int prio)
     SETMODE(ROOT);
 
     if(sysblk.todtid)
-        if(setpriority(PRIO_PROCESS,
-#if defined(USE_GETTID)
-                                    sysblk.todtidp,
-#else /*!defined(USE_GETTID)*/
-                                    sysblk.todtid,
-#endif /*!defined(USE_GETTID)*/
-                                                   prio))
+        if(setpriority(PRIO_PROCESS, sysblk.todtid, prio))
             WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
 
     SETMODE(USER);
@@ -1029,9 +1039,16 @@ int configure_cpu(int cpu)
 int   i;
 int   rc;
 char  thread_name[32];
+TID   tid;
 
     if(IS_CPU_ONLINE(cpu))
         return -1;
+
+    /* If no more CPUs are permitted, exit */
+    if (sysblk.cpus >= sysblk.maxcpu)
+    {
+        return (HERRCPUOFF); /* CPU offline */
+    }
 
     MSGBUF( thread_name, "Processor %s%02X", PTYPSTR( cpu ), cpu );
 
@@ -1044,8 +1061,9 @@ char  thread_name[32];
     }
 
     /* Find out if we are a cpu thread */
+    tid = thread_id();
     for (i = 0; i < sysblk.maxcpu; i++)
-        if (sysblk.cputid[i] == thread_id())
+        if (equal_threads( sysblk.cputid[i], tid ))
             break;
 
     if (i < sysblk.maxcpu)
@@ -1073,11 +1091,12 @@ char  thread_name[32];
 /*-------------------------------------------------------------------*/
 int deconfigure_cpu(int cpu)
 {
-int   i;
+int i;
+TID tid = thread_id();
 
     /* Find out if we are a cpu thread */
     for (i = 0; i < sysblk.maxcpu; i++)
-        if (sysblk.cputid[i] == thread_id())
+        if (equal_threads( sysblk.cputid[i], tid ))
             break;
 
     /* If we're NOT trying to deconfigure ourselves */
@@ -1108,6 +1127,12 @@ int   i;
 
         join_thread (sysblk.cputid[cpu], NULL);
         detach_thread( sysblk.cputid[cpu] );
+
+        /*-----------------------------------------------------------*/
+        /* Note: While this is the logical place to cleanup and to   */
+        /*       release the associated regs context, there is post  */
+        /*       processing that is done by various callers.         */
+        /*-----------------------------------------------------------*/
     }
     else
     {
@@ -1239,7 +1264,16 @@ int     i;                              /* Loop index                */
     /* Obtain device data buffer */
     if (dev->bufsize != 0)
     {
-        dev->buf = malloc (dev->bufsize);
+        /* PROGRAMMING NOTE: we free the device buffer here, not in
+           the 'ret_devblk' function (where you would normally expect
+           it to be done) since doing it in 'ret_devblk' might cause
+           Hercules to crash due to poorly written device handlers
+           that continue accessing the buffer for a brief period even
+           though the device has already been detached.
+        */
+        if (dev->buf)
+            free_aligned( dev->buf );
+        dev->buf = malloc_aligned (dev->bufsize, 4096);
         if (dev->buf == NULL)
         {
             char buf[64];
@@ -1265,11 +1299,11 @@ int     i;                              /* Loop index                */
     release_lock(&dev->lock);
 
 #ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Signal machine check */
+    /* Build Channel Report */
 #if defined(_370)
     if (sysblk.arch_mode != ARCH_370)
 #endif
-        machine_check_crwpend();
+        build_attach_chrpt( dev );
 #endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
     /*
@@ -1306,26 +1340,10 @@ int    rc;
 
     rc = detach_devblk( dev );
 
-#ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Indicate a CRW is pending for this device */
-#if defined(_370)
-    if (sysblk.arch_mode != ARCH_370)
-#endif /*defined(_370)*/
-        dev->crwpending = 1;
-#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
-
     release_lock(&sysblk.config);
 
     if(!rc)
         WRMSG (HHC01465, "I", lcss, devnum, "device");
-
-#ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Signal machine check */
-#if defined(_370)
-    if (sysblk.arch_mode != ARCH_370)
-#endif
-        machine_check_crwpend();
-#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
     return rc;
 }
@@ -1359,6 +1377,14 @@ DEVBLK *dev;                            /* -> Device block           */
         return 1;
     }
 
+#ifdef _FEATURE_CHANNEL_SUBSYSTEM
+    /* Build Channel Report */
+#if defined(_370)
+    if (sysblk.arch_mode != ARCH_370)
+#endif
+        build_detach_chrpt( dev );
+#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
+
     /* Obtain the device lock */
     obtain_lock(&dev->lock);
 
@@ -1369,28 +1395,18 @@ DEVBLK *dev;                            /* -> Device block           */
     dev->pmcw.devnum[0] = newdevn >> 8;
     dev->pmcw.devnum[1] = newdevn & 0xFF;
 
-#if defined(OPTION_FAST_DEVLOOKUP)
     DelDevnumFastLookup(lcss,olddevn);
     AddDevnumFastLookup(dev,lcss,newdevn);
-#endif
-
-#ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Indicate a CRW is pending for this device */
-#if defined(_370)
-    if (sysblk.arch_mode != ARCH_370)
-#endif /*defined(_370)*/
-        dev->crwpending = 1;
-#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
     /* Release device lock */
     release_lock(&dev->lock);
 
 #ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Signal machine check */
+    /* Build Channel Report */
 #if defined(_370)
     if (sysblk.arch_mode != ARCH_370)
 #endif
-        machine_check_crwpend();
+        build_attach_chrpt( dev );
 #endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
 
 //    WRMSG (HHC01459, "I", lcss, olddevn, lcss, newdevn);
@@ -1512,7 +1528,6 @@ DEVBLK *tmp;
 DLL_EXPORT DEVBLK *find_device_by_devnum (U16 lcss,U16 devnum)
 {
 DEVBLK *dev;
-#if defined(OPTION_FAST_DEVLOOKUP)
 DEVBLK **devtab;
 int Chan;
 
@@ -1534,15 +1549,12 @@ int Chan;
         }
     }
 
-#endif
     for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
         if (IS_DEV( dev ) && dev->devnum == devnum && lcss==SSID_TO_LCSS(dev->ssid)) break;
-#if defined(OPTION_FAST_DEVLOOKUP)
     if(dev)
     {
         AddDevnumFastLookup(dev,lcss,devnum);
     }
-#endif
     return dev;
 } /* end function find_device_by_devnum */
 
@@ -1554,21 +1566,18 @@ DEVBLK *find_device_by_subchan (U32 ioid)
 {
     U16 subchan = ioid & 0xFFFF;
     DEVBLK *dev;
-#if defined(OPTION_FAST_DEVLOOKUP)
     unsigned int schw = ((subchan & 0xff00)>>8)|(IOID_TO_LCSS(ioid)<<8);
 #if 0
     logmsg(_("DEBUG : FDBS FL Looking for %d\n"),subchan);
 #endif
     if(sysblk.subchan_fl && sysblk.subchan_fl[schw] && sysblk.subchan_fl[schw][subchan & 0xff])
         return sysblk.subchan_fl[schw][subchan & 0xff];
-#endif
 #if 0
     logmsg(_("DEBUG : FDBS SL Looking for %8.8x\n"),ioid);
 #endif
     for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
         if (dev->ssid == IOID_TO_SSID(ioid) && dev->subchan == subchan) break;
 
-#if defined(OPTION_FAST_DEVLOOKUP)
     if(dev)
     {
         AddSubchanFastLookup(dev, IOID_TO_SSID(ioid), subchan);
@@ -1577,11 +1586,10 @@ DEVBLK *find_device_by_subchan (U32 ioid)
     {
         DelSubchanFastLookup(IOID_TO_SSID(ioid), subchan);
     }
-#endif
-
     return dev;
 } /* end function find_device_by_subchan */
 
+#ifdef OPTION_SYNCIO
 /*-------------------------------------------------------------------*/
 /* Returns a CPU register context for the device, or else NULL       */
 /*-------------------------------------------------------------------*/
@@ -1594,13 +1602,14 @@ DLL_EXPORT REGS *devregs(DEVBLK *dev)
     /* Otherwise attempt to determine what it should be */
     {
         int i;
-        TID tid = thread_id();              /* Our own thread id     */
+        TID tid = thread_id();                        /* Our own thread id     */
         for (i=0; i < sysblk.maxcpu; i++)
-            if (tid == sysblk.cputid[i])    /* Are we a cpu thread?  */
-                return sysblk.regs[i];      /* yes, use its context  */
+            if (equal_threads(tid,sysblk.cputid[i]))  /* Are we a cpu thread?  */
+                return sysblk.regs[i];                /* yes, use its context  */
     }
     return NULL;    /* Not CPU thread. Return NULL register context  */
 }
+#endif // OPTION_SYNCIO
 
 
 /*-------------------------------------------------------------------*/
@@ -1748,7 +1757,6 @@ parse_single_devnum_silent(const char *spec,
     return parse_single_devnum__INTERNAL(spec,lcss,devnum,0);
 }
 
-#if defined(OPTION_ENHANCED_DEVICE_ATTACH)
 /*-------------------------------------------------------------------*/
 /* Function to Parse compound device numbers                         */
 /* Syntax : [lcss:]CCUU[-CUU][,CUU..][.nn][...]                      */
@@ -1992,7 +2000,6 @@ parse_and_attach_devices(const char *sdevnum,
         free(dnd.da);
         return baddev?-1:0;
 }
-#endif /*defined(OPTION_ENHANCED_DEVICE_ATTACH)*/
 
 #define MAX_LOGO_LINES 256
 DLL_EXPORT void clearlogo()

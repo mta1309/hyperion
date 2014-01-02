@@ -166,7 +166,11 @@ char   *buf1;                           /* Pointer to resolved buffer*/
                 || buf[stmtlen-1] == '\t')) stmtlen--;
         buf[stmtlen] = '\0';
 
-        /* Ignore comments and null statements */
+        /* Loud comments should always be logged */
+        if (stmtlen != 0 && buf[0] == '*')
+            WRMSG( HHC01603, "I", buf );  // "%s"
+
+        /* Ignore null statements and comments */
         if (stmtlen == 0 || buf[0] == '*' || buf[0] == '#')
            continue;
 
@@ -193,6 +197,53 @@ char   *buf1;                           /* Pointer to resolved buffer*/
             free(buf1);
         }
 #endif /*defined(OPTION_CONFIG_SYMBOLS)*/
+
+        /* Special handling for 'pause' statement */
+        if (strncasecmp( buf, "pause ", 6 ) == 0)
+        {
+            double pauseamt     =  0.0;   /* (secs to pause) */
+            struct timespec ts  = {0,0};  /* (nanosleep arg) */
+            U64 i, nsecs        =   0;    /* (nanoseconds)   */
+
+            pauseamt = atof( &buf[6] );
+
+            if (pauseamt < 0.0 || pauseamt > 999.0)
+            {
+                // "Config file[%d] %s: error processing statement: %s"
+                WRMSG( HHC01441, "W", *inc_stmtnum, fname, "syntax error; statement ignored" );
+                continue; /* (go on to next statement) */
+            }
+
+            /* We sleep in 1/4 second increments at first */
+            nsecs = (U64) (pauseamt * 1000000000.0);
+            ts.tv_nsec = 250000000; /* 1/4th of a second */
+            ts.tv_sec  = 0;
+
+            if (MLVL( VERBOSE ))
+            {
+                // "Config file[%d] %s: processing paused for %d milliseconds..."
+                WRMSG( HHC02318, "I", *inc_stmtnum, fname, (int)(pauseamt * 1000.0) );
+            }
+
+            /* Sleep for 1/4 second increments */
+            for (i = nsecs; i >= (U64) ts.tv_nsec; i -= (U64) ts.tv_nsec)
+                nanosleep( &ts, NULL );
+
+            /* Sleep for remainder of time period */
+            if (i)
+            {
+                ts.tv_nsec = (long) i;
+                nanosleep( &ts, NULL );
+            }
+
+            if (MLVL( VERBOSE ))
+            {
+                // "Config file[%d] %s: processing resumed..."
+                WRMSG( HHC02319, "I", *inc_stmtnum, fname );
+            }
+
+            continue;  /* (go on to next statement) */
+        }
 
         break;
     } /* end while */
@@ -357,7 +408,6 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
         /* Also, if addargv[0] contains ':' (added by Harold Grovesteen jan2008)  */
         /* Added because device statements may now contain channel set or LCSS id */
              strchr( addargv[0], ':' )
-#if defined(OPTION_ENHANCED_DEVICE_ATTACH)
         /* ISW */
         /* Also, if addargv[0] contains '-', ',' or '.' */
         /* Added because device statements may now be a compound device number specification */
@@ -367,7 +417,6 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
              strchr( addargv[0],'.' )
              ||
              strchr( addargv[0],',' )
-#endif /*defined(OPTION_ENHANCED_DEVICE_ATTACH)*/
            ) /* end if */
         {
 #define MAX_CMD_LEN 32768
@@ -614,7 +663,7 @@ void* FindSCRCTL( TID tid )
     for (pLink = scrlist.Flink; pLink != &scrlist; pLink = pLink->Flink)
     {
         pCtl = CONTAINING_RECORD( pLink, SCRCTL, link );
-        if (pCtl->scr_tid && pCtl->scr_tid == tid)
+        if (pCtl->scr_tid && equal_threads( pCtl->scr_tid, tid ))
         {
             release_lock( &sysblk.scrlock );
             return pCtl; /* (found) */

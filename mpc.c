@@ -1,7 +1,7 @@
 /* MPC.C        (c) Copyright Jan Jaeger,  2010-2012                 */
 /*              (c) Copyright Ian Shorter, 2011-2012                 */
 /*              (c) Copyright Harold Grovesteen, 2011-2012           */
-/*              MPC                                                  */
+/*              MPC (Multi-Path Channel) functions                   */
 
 /* This implementation is based on the S/390 Linux implementation    */
 
@@ -202,13 +202,13 @@ DLL_EXPORT void  mpc_display_stuff( DEVBLK* pDEVBLK, char* cWhat, BYTE* pAddr, i
 
         if( pDEVBLK )
         {
-            // HHC03981 "%1d:%04X %s: %s: %s %s %s"
+            // HHC03981 "%1d:%04X %s: %s: %s %s  %s"
             WRMSG(HHC03981, "I", SSID_TO_LCSS(pDEVBLK->ssid), pDEVBLK->devnum, pDEVBLK->typname,
                                  cWhat, print_line, print_ascii, print_ebcdic );
         }
         else
         {
-            // HHC03982 "%s: %s %s %s"
+            // HHC03982 "%s: %s %s  %s"
             WRMSG(HHC03982, "I", cWhat, print_line, print_ascii, print_ebcdic );
         }
     }
@@ -225,7 +225,7 @@ DLL_EXPORT void  mpc_display_th( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, BYTE bDir )
 
     // Display the MPC_TH.
     FETCH_FW( uOffRRH, pMPC_TH->offrrh );
-    mpc_display_stuff( pDEVBLK, "TH", (BYTE*)pMPC_TH, uOffRRH, bDir );
+    mpc_display_stuff( pDEVBLK, "TH ", (BYTE*)pMPC_TH, uOffRRH, bDir );
 
     return;
 }   /* End function  mpc_display_th() */
@@ -251,7 +251,7 @@ DLL_EXPORT void  mpc_display_ph( DEVBLK* pDEVBLK, MPC_PH* pMPC_PH, BYTE bDir )
 {
 
     // Display the MPC_PH.
-    mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+    mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
 
     return;
 }   /* End function  mpc_display_ph() */
@@ -281,7 +281,7 @@ DLL_EXPORT void  mpc_display_rrh_and_puk( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
 
     // Point to and display the MPC_PH.
     pMPC_PH = (MPC_PH*)((BYTE*)pMPC_RRH + uOffPH);
-    mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+    mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
 
     // Get the length of and point to the data referenced by the
     // MPC_PH. The data contain a MPC_PUK and one or more MPC_PUSs.
@@ -355,7 +355,7 @@ DLL_EXPORT void  mpc_display_rrh_and_pix( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
 
     // Point to and display the MPC_PH.
     pMPC_PH = (MPC_PH*)((BYTE*)pMPC_RRH + uOffPH);
-    mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+    mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
 
     // Point to and display the MPC_PIX.
     FETCH_F3( uLenData, pMPC_PH->lendata );
@@ -386,7 +386,7 @@ DLL_EXPORT void  mpc_display_rrh_and_ipa( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
 
     // Point to and display the MPC_PH.
     pMPC_PH = (MPC_PH*)((BYTE*)pMPC_RRH + uOffPH);
-    mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+    mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
 
     /* Point to and display the MPC_IPA (and commands, if any). */
     FETCH_F3( uLenData, pMPC_PH->lendata );
@@ -435,7 +435,7 @@ DLL_EXPORT void  mpc_display_rrh_and_pkt( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
     pMPC_PH = (MPC_PH*)((BYTE*)pMPC_RRH + uOffPH);
     for( iForPH = 1; iForPH <= uNumPH; iForPH++ )
     {
-        mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+        mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
         pMPC_PH = (MPC_PH*)((BYTE*)pMPC_PH + SIZE_PH);
     }
 
@@ -458,7 +458,7 @@ DLL_EXPORT void  mpc_display_rrh_and_pkt( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
                     break;
                 if( (int)uLenData > ( iLimit - iDone ) )
                     uLenData = ( iLimit - iDone );
-                iDone =+ uLenData;
+                iDone += uLenData;
             }
             mpc_display_stuff( pDEVBLK, "Pkt", pData, uLenData, bDir );
             pMPC_PH = (MPC_PH*)((BYTE*)pMPC_PH + SIZE_PH);
@@ -491,7 +491,7 @@ DLL_EXPORT void  mpc_display_rrh_and_pdu( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
     pMPC_PH = (MPC_PH*)((BYTE*)pMPC_RRH + uOffPH);
     for( iForPH = 1; iForPH <= uNumPH; iForPH++ )
     {
-        mpc_display_stuff( pDEVBLK, "PH", (BYTE*)pMPC_PH, SIZE_PH, bDir );
+        mpc_display_stuff( pDEVBLK, "PH ", (BYTE*)pMPC_PH, SIZE_PH, bDir );
         pMPC_PH = (MPC_PH*)((BYTE*)pMPC_PH + SIZE_PH);
     }
 
@@ -514,7 +514,7 @@ DLL_EXPORT void  mpc_display_rrh_and_pdu( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
                     break;
                 if( (int)uLenData > ( iLimit - iDone ) )
                     uLenData = ( iLimit - iDone );
-                iDone =+ uLenData;
+                iDone += uLenData;
             }
             mpc_display_stuff( pDEVBLK, "PDU", pData, uLenData, bDir );
             pMPC_PH = (MPC_PH*)((BYTE*)pMPC_PH + SIZE_PH);
@@ -527,11 +527,11 @@ DLL_EXPORT void  mpc_display_rrh_and_pdu( DEVBLK* pDEVBLK, MPC_TH* pMPC_TH, MPC_
 /*--------------------------------------------------------------------*/
 /* mpc_display_osa_iea():                                             */
 /*--------------------------------------------------------------------*/
-DLL_EXPORT void  mpc_display_osa_iea( DEVBLK* pDEVBLK, MPC_IEA* pMPC_IEA, BYTE bDir )
+DLL_EXPORT void  mpc_display_osa_iea( DEVBLK* pDEVBLK, MPC_IEA* pMPC_IEA, BYTE bDir, int iSize )
 {
 
     /* Display MPC_IEA. */
-    mpc_display_stuff( pDEVBLK, "IEA", (BYTE*)pMPC_IEA, sizeof(MPC_IEA), bDir );
+    mpc_display_stuff( pDEVBLK, "IEA", (BYTE*)pMPC_IEA, iSize, bDir );
 
     return;
 }   /* End function  mpc_display_osa_iea() */
@@ -539,11 +539,11 @@ DLL_EXPORT void  mpc_display_osa_iea( DEVBLK* pDEVBLK, MPC_IEA* pMPC_IEA, BYTE b
 /*--------------------------------------------------------------------*/
 /* mpc_display_osa_iear():                                            */
 /*--------------------------------------------------------------------*/
-DLL_EXPORT void  mpc_display_osa_iear( DEVBLK* pDEVBLK, MPC_IEAR* pMPC_IEAR, BYTE bDir )
+DLL_EXPORT void  mpc_display_osa_iear( DEVBLK* pDEVBLK, MPC_IEAR* pMPC_IEAR, BYTE bDir, int iSize )
 {
 
     /* Display MPC_IEAR. */
-    mpc_display_stuff( pDEVBLK, "IEAR", (BYTE*)pMPC_IEAR, sizeof(MPC_IEAR), bDir );
+    mpc_display_stuff( pDEVBLK, "IEAR", (BYTE*)pMPC_IEAR, iSize, bDir );
 
     return;
 }   /* End function  mpc_display_osa_iear() */

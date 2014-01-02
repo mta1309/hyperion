@@ -12,9 +12,6 @@
 
 #include "hercules.h"
 #include "opcode.h"
-#ifdef OPTION_FISHIO
-#include "w32chan.h"
-#endif
 
 //#define SR_DEBUG    // #define to enable TRACE stmts
 
@@ -33,6 +30,13 @@
 #endif
 
 #include "sr.h"     // (must FOLLOW above enable/disable debugging macros)
+
+#if defined(WORDS_BIGENDIAN)
+BYTE ourendian = 1;
+#else // (little endian)
+BYTE ourendian = 0;
+#endif // defined(WORDS_BIGENDIAN)
+BYTE crwendian;
 
 /* subroutine to check for active devices */
 DEVBLK *sr_active_devices()
@@ -118,9 +122,6 @@ BYTE     psw[16];
 
     /* Wait for I/O queue to clear out */
     TRACE("SR: Waiting for I/O Queue to clear...\n");
-#ifdef OPTION_FISHIO
-    SLEEP (2);
-#else
     obtain_lock (&sysblk.ioqlock);
     while (sysblk.ioq)
     {
@@ -129,7 +130,6 @@ BYTE     psw[16];
         obtain_lock (&sysblk.ioqlock);
     }
     release_lock (&sysblk.ioqlock);
-#endif
 
     /* Wait for active I/Os to complete */
     TRACE("SR: Waiting for Active I/Os to Complete...\n");
@@ -171,6 +171,13 @@ BYTE     psw[16];
     TRACE("SR: Saving Expanded Storage...\n");
     SR_WRITE_BUF   (file,SR_SYS_XPNDSTOR,sysblk.xpndstor,4096*sysblk.xpndsize);
     SR_WRITE_VALUE (file,SR_SYS_CPUID,sysblk.cpuid,sizeof(sysblk.cpuid));
+    SR_WRITE_VALUE (file,SR_SYS_CPUMODEL,sysblk.cpumodel,sizeof(sysblk.cpumodel));
+    SR_WRITE_VALUE (file,SR_SYS_CPUVERSION,sysblk.cpuversion,sizeof(sysblk.cpuversion));
+    SR_WRITE_VALUE (file,SR_SYS_CPUSERIAL,sysblk.cpuserial,sizeof(sysblk.cpuserial));
+    SR_WRITE_VALUE (file,SR_SYS_OPERATION_MODE,(int)sysblk.operation_mode,sizeof(sysblk.operation_mode));
+    SR_WRITE_VALUE (file,SR_SYS_LPARMODE,(int)sysblk.lparmode,sizeof(int));
+    SR_WRITE_VALUE (file,SR_SYS_LPARNUM,sysblk.lparnum,sizeof(sysblk.lparnum));
+    SR_WRITE_VALUE (file,SR_SYS_CPUIDFMT,sysblk.cpuidfmt,sizeof(sysblk.cpuidfmt));
     SR_WRITE_VALUE (file,SR_SYS_IPLDEV,sysblk.ipldev,sizeof(sysblk.ipldev));
     SR_WRITE_VALUE (file,SR_SYS_IPLCPU,sysblk.iplcpu,sizeof(sysblk.iplcpu));
     SR_WRITE_VALUE (file,SR_SYS_MBO,sysblk.mbo,sizeof(sysblk.mbo));
@@ -195,11 +202,17 @@ BYTE     psw[16];
             SR_WRITE_VALUE(file,SR_SYS_IOPENDING, ioq->dev->devnum,sizeof(ioq->dev->devnum));
         }
 
-    for (i = 0; i < 8; i++)
-        SR_WRITE_VALUE(file,SR_SYS_CHP_RESET+i,sysblk.chp_reset[i],sizeof(sysblk.chp_reset[0]));
+    SR_WRITE_VALUE ( file, SR_SYS_CRWCOUNT, sysblk.crwcount, sizeof( sysblk.crwcount ));
+    if (sysblk.crwcount)
+    {
+        SR_WRITE_BUF   ( file, SR_SYS_CRWARRAY,  sysblk.crwarray, sizeof( U32 ) * sysblk.crwcount );
+        SR_WRITE_VALUE ( file, SR_SYS_CRWINDEX,  sysblk.crwindex, sizeof( sysblk.crwindex ) );
+        SR_WRITE_VALUE ( file, SR_SYS_CRWENDIAN, ourendian, 1 );
+    }
 
     SR_WRITE_VALUE (file,SR_SYS_SERVPARM,sysblk.servparm,sizeof(sysblk.servparm));
     SR_WRITE_VALUE (file,SR_SYS_SIGINTREQ,sysblk.sigintreq,1);
+    SR_WRITE_VALUE (file,SR_SYS_IPLED,sysblk.ipled,1);
     SR_WRITE_STRING(file,SR_SYS_LOADPARM,str_loadparm());
     SR_WRITE_VALUE (file,SR_SYS_INTS_STATE,sysblk.ints_state,sizeof(sysblk.ints_state));
     SR_WRITE_HDR(file, SR_DELIMITER, 0);
@@ -296,9 +309,6 @@ BYTE     psw[16];
         SR_WRITE_BUF  (file, SR_DEV_SCSW, &dev->scsw, sizeof(SCSW));
         SR_WRITE_BUF  (file, SR_DEV_PCISCSW, &dev->pciscsw, sizeof(SCSW));
         SR_WRITE_BUF  (file, SR_DEV_ATTNSCSW, &dev->attnscsw, sizeof(SCSW));
-        SR_WRITE_BUF  (file, SR_DEV_CSW, dev->csw, 8);
-        SR_WRITE_BUF  (file, SR_DEV_PCICSW, dev->pcicsw, 8);
-        SR_WRITE_BUF  (file, SR_DEV_ATTNCSW, dev->attncsw, 8);
         SR_WRITE_BUF  (file, SR_DEV_ESW, &dev->esw, sizeof(ESW));
         SR_WRITE_BUF  (file, SR_DEV_ECW, dev->ecw, 32);
         SR_WRITE_BUF  (file, SR_DEV_SENSE, dev->sense, 32);
@@ -313,7 +323,6 @@ BYTE     psw[16];
         SR_WRITE_VALUE(file, SR_DEV_ATTNPENDING, dev->attnpending, 1);
         SR_WRITE_VALUE(file, SR_DEV_PENDING, dev->pending, 1);
         SR_WRITE_VALUE(file, SR_DEV_STARTPENDING, dev->startpending, 1);
-        SR_WRITE_VALUE(file, SR_DEV_CRWPENDING, dev->crwpending, 1);
         SR_WRITE_VALUE(file, SR_DEV_CCWADDR, dev->ccwaddr, sizeof(dev->ccwaddr));
         SR_WRITE_VALUE(file, SR_DEV_IDAPMASK, dev->idapmask, sizeof(dev->idapmask));
         SR_WRITE_VALUE(file, SR_DEV_IDAWFMT, dev->idawfmt, sizeof(dev->idawfmt));
@@ -487,9 +496,6 @@ S64      dreg;
             sysblk.arch_mode = i;
             sysblk.pcpu = 0;
             sysblk.dummyregs.arch_mode = sysblk.arch_mode;
-#if defined(OPTION_FISHIO)
-            ios_arch_mode = sysblk.arch_mode;
-#endif
             break;
 
         case SR_SYS_MAINSIZE:
@@ -547,6 +553,42 @@ S64      dreg;
         case SR_SYS_XPNDSTOR:
             TRACE("SR: Restoring Expanded Storage...\n");
             SR_READ_BUF(file, sysblk.xpndstor, xpndsize * 4096);
+            break;
+
+        case SR_SYS_CPUID:
+            SR_READ_VALUE(file, len, &sysblk.cpuid, sizeof(sysblk.cpuid));
+             break;
+
+        case SR_SYS_CPUMODEL:
+            SR_READ_VALUE(file, len, &sysblk.cpumodel, sizeof(sysblk.cpumodel));
+             break;
+
+        case SR_SYS_CPUVERSION:
+            SR_READ_VALUE(file, len, &sysblk.cpuversion, sizeof(sysblk.cpuversion));
+            break;
+
+        case SR_SYS_CPUSERIAL:
+            SR_READ_VALUE(file, len, &sysblk.cpuserial, sizeof(sysblk.cpuserial));
+            break;
+
+        case SR_SYS_OPERATION_MODE:
+            SR_READ_VALUE (file, len, &sysblk.operation_mode, sizeof(sysblk.operation_mode));
+            break;
+
+        case SR_SYS_LPARMODE:
+        {
+            int value;
+            SR_READ_VALUE (file, len, &value, sizeof(int));
+            sysblk.lparmode = value;
+            break;
+        }
+
+        case SR_SYS_LPARNUM:
+            SR_READ_VALUE (file, len, &sysblk.lparnum, sizeof(sysblk.lparnum));
+            break;
+
+        case SR_SYS_CPUIDFMT:
+            SR_READ_VALUE (file, len, &sysblk.cpuidfmt, sizeof(sysblk.cpuidfmt));
             break;
 
         case SR_SYS_IPLDEV:
@@ -624,16 +666,38 @@ S64      dreg;
             lcss = 0;
             break;
 
-        case SR_SYS_CHP_RESET_0:
-        case SR_SYS_CHP_RESET_1:
-        case SR_SYS_CHP_RESET_2:
-        case SR_SYS_CHP_RESET_3:
-        case SR_SYS_CHP_RESET_4:
-        case SR_SYS_CHP_RESET_5:
-        case SR_SYS_CHP_RESET_6:
-        case SR_SYS_CHP_RESET_7:
-            i = key - SR_SYS_CHP_RESET;
-            SR_READ_VALUE(file, len, &sysblk.chp_reset[i], sizeof(sysblk.chp_reset[0]));
+        case SR_SYS_CRWCOUNT:
+            SR_READ_VALUE( file, len, &sysblk.crwcount, sizeof( sysblk.crwcount ));
+            if (sysblk.crwcount)
+            {
+                sysblk.crwarray = malloc( sizeof(U32) * sysblk.crwcount );
+                if (!sysblk.crwarray)
+                {
+                    // "SR: error loading CRW queue: not enough memory for %d CRWs"
+                    WRMSG(HHC02022, "E", sysblk.crwcount);
+                    goto sr_error_exit;
+                }
+                sysblk.crwalloc = sysblk.crwcount;
+            }
+            break;
+
+        case SR_SYS_CRWARRAY:
+            ASSERT( sysblk.crwarray && sysblk.crwcount );
+            TRACE("SR: Restoring CRW Array...\n");
+            SR_READ_BUF( file, sysblk.crwarray, sizeof(U32) * sysblk.crwcount );
+            break;
+
+        case SR_SYS_CRWINDEX:
+            ASSERT( sysblk.crwarray && sysblk.crwcount );
+            SR_READ_VALUE( file, len, &sysblk.crwindex, sizeof( sysblk.crwindex ));
+            break;
+
+        case SR_SYS_CRWENDIAN:
+            ASSERT( sysblk.crwarray && sysblk.crwcount );
+            SR_READ_VALUE(file, len, &crwendian, 1);
+            if (ourendian != crwendian)
+                for (i=0; (U32)i < sysblk.crwcount; i++)
+                    *(sysblk.crwarray + i) = bswap_32(*(sysblk.crwarray + i));
             break;
 
         case SR_SYS_SERVPARM:
@@ -643,6 +707,11 @@ S64      dreg;
         case SR_SYS_SIGINTREQ:
             SR_READ_VALUE(file, len, &rc, sizeof(rc));
             sysblk.sigintreq = rc;
+            break;
+
+        case SR_SYS_IPLED:
+            SR_READ_VALUE(file, len, &rc, sizeof(rc));
+            sysblk.ipled = rc;
             break;
 
         case SR_SYS_LOADPARM:
@@ -1120,39 +1189,6 @@ S64      dreg;
             SR_READ_BUF(file, &dev->attnscsw, len);
             break;
 
-        case SR_DEV_CSW:
-            SR_SKIP_NULL_DEV(dev, file, len);
-            if (len != 8)
-            {
-                // "SR: %04X: '%s' size mismatch: %d found, %d expected"
-                WRMSG(HHC02017, "E", dev->devnum, "CSW", len, 8);
-                goto sr_error_exit;
-            }
-            SR_READ_BUF(file, &dev->csw, len);
-            break;
-
-        case SR_DEV_PCICSW:
-            SR_SKIP_NULL_DEV(dev, file, len);
-            if (len != 8)
-            {
-                // "SR: %04X: '%s' size mismatch: %d found, %d expected"
-                WRMSG(HHC02017, "E", dev->devnum, "PCI CSW", len, 8);
-                goto sr_error_exit;
-            }
-            SR_READ_BUF(file, &dev->pcicsw, len);
-            break;
-
-        case SR_DEV_ATTNCSW:
-            SR_SKIP_NULL_DEV(dev, file, len);
-            if (len != 8)
-            {
-                // "SR: %04X: '%s' size mismatch: %d found, %d expected"
-                WRMSG(HHC02017, "E", dev->devnum, "ATTN CSW", len, 8);
-                goto sr_error_exit;
-            }
-            SR_READ_BUF(file, &dev->attncsw, len);
-            break;
-
         case SR_DEV_ESW:
             SR_SKIP_NULL_DEV(dev, file, len);
             if (len != sizeof(ESW))
@@ -1201,7 +1237,7 @@ S64      dreg;
             }
             SR_READ_BUF(file, &dev->pgid, len);
             break;
-   
+
         /* By Adrian - SR_DEV_DRVPWD */
         case SR_DEV_DRVPWD:
             SR_SKIP_NULL_DEV(dev, file, len);
@@ -1212,9 +1248,7 @@ S64      dreg;
                 goto sr_error_exit;
             }
             SR_READ_BUF(file, &dev->drvpwd, len);
-            break;   
-   
-   
+            break;
 
         case SR_DEV_BUSY:
             SR_SKIP_NULL_DEV(dev, file, len);
@@ -1259,12 +1293,6 @@ S64      dreg;
             SR_SKIP_NULL_DEV(dev, file, len);
             SR_READ_VALUE(file, len, &rc, sizeof(rc));
             dev->startpending = rc;
-            break;
-
-        case SR_DEV_CRWPENDING:
-            SR_SKIP_NULL_DEV(dev, file, len);
-            SR_READ_VALUE(file, len, &rc, sizeof(rc));
-            dev->crwpending = rc;
             break;
 
         case SR_DEV_CCWADDR:

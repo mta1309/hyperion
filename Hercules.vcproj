@@ -15,9 +15,6 @@
 		<Platform
 			Name="x64"
 		/>
-		<Platform
-			Name="Itanium"
-		/>
 	</Platforms>
 	<ToolFiles>
 	</ToolFiles>
@@ -34,7 +31,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat DEBUG makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -54,7 +51,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG-X64 makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat DEBUG-X64 makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -74,7 +71,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat RETAIL makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -94,7 +91,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL-X64 makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat RETAIL-X64 makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -115,7 +112,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -136,7 +133,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -157,7 +154,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -178,7 +175,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -199,7 +196,7 @@
 				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -220,111 +217,8 @@
 				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
-				ForcedIncludes=""
-				AssemblySearchPath=""
-				ForcedUsingAssemblies=""
-				CompileAsManaged=""
-			/>
-		</Configuration>
-		<Configuration
-			Name="Debug|Itanium"
-			OutputDirectory="./msvc.debug.IA64.bin"
-			IntermediateDirectory="./msvc.debug.IA64.bin"
-			ConfigurationType="0"
-			>
-			<Tool
-				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat DEBUG-IA64 makefile.msvc 32"
-				ReBuildCommandLine="makefile.bat DEBUG-IA64 makefile.msvc 32 -a"
-				CleanCommandLine="makefile.bat DEBUG-IA64 makefile.msvc 32 clean"
-				Output="$(OutDir)"
-				PreprocessorDefinitions="FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;_MSVC_;CPU=IA64;HOST_ARCH=IA64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY"
-				IncludeSearchPath=""
-				ForcedIncludes=""
-				AssemblySearchPath=""
-				ForcedUsingAssemblies=""
-				CompileAsManaged=""
-			/>
-		</Configuration>
-		<Configuration
-			Name="Release|Itanium"
-			OutputDirectory="./msvc.IA64.bin"
-			IntermediateDirectory="./msvc.IA64.bin"
-			ConfigurationType="0"
-			>
-			<Tool
-				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat RETAIL-IA64 makefile.msvc 32"
-				ReBuildCommandLine="makefile.bat RETAIL-IA64 makefile.msvc 32 -a"
-				CleanCommandLine="makefile.bat RETAIL-IA64 makefile.msvc 32 clean"
-				Output="$(OutDir)"
-				PreprocessorDefinitions="FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=IA64;HOST_ARCH=IA64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY"
-				IncludeSearchPath=""
-				ForcedIncludes=""
-				AssemblySearchPath=""
-				ForcedUsingAssemblies=""
-				CompileAsManaged=""
-			/>
-		</Configuration>
-		<Configuration
-			Name="Debug-All|Itanium"
-			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
-			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
-			>
-			<Tool
-				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
-				Output="$(OutDir)"
-				PreprocessorDefinitions="FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;_MSVC_;CPU=IA64;HOST_ARCH=IA64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY"
-				IncludeSearchPath=""
-				ForcedIncludes=""
-				AssemblySearchPath=""
-				ForcedUsingAssemblies=""
-				CompileAsManaged=""
-			/>
-		</Configuration>
-		<Configuration
-			Name="Release-All|Itanium"
-			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
-			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
-			>
-			<Tool
-				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
-				Output="$(OutDir)"
-				PreprocessorDefinitions="FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=IA64;HOST_ARCH=IA64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY"
-				IncludeSearchPath=""
-				ForcedIncludes=""
-				AssemblySearchPath=""
-				ForcedUsingAssemblies=""
-				CompileAsManaged=""
-			/>
-		</Configuration>
-		<Configuration
-			Name="All-All|Itanium"
-			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
-			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
-			>
-			<Tool
-				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
-				Output="$(OutDir)"
-				PreprocessorDefinitions="FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_MSVC_;CPU=IA64;HOST_ARCH=IA64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY"
-				IncludeSearchPath=""
 				ForcedIncludes=""
 				AssemblySearchPath=""
 				ForcedUsingAssemblies=""
@@ -454,70 +348,6 @@
 						RelativePath=".\herclin.c"
 						>
 					</File>
-					<Filter
-						Name="cmpsctst"
-						>
-						<File
-							RelativePath=".\cmpsctst.cmd"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpsctst.make"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpsctst.rexx"
-							>
-						</File>
-						<Filter
-							Name="Source Files"
-							>
-							<File
-								RelativePath=".\cmpsctst.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpsc.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpsc_2012.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpscdbg.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpscdct.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpscget.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpscmem.c"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_cmpscput.c"
-								>
-							</File>
-						</Filter>
-						<Filter
-							Name="Header Files"
-							>
-							<File
-								RelativePath=".\cmpsctst.h"
-								>
-							</File>
-							<File
-								RelativePath=".\cmpsctst_stdinc.h"
-								>
-							</File>
-						</Filter>
-					</Filter>
 				</Filter>
 			</Filter>
 			<Filter
@@ -710,6 +540,10 @@
 								>
 							</File>
 							<File
+								RelativePath=".\ctc_ptp.h"
+								>
+							</File>
+							<File
 								RelativePath=".\ctcadpt.h"
 								>
 							</File>
@@ -718,11 +552,19 @@
 								>
 							</File>
 							<File
+								RelativePath=".\hifr.h"
+								>
+							</File>
+							<File
 								RelativePath=".\qeth.h"
 								>
 							</File>
 							<File
 								RelativePath=".\tt32api.h"
+								>
+							</File>
+							<File
+								RelativePath=".\tt32if.h"
 								>
 							</File>
 							<File
@@ -751,6 +593,10 @@
 							</File>
 							<File
 								RelativePath=".\ctc_lcs.c"
+								>
+							</File>
+							<File
+								RelativePath=".\ctc_ptp.c"
 								>
 							</File>
 							<File
@@ -1187,6 +1033,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\hthreads.c"
+							>
+						</File>
+						<File
 							RelativePath=".\httpserv.c"
 							>
 						</File>
@@ -1271,6 +1121,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\resolve.c"
+							>
+						</File>
+						<File
 							RelativePath=".\rexx.c"
 							>
 						</File>
@@ -1347,15 +1201,7 @@
 							>
 						</File>
 						<File
-							RelativePath=".\w32chan.c"
-							>
-						</File>
-						<File
 							RelativePath=".\w32util.c"
-							>
-						</File>
-						<File
-							RelativePath=".\wthreads.c"
 							>
 						</File>
 						<File
@@ -1420,6 +1266,10 @@
 						</File>
 						<File
 							RelativePath=".\esa390.h"
+							>
+						</File>
+						<File
+							RelativePath=".\esa390io.h"
 							>
 						</File>
 						<File
@@ -1523,11 +1373,23 @@
 							>
 						</File>
 						<File
+							RelativePath=".\hmalloc.h"
+							>
+						</File>
+						<File
 							RelativePath=".\hostinfo.h"
 							>
 						</File>
 						<File
 							RelativePath=".\hostopts.h"
+							>
+						</File>
+						<File
+							RelativePath=".\hqadefs.h"
+							>
+						</File>
+						<File
+							RelativePath=".\hqainc.h"
 							>
 						</File>
 						<File
@@ -1619,6 +1481,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\resolve.h"
+							>
+						</File>
+						<File
 							RelativePath=".\service.h"
 							>
 						</File>
@@ -1647,15 +1513,19 @@
 							>
 						</File>
 						<File
+							RelativePath=".\targetver.h"
+							>
+						</File>
+						<File
 							RelativePath=".\version.h"
 							>
 						</File>
 						<File
-							RelativePath=".\vstore.h"
+							RelativePath=".\vmd250.h"
 							>
 						</File>
 						<File
-							RelativePath=".\w32chan.h"
+							RelativePath=".\vstore.h"
 							>
 						</File>
 						<File
@@ -1664,10 +1534,6 @@
 						</File>
 						<File
 							RelativePath=".\w32util.h"
-							>
-						</File>
-						<File
-							RelativePath=".\wthreads.h"
 							>
 						</File>
 					</Filter>
@@ -1790,7 +1656,7 @@
 						>
 					</File>
 					<File
-						RelativePath=".\README.CMPSCTST"
+						RelativePath=".\README.APL360"
 						>
 					</File>
 					<File
@@ -1846,7 +1712,15 @@
 						>
 					</File>
 					<File
+						RelativePath=".\README.PTT"
+						>
+					</File>
+					<File
 						RelativePath=".\README.REXX"
+						>
+					</File>
+					<File
+						RelativePath=".\README.RXVT4APL"
 						>
 					</File>
 					<File
@@ -2157,6 +2031,14 @@
 							>
 						</File>
 						<File
+							RelativePath=".\msvc.makefile.includes\HQA_DIR.msvc"
+							>
+						</File>
+						<File
+							RelativePath=".\msvc.makefile.includes\HQA_FLAGS.msvc"
+							>
+						</File>
+						<File
 							RelativePath=".\msvc.makefile.includes\IPV6_FLAGS.msvc"
 							>
 						</File>
@@ -2246,7 +2128,7 @@
 						</File>
 					</Filter>
 					<Filter
-						Name="VC2010"
+						Name="VS2010"
 						>
 						<File
 							RelativePath=".\Hercules.vcxproj"
@@ -2254,6 +2136,18 @@
 						</File>
 						<File
 							RelativePath=".\Hercules.vcxproj.filters"
+							>
+						</File>
+					</Filter>
+					<Filter
+						Name="VS2012"
+						>
+						<File
+							RelativePath=".\Hercules_VS2012.sln"
+							>
+						</File>
+						<File
+							RelativePath=".\Hercules_VS2012.vcxproj"
 							>
 						</File>
 					</Filter>
@@ -2279,14 +2173,6 @@
 					</File>
 					<File
 						RelativePath=".\Makefile.am"
-						>
-					</File>
-					<File
-						RelativePath=".\makefile.generic"
-						>
-					</File>
-					<File
-						RelativePath=".\makefile.w32"
 						>
 					</File>
 				</Filter>
@@ -2922,6 +2808,10 @@
 						>
 					</File>
 					<File
+						RelativePath=".\tests\ptf.txt"
+						>
+					</File>
+					<File
 						RelativePath=".\tests\res40002.txt"
 						>
 					</File>
@@ -2955,6 +2845,22 @@
 					</File>
 					<File
 						RelativePath=".\tests\sus40002.txt"
+						>
+					</File>
+					<File
+						RelativePath=".\tests\tape.240k-2.txt"
+						>
+					</File>
+					<File
+						RelativePath=".\tests\tape.240k.txt"
+						>
+					</File>
+					<File
+						RelativePath=".\tests\tape.2m.txt"
+						>
+					</File>
+					<File
+						RelativePath=".\tests\tape.32k.txt"
 						>
 					</File>
 					<File

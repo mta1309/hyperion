@@ -1,18 +1,10 @@
 @if defined TRACEON (@echo on) else (@echo off)
 
-
-  ::  Uncomment the below to set a custom build description, or
-  ::  define it via 'set' command before invoking this batch file.
-
-  :: set CUSTOM_BUILD_STRING="(whatever you want it to be)"
-
-
-  ::  Uncomment the below to ALWAYS generate assembly (.cod) listings, or
-  ::  define it yourself via 'set' command before invoking this batch file.
-
-  :: set "ASSEMBLY_LISTINGS=1"
-
-
+  setlocal
+  set "TRACE=if defined DEBUG echo"
+  set "return=goto :EOF"
+  set "rc=0"
+  goto :parse_args
 
 ::*****************************************************************************
 ::*****************************************************************************
@@ -52,31 +44,7 @@
 ::*                                                                           *
 ::*****************************************************************************
 
-  set "rc=0"
-  set "TRACE=if defined TRACEON echo"
 
-  if "%~1" == ""        goto :help
-  if "%~1" == "?"       goto :help
-  if "%~1" == "/?"      goto :help
-  if "%~1" == "-?"      goto :help
-  if "%~1" == "--help"  goto :help
-
-  set "build_type=%~1"
-  set "makefile_name=%~2"
-  set "num_cpus=%~3"
-  set "extra_nmake_arg=%~4"
-  set "SolutionDir=%~5"
-
-:extra_args
-
-  if "%~5" == "" goto :begin
-  set "extra_nmake_arg=%extra_nmake_arg% %~5"
-  shift /1
-  goto :extra_args
-
-::-----------------------------------------------------------------------------
-::                                HELP
-::-----------------------------------------------------------------------------
 :help
 
   echo.
@@ -94,7 +62,12 @@
   echo  Format:
   echo.
   echo.
-  echo    %~nx0 {build-type} {makefile-name} {num-cpu-engines} [-a^|clean]
+  echo    %~nx0  {build-type}  {makefile-name}  {num-cpu-engines}  \
+  echo                  [-asm]                                            \
+  echo                  [-title "custom build title"]                     \
+  echo                  [-hqa {directory}]                                \
+  echo                  [-a^|clean]                                        \
+  echo                  [{nmake-option}]
   echo.
   echo.
   echo  Where:
@@ -102,14 +75,27 @@
   echo    {build-type}        The desired build configuration. Valid values are
   echo                        DEBUG / RETAIL for building a 32-bit Hercules, or
   echo                        DEBUG-X64 / RETAIL-X64 to build a 64-bit version
-  echo                        of Hercules targeting (favoring) AMD64 processors,
-  echo                        or DEBUG-IA64 / RETAIL-IA64 for a 64-bit version
-  echo                        of Hercules favoring Intel Itanium-64 processors.
+  echo                        of Hercules targeting (favoring) AMD64 processors.
   echo.
-  echo    {makefile-name}     The name of our makefile:  'makefile.msvc'
+  echo                        DEBUG builds activate/enable UNOPTIMIZED debugging
+  echo                        logic and are thus VERY slow and not recommended
+  echo                        for normal use. RETAIL builds on the other hand
+  echo                        are highly optimized and thus the recommended type
+  echo                        for normal every day ("production") use.
+  echo.
+  echo    {makefile-name}     The name of our makefile: 'makefile.msvc' (or some
+  echo                        other makefile name if you have a customized one)
   echo.
   echo    {num-cpu-engines}   The maximum number of emulated CPUs (NUMCPU=) you
   echo                        want this build of Hercules to support: 1 to 64.
+  echo.
+  echo    -asm                To generate assembly (.cod) listings.
+  echo.
+  echo    -title "xxx..."     To define a custom title for this build.
+  echo.
+  echo    -hqa "directory"    To define the Hercules Quality Assurance directory
+  echo                        containing your optional "hqa.h" and/or "HQA.msvc"
+  echo                        build settings override files.
   echo.
   echo    [-a^|clean]          Use '-a' to perform a full rebuild of all Hercules
   echo                        binaries, or 'clean' to delete all temporary work
@@ -121,38 +107,164 @@
   echo                        HIGHLY RECOMMENDED that you always specify the '-a'
   echo                        option to ensure that a complete rebuild is done.
   echo.
+  echo    [{nmake-option}]    Extra nmake option(s).   (e.g. -k, -g, etc...)
+  echo.
 
-  exit /b 1
+  set "rc=1"
+  goto :exit
+
+
+::-----------------------------------------------------------------------------
+::                                PARSE ARGUMENTS
+::-----------------------------------------------------------------------------
+:parse_args
+
+  if "%~1" == ""        goto :help
+  if "%~1" == "?"       goto :help
+  if "%~1" == "/?"      goto :help
+  if "%~1" == "-?"      goto :help
+  if "%~1" == "--help"  goto :help
+
+  set "build_type="
+  set "makefile_name="
+  set "num_cpus="
+  set "extra_nmake_args="
+  set "SolutionDir="
+
+  call :parse_args_loop %*
+  if not "%rc%" == "0" goto :exit
+  goto :begin
+
+:parse_args_loop
+
+  if "%~1" == "" %return%
+  set "2shifts="
+  call :parse_this_arg "%~1" "%~2"
+  shift /1
+  if defined 2shifts shift /1
+  goto :parse_args_loop
+
+:parse_this_arg
+
+  set "opt=%~1"
+  set "optval=%~2"
+
+  if "%opt:~0,1%" == "-" goto :parse_opt
+  if "%opt:~0,1%" == "/" goto :parse_opt
+
+  ::  Positional argument...
+
+  if not defined build_type (
+    set         "build_type=%opt%"
+    %return%
+  )
+
+  if not defined makefile_name (
+    set         "makefile_name=%opt%"
+    %return%
+  )
+
+  if not defined num_cpus (
+    set         "num_cpus=%opt%"
+    %return%
+  )
+
+  if not defined extra_nmake_args (
+    set         "extra_nmake_args=%opt%"
+    %return%
+  )
+
+  if not defined SolutionDir (
+    call :re_set SolutionDir "%opt%"
+    %return%
+  )
+
+  ::  Remaining arguments treated as extra nmake arguments...
+
+  set "2shifts="
+  set "extra_nmake_args=%extra_nmake_args% %opt%"
+  %return%
+
+:parse_opt
+
+  set "2shifts=yes"
+
+  if /i "%opt:~1%" == "a"     goto :makeall
+  if /i "%opt:~1%" == "hqa"   goto :hqa
+  if /i "%opt:~1%" == "asm"   goto :asm
+  if /i "%opt:~1%" == "title" goto :title
+
+  ::  Unrecognized options treated as extra nmake arguments...
+
+  set "2shifts="
+  set "extra_nmake_args=%extra_nmake_args% %opt%"
+  %return%
+
+:makeall
+
+  set "2shifts="
+  set "extra_nmake_args=%extra_nmake_args% -a"
+  %return%
+
+:hqa
+
+  set "HQA_DIR="
+
+  if not exist "%optval%" goto :hqa_dir_notfound
+  if not exist "%optval%\hqa.h" %return%
+
+  set "HQA_DIR=%optval%"
+  set "rc=0"
+  %return%
+
+:hqa_dir_notfound
+
+  echo.
+  echo %~nx0^(1^) : error C9999 : HQA directory not found: "%optval%"
+  set "rc=1"
+  %return%
+
+:asm
+
+  set "2shifts="
+  set "ASSEMBLY_LISTINGS=1"
+  %return%
+
+:title
+
+  set CUSTOM_BUILD_STRING="%optval%"
+  %return%
+
 
 ::-----------------------------------------------------------------------------
 ::                                BEGIN
 ::-----------------------------------------------------------------------------
 :begin
 
-
   call :set_build_env
-  if %rc% NEQ 0 exit /b 1
-
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
   call :validate_makefile
-  if %rc% NEQ 0 exit /b 1
-
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
   call :validate_num_cpus
-  if %rc% NEQ 0 exit /b 1
-
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
   call :set_cfg
-  if %rc% NEQ 0 exit /b 1
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
 
   call :set_targ_arch
-  if %rc% NEQ 0 exit /b 1
-
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
   call :set_VERSION
-  if %rc% NEQ 0 exit /b 1
-
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
   goto :%build_env%
 
@@ -191,9 +303,19 @@
 ::                                                -- Fish, March 2009
 ::
 ::-----------------------------------------------------------------------------
-::                   VS2005  or  VS2008  or  VS2010
+::                           Visual Studio
+::-----------------------------------------------------------------------------
+::
+::
+::        Add support for new Visual Studio versions here...
+::
+::        Don't forget to update the 'CONFIG.msvc' file too!
+::        Don't forget to update the 'targetver.h' header too!
+::
 ::-----------------------------------------------------------------------------
 
+:vs120
+:vs110
 :vs100
 :vs90
 :vs80
@@ -201,9 +323,11 @@
   if /i "%targ_arch%" == "all" goto :multi_build
 
   call :set_host_arch
-  if %rc% NEQ 0 exit /b 1
+  if %rc% NEQ 0 (set "rc=1"
+                 goto :exit)
 
-  :: (see PROGRAMMING NOTE further above!)
+  :: (see 'setlocal' PROGRAMMING NOTE further above!)
+
   setlocal
 
   call "%VSTOOLSDIR%..\..\VC\vcvarsall.bat"  %host_arch%%targ_arch%
@@ -217,14 +341,13 @@
 :sdk
 :toolkit
 
-  :: (see PROGRAMMING NOTE further above!)
+  :: (see 'setlocal' PROGRAMMING NOTE further above!)
 
   setlocal
 
-  if /i "%build_env%" == "toolkit" call "%bat_dir%vcvars32.bat"
-
-  if /i "%new_sdk%" == "NEW" call "%bat_dir%\bin\setenv" /%BLD%  /%CFG%
-  if /i not "%new_sdk%" == "NEW" call "%bat_dir%\setenv" /%BLD%  /%CFG%
+  if /i "%build_env%"   == "toolkit" call "%bat_dir%vcvars32.bat"
+  if /i     "%new_sdk%" == "NEW"     call "%bat_dir%\bin\setenv" /%BLD%  /%CFG%
+  if /i not "%new_sdk%" == "NEW"     call "%bat_dir%\setenv"     /%BLD%  /%CFG%
 
   goto :nmake
 
@@ -240,19 +363,49 @@
 
 :try_sdk
 
-  if "%MSSdk%" == "" goto :try_vs100
+  if "%MSSdk%" == "" goto :try_vstudio
 
   set "build_env=sdk"
   set "bat_dir=%MSSdk%"
 
-:: This is a fiddle by g4ugm
-:: I couldn't find a way to check the SDK versions
-:: however the V7 sdk has the "setenv.cmd" file in the "bin" directory
-:: so using that for now
+  ::  This is a fiddle by g4ugm (Dave Wade)
+  ::  I couldn't find a way to check the SDK versions
+  ::  however the V7 sdk has the "setenv.cmd" file in the "bin" directory
+  ::  so using that for now
 
-  if NOT exist "%MSSdk%\bin\setenv.cmd" goto :eof
+  if NOT exist "%MSSdk%\bin\setenv.cmd" %return%
   set "new_sdk=NEW"
-  goto :eof
+  echo Windows Platform SDK detected
+  %return%
+
+:try_vstudio
+
+:: -------------------------------------------------------------------
+::
+::        Add support for new Visual Studio versions here...
+::
+::        Don't forget to update the 'CONFIG.msvc' file too!
+::        Don't forget to update the 'targetver.h' header too!
+::
+:: -------------------------------------------------------------------
+
+:try_vs120
+
+  if "%VS120COMNTOOLS%" == "" goto :try_vs110
+
+  set "build_env=vs120"
+  set "VSTOOLSDIR=%VS120COMNTOOLS%"
+  echo Visual Studio 2013 detected
+  %return%
+
+:try_vs110
+
+  if "%VS110COMNTOOLS%" == "" goto :try_vs100
+
+  set "build_env=vs110"
+  set "VSTOOLSDIR=%VS110COMNTOOLS%"
+  echo Visual Studio 2012 detected
+  %return%
 
 :try_vs100
 
@@ -260,7 +413,8 @@
 
   set "build_env=vs100"
   set "VSTOOLSDIR=%VS100COMNTOOLS%"
-  goto :EOF
+  echo Visual Studio 2010 detected
+  %return%
 
 :try_vs90
 
@@ -268,7 +422,8 @@
 
   set "build_env=vs90"
   set "VSTOOLSDIR=%VS90COMNTOOLS%"
-  goto :EOF
+  echo Visual Studio 2008 detected
+  %return%
 
 :try_vs80
 
@@ -276,35 +431,36 @@
 
   set "build_env=vs80"
   set "VSTOOLSDIR=%VS80COMNTOOLS%"
-  goto :EOF
-
+  echo Visual Studio 2005 detected
+  %return%
 
 :try_toolkit
 
-  if "%VCToolkitInstallDir%" == "" goto :try_xxxx
+  if "%VCToolkitInstallDir%" == "" goto :bad_build_env
 
   set "build_env=toolkit"
   set "bat_dir=%VCToolkitInstallDir%"
-  goto :EOF
+  echo Visual Studio 2003 ToolKit detected
+  %return%
 
-:try_xxxx
+:bad_build_env
 
   echo.
   echo %~nx0^(1^) : error C9999 : No suitable Windows development product is installed
   set "rc=1"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
 :validate_makefile
 
   set "rc=0"
-  if exist "%makefile_name%" goto :EOF
+  if exist "%makefile_name%" %return%
 
   echo.
   echo %~nx0^(1^) : error C9999 : makefile "%makefile_name%" not found
   set "rc=1"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -317,14 +473,14 @@
   if %rc% NEQ 0        goto :bad_num_cpus
   if %num_cpus% LSS 1  goto :bad_num_cpus
   if %num_cpus% GTR 64 goto :bad_num_cpus
-  goto :EOF
+  %return%
 
 :bad_num_cpus
 
   echo.
   echo %~nx0^(1^) : error C9999 : "%num_cpus%": Invalid number of cpu engines
   set "rc=1"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -335,25 +491,23 @@
 
   if /i     "%build_type%" == "DEBUG"       set "CFG=DEBUG"
   if /i     "%build_type%" == "DEBUG-X64"   set "CFG=DEBUG"
-  if /i     "%build_type%" == "DEBUG-IA64"  set "CFG=DEBUG"
 
   if /i     "%build_type%" == "RETAIL"      set "CFG=RETAIL"
   if /i     "%build_type%" == "RETAIL-X64"  set "CFG=RETAIL"
-  if /i     "%build_type%" == "RETAIL-IA64" set "CFG=RETAIL"
 
 :: the latest SDk uses different arguments to the "setenv" batch file
 :: we need "release" not "retail"...
 
   if /i not "%new_sdk%" == "NEW" goto :cfg_sdk_env
-
   if /i "%CFG%" == "RETAIL" set "CFG=RELEASE"
 
 :cfg_sdk_env
 
 
-  :: Check for VS2008/VS2010 multi-configuration multi-platform parallel build...
+  :: VS2008/VS2010/VS2012 multi-config multi-platform parallel build?
 
-  if    not "%CFG%"        == ""            goto :EOF
+  if    not "%CFG%"        == ""            %return%
+  if /i     "%build_env%"  == "vs110"       goto :multi_cfg
   if /i     "%build_env%"  == "vs100"       goto :multi_cfg
   if /i not "%build_env%"  == "vs90"        goto :bad_cfg
 
@@ -362,14 +516,14 @@
   if /i     "%build_type%" == "DEBUG-ALL"   set "CFG=debug"
   if /i     "%build_type%" == "RETAIL-ALL"  set "CFG=retail"
   if /i     "%build_type%" == "ALL-ALL"     set "CFG=all"
-  if    not "%CFG%"        == ""            goto :EOF
+  if    not "%CFG%"        == ""            %return%
 
 :bad_cfg
 
   echo.
   echo %~nx0^(1^) : error C9999 : "%build_type%": Invalid build-type
   set "rc=1"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -384,12 +538,10 @@
   if /i     "%build_type%" == "DEBUG-X64"   set "targ_arch=amd64"
   if /i     "%build_type%" == "RETAIL-X64"  set "targ_arch=amd64"
 
-  if /i     "%build_type%" == "DEBUG-IA64"  set "targ_arch=ia64"
-  if /i     "%build_type%" == "RETAIL-IA64" set "targ_arch=ia64"
-
-  :: Check for VS2008/VS2010 multi-configuration multi-platform parallel build...
+  :: VS2008/VS2010/VS2012 multi-config multi-platform parallel build?
 
   if    not "%targ_arch%"  == ""            goto :set_CPU_etc
+  if /i     "%build_env%"  == "vs110"       goto :multi_targ_arch
   if /i     "%build_env%"  == "vs100"       goto :multi_targ_arch
   if /i not "%build_env%"  == "vs90"        goto :bad_targ_arch
 
@@ -398,14 +550,14 @@
   if /i     "%build_type%" == "DEBUG-ALL"   set "targ_arch=all"
   if /i     "%build_type%" == "RETAIL-ALL"  set "targ_arch=all"
   if /i     "%build_type%" == "ALL-ALL"     set "targ_arch=all"
-  if    not "%targ_arch%"  == ""            goto :EOF
+  if    not "%targ_arch%"  == ""            %return%
 
 :bad_targ_arch
 
   echo.
   echo %~nx0^(1^) : error C9999 : "%build_type%": Invalid build-type
   set "rc=1"
-  goto :EOF
+  %return%
 
 :set_CPU_etc
 
@@ -413,12 +565,10 @@
 
   if /i "%targ_arch%" == "x86"   set "CPU=i386"
   if /i "%targ_arch%" == "amd64" set "CPU=AMD64"
-  if /i "%targ_arch%" == "ia64"  set "CPU=IA64"
 
   set "_WIN64="
 
   if /i "%targ_arch%" == "amd64" set "_WIN64=1"
-  if /i "%targ_arch%" == "ia64"  set "_WIN64=1"
 
   set "BLD="
 
@@ -428,17 +578,15 @@
 
   if /i "%targ_arch%" == "x86"   set "BLD=XP32"
   if /i "%targ_arch%" == "amd64" set "BLD=XP64"
-  if /i "%targ_arch%" == "ia64"  set "BLD=IA64"
 
-  goto :EOF
+  %return%
 
 :bld_sdk_env
 
   if /i "%targ_arch%" == "x86"   set "BLD=XP /X86"
   if /i "%targ_arch%" == "amd64" set "BLD=XP /X64"
-  if /i "%targ_arch%" == "ia64"  set "BLD=IA64 /2003"
 
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -449,26 +597,25 @@
 
   if /i "%PROCESSOR_ARCHITECTURE%" == "x86"   set "host_arch=x86"
   if /i "%PROCESSOR_ARCHITECTURE%" == "AMD64" set "host_arch=amd64"
-  if /i "%PROCESSOR_ARCHITECTURE%" == "IA64"  set "host_arch=ia64"
 
   ::  PROGRAMMING NOTE: there MUST NOT be any spaces before the ')'!!!
 
-  :: As there isn't a X64 or IA64 version of the x86 compiler
-  :: when building x86 builds we use the "x86" compiler under WOW
+  :: Since there isn't an X64 version of the x86 compiler when
+  :: building x86 builds, we use the "x86" compiler under WOW64.
 
   if /i "%targ_arch%" == "x86" set "host_arch=x86"
 
   if /i not "%host_arch%" == "%targ_arch%" goto :cross
 
   set "host_arch="
-  if exist "%VSTOOLSDIR%..\..\VC\bin\vcvars32.bat" goto :EOF
+  if exist "%VSTOOLSDIR%..\..\VC\bin\vcvars32.bat" %return%
   goto :missing
 
 :cross
 
   set "host_arch=x86_"
 
-  if exist "%VSTOOLSDIR%..\..\VC\bin\%host_arch%%targ_arch%\vcvars%host_arch%%targ_arch%.bat" goto :EOF
+  if exist "%VSTOOLSDIR%..\..\VC\bin\%host_arch%%targ_arch%\vcvars%host_arch%%targ_arch%.bat" %return%
   goto :missing
 
 :missing
@@ -476,7 +623,7 @@
   echo.
   echo %~nx0^(1^) : error C9999 : Build support for target architecture %targ_arch% is not installed
   set "rc=1"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -618,7 +765,7 @@
 :set_VERSION_done
 
   echo Hercules version number is %VERSION% (%V1%.%V2%.%V3%.%V4%)
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -632,7 +779,7 @@
   set "path=.;%path%"
   set "fullpath=%~dpnx$PATH:1"
   set "path=%save_path%"
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -641,7 +788,7 @@
   :: The following called when set= contains (), which confuses poor windoze
 
   set %~1=%~2
-  goto :EOF
+  %return%
 
 
 ::-----------------------------------------------------------------------------
@@ -652,7 +799,7 @@
 
 :ifallorclean_loop
 
-  if    "%1" == ""      goto :EOF
+  if    "%1" == ""      %return%
   if /i "%1" == "-a"    set @=1
   if /i "%1" == "/a"    set @=1
   if /i "%1" == "all"   set @=1
@@ -679,20 +826,14 @@
   ::   -g        display !INCLUDEd files (VS2005 or greater only)
 
 
-  nmake -nologo -f "%makefile_name%" -s %extra_nmake_arg%
+
+  nmake -nologo -f "%makefile_name%" -s %extra_nmake_args%
   set "rc=%errorlevel%"
-
-
-
-  :: (see the PROGRAMMING NOTE at the beginning of this batch file!)
-  endlocal  &  set "rc=%rc%"
-
-
-  exit /b %rc%
+  goto :exit
 
 
 ::-----------------------------------------------------------------------------
-::       VS2008/VS2010 multi-configuration multi-platform parallel build
+::    VS2008/VS2010/VS2012 multi-config multi-platform parallel build
 ::-----------------------------------------------------------------------------
 ::
 ::  The following is special logic to leverage Fish's "RunJobs" tool
@@ -732,7 +873,7 @@
   call :re_set SolutionPath "%SolutionDir%notused.sln"
   call "%VSTOOLSDIR%vsvars32.bat"
 
-  call :ifallorclean %extra_nmake_arg%
+  call :ifallorclean %extra_nmake_args%
   if defined # (
     set "VCBUILDOPT=/clean"
   ) else if defined @ (
@@ -743,8 +884,7 @@
 
   "%runjobs_cmd%" %CFG%-%targ_arch%.jobs
   set "rc=%errorlevel%"
-
-  exit /b %rc%
+  goto :exit
 
 
 :no_runjobs
@@ -752,8 +892,12 @@
   echo.
   echo %~nx0^(1^) : error C9999 : Could not find "%runjobs_cmd%" anywhere on your system
   set "rc=1"
-  exit /b %rc%
+  goto :exit
+
 
 ::-----------------------------------------------------------------------------
-::                            ((( EOF )))
+::                               EXIT
 ::-----------------------------------------------------------------------------
+:exit
+
+  endlocal & exit /b %rc%

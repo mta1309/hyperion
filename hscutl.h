@@ -191,9 +191,6 @@ HUT_DLL_IMPORT int timed_wait_condition_relative_usecs
     struct timeval*  pTV        // [OPTIONAL] ptr to tod value (may be NULL)
 );
 
-// TEST
-HUT_DLL_IMPORT void cause_crash();
-
 /* Read/write to socket functions */
 HUT_DLL_IMPORT int hprintf(int s,char *fmt,...);
 HUT_DLL_IMPORT int hwrite(int s,const char *,size_t);
@@ -228,5 +225,31 @@ HUT_DLL_IMPORT  void   hpcfree  ( BYTE type, void*  ptr  );
 
 /* Hercules low-level file open */
 HUT_DLL_IMPORT  int hopen( const char* path, int oflag, ... );
+
+/* Trim path information from __FILE__ macro */
+#if defined( _MSVC_ )
+HUT_DLL_IMPORT const char* trimloc( const char* loc );
+#define  TRIMLOC(_loc)     trimloc( _loc )
+#else
+#define  TRIMLOC(_loc)            ( _loc )
+#endif
+
+/*********************************************************************/
+/* Format TIMEVAL to printable value: "YYYY-MM-DD HH:MM:SS.uuuuuu",  */
+/* being exactly 26 characters long (27 bytes with null terminator). */
+/* pTV points to the TIMEVAL to be formatted. If NULL is passed then */
+/* the curent time of day as returned by a call to 'gettimeofday' is */
+/* used instead. buf must point to a char work buffer where the time */
+/* is formatted into and must not be NULL. bufsz is the size of buf  */
+/* and must be >= 2. If successful then the value of buf is returned */
+/* and is always zero terminated. If an error occurs or an invalid   */
+/* parameter is passed then NULL is returned instead.                */
+/*********************************************************************/
+HUT_DLL_IMPORT char* FormatTIMEVAL( const TIMEVAL* pTV, char* buf, int bufsz );
+
+/*-------------------------------------------------------------------*/
+/* fmt_memsize_rounded:   128K,  64M,  8G,  etc...                   */
+/*-------------------------------------------------------------------*/
+HUT_DLL_IMPORT char *fmt_memsize_rounded( const U64 memsize, char* buf, const size_t bufsz );
 
 #endif /* __HSCUTL_H__ */

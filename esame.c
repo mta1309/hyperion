@@ -2172,7 +2172,7 @@ U64     gr0, gr1;                       /* Result register workareas */
     dreg = cpu_timer(regs);
 
     /* Reset the cpu timer pending flag according to its value */
-    if( CPU_TIMER(regs) < 0 )
+    if( dreg < 0 )
     {
         ON_IC_PTIMER(regs);
 
@@ -4966,13 +4966,27 @@ int     fc, rc = 0;                     /* Function / Reason Code    */
     switch (fc)
     {
     case 0:                     /* Request horizontal polarization */
-        regs->psw.cc = 2;       /* Request rejected */
-        rc = 1;                 /* Already polarized as specified */
+        if (sysblk.topology == TOPOLOGY_HORIZ) {
+            regs->psw.cc = 2;   /* Request rejected */
+            rc = 1;             /* Already polarized as specified */
+        } else {
+            sysblk.topology = TOPOLOGY_HORIZ;
+            sysblk.topchnge = 1;
+            regs->psw.cc = 0;
+            rc = 0;
+        }
         break;
 
     case 1:                     /* Request vertical polarization */
-        regs->psw.cc = 2;       /* Request rejected */
-        rc = 0;                 /* No reason specified */
+        if (sysblk.topology == TOPOLOGY_VERT) {
+            regs->psw.cc = 2;   /* Request rejected */
+            rc = 1;             /* Already polarized as specified */
+        } else {
+            sysblk.topology = TOPOLOGY_VERT;
+            sysblk.topchnge = 1;
+            regs->psw.cc = 0;
+            rc = 0;
+        }
         break;
 
     case 2:                     /* Check topology-change status */
@@ -5206,60 +5220,12 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 
 #if defined(FEATURE_ENHANCED_DAT_FACILITY)
 /*-------------------------------------------------------------------*/
-/* SUBROUTINE TO PERFORM CONDITIONAL KEY PROCESSING                  */
-/* Input:                                                            */
-/*      regs    Register context                                     */
-/*      r1      Register number field from SSKE instruction          */
-/*      sk      Mask field from PFMF instruction                     */
-/*      skey    Contents of storage key before modification          */
-/* Output (when conditional SSKE is not indicated):                  */
-/*      The function return value is 0.                              */
-/* Output (when conditional SSKE is indicated):                      */
-/*      The function return value is 1.                              */
+/* SUBROUTINE TO PERFORM CONDITIONAL KEY PROCESSING is deleted       */
+/*                                                                   */
+/* Note  that  there  is nothing conditional about PFMF key setting; */
+/* the  only  option  is  whether clear sets change and/or reference */
+/* bits.                                                             */
 /*-------------------------------------------------------------------*/
-static inline int ARCH_DEP(conditional_key_procedure) (int rck, BYTE skey, BYTE r1key)
-{
-    /* Perform normal SSKE if MR and MC bits are both zero */
-    if ((rck & (SSKE_MASK_MR | SSKE_MASK_MC)) == 0)
-        return 0;
-
-    /* Ignore Bad Frame indicator */
-    skey &= ~(STORKEY_BADFRM);
-
-    /* If storage key and fetch bit do not equal new values
-       in R1 register bits 56-60 then set condition code 1
-       and return to PFMF to update storage key */
-    if ((skey & (STORKEY_KEY | STORKEY_FETCH))
-        != (r1key & (STORKEY_KEY | STORKEY_FETCH)))
-        return 0;
-
-    /* If both MR and MC mask bits are one then set
-       condition code 0 and leave storage key unchanged */
-    if ((rck & (SSKE_MASK_MR | SSKE_MASK_MC))
-        == (SSKE_MASK_MR | SSKE_MASK_MC))
-        return 1;
-
-    /* If MR bit is zero and reference bit is equal to
-       bit 61 of R1 register then set condition code 0
-       and leave storage key unchanged */
-    if ((rck & SSKE_MASK_MR) == 0
-        && ((skey & STORKEY_REF)
-           == (r1key & STORKEY_REF)))
-        return 1;
-
-    /* If MC bit is zero and the change bit is equal to
-       bit 62 of R1 register then set condition code 0
-       and leave storage key unchanged */
-    if ((rck & SSKE_MASK_MC) == 0
-        && ((skey & STORKEY_CHANGE)
-           == (r1key & STORKEY_CHANGE)))
-        return 1;
-
-    /* Set condition code 1 and let PFMF update storage key */
-    return 0;
-
-} /* end function conditional_key_procedure */
-
 
 /*-------------------------------------------------------------------*/
 /* B9AF PFMF  - Perform Frame Management Function              [RRE] */
@@ -5267,7 +5233,7 @@ static inline int ARCH_DEP(conditional_key_procedure) (int rck, BYTE skey, BYTE 
 DEF_INST(perform_frame_management_function)
 {
 int     r1, r2;                         /* Register values           */
-int     fc;                             /* Frame count               */
+int     fc = 1;                         /* Frame count               */
 RADR    addr, aaddr;
 int     page_offset;                    /* Low order bits of R2      */
 
@@ -5277,9 +5243,9 @@ int     page_offset;                    /* Low order bits of R2      */
 
     PRIV_CHECK(regs);
 
-    if((regs->GR_L(r1) & (PFMF_RESERVED|PFMF_FMFI_FSC_RESV))
+    if((regs->GR_L(r1) & (PFMF_RESERVED|PFMF_FMFI_RESV|PFMF_FMFI_FSC_RESV))
       || (!FACILITY_ENABLED(NONQ_KEY_SET,regs) && (regs->GR_L(r1) & PFMF_FMFI_NQ)))
-        regs->program_interrupt (regs, PGM_SPECIAL_OPERATION_EXCEPTION);
+        regs->program_interrupt (regs, PGM_SPECIFICATION_EXCEPTION);
 
     /* Wrap address according to addressing mode */
     aaddr = addr = ADDRESS_MAXWRAP(regs) & regs->GR_G(r2) & PAGEFRAME_PAGEMASK;
@@ -5294,6 +5260,8 @@ int     page_offset;                    /* Low order bits of R2      */
         break;
     /* Code for 2G pages goes here */
     default:
+        /* should have been catched by PFMF_FMFI_FSC_RESV bits being nonzero */
+        ASSERT(0);
         break;
     case PFMF_FMFI_FSC_4K:
         /* Prefixing is applied in single frame operation */
@@ -5443,9 +5411,6 @@ int     page_offset;                    /* Low order bits of R2      */
                             realkey = protkey & (STORKEY_REF | STORKEY_CHANGE);
                         }
 
-                        /* Perform conditional SSKE procedure */
-                        if (ARCH_DEP(conditional_key_procedure)(rck, protkey, sk))
-                            return;
                         /* or with host set */
                         rcpkey |= realkey << 4;
                         /* insert new settings of the guest set */
@@ -5482,15 +5447,6 @@ int     page_offset;                    /* Low order bits of R2      */
                 }
                 else
                 {
-                    /* Perform conditional SSKE procedure */
-                    if (ARCH_DEP(conditional_key_procedure)(rck,
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
-                            STORAGE_KEY(aaddr, regs),
-#else
-                            (STORAGE_KEY1(aaddr, regs) | STORAGE_KEY2(aaddr, regs)),
-#endif
-                        sk))
-                        return;
                     /* Update the storage key from R1 register bits 24-30 */
 #if !defined(_FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(aaddr, regs) &= STORKEY_BADFRM;
@@ -5506,15 +5462,6 @@ int     page_offset;                    /* Low order bits of R2      */
             else
 #endif /*defined(_FEATURE_SIE)*/
             {
-                /* Perform conditional SSKE procedure */
-                if (ARCH_DEP(conditional_key_procedure)(rck,
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
-                        STORAGE_KEY(aaddr, regs),
-#else
-                        (STORAGE_KEY1(aaddr, regs) | STORAGE_KEY2(n, regs)),
-#endif
-                    sk))
-                    return;
 
                 /* Update the storage key from R1 register bits 24-30 */
 #if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)

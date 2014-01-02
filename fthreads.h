@@ -75,21 +75,18 @@ typedef FT_THREAD_FUNC* PFT_THREAD_FUNC;              // thread function ptr
 
 typedef struct _tagFTU_MUTEX        // fthread "mutex" structure
 {
-    FT_W32_DWORD   dwMutexMagic;    // (magic number)
     FT_W32_HANDLE  hMutex;          // (ptr to actual mutex structure)
 }
 fthread_mutex_t;
 
 typedef struct _tagFTU_COND         // fthread "condition variable" structure
 {
-    FT_W32_DWORD   dwCondMagic;     // (magic number)
     FT_W32_HANDLE  hCondVar;        // (ptr to actual condition variable structure)
 }
 fthread_cond_t;
 
 typedef struct _tagFTU_ATTR         // fthread "thread attribute" structure
 {
-    FT_W32_DWORD  dwAttrMagic;      // (magic number)
     size_t        nStackSize;       // (initial stack size in bytes)
     int           nDetachState;     // (requested detach state: detached/joinable)
 }
@@ -198,7 +195,7 @@ int  fthread_create
     fthread_attr_t*  pThreadAttr,
     PFT_THREAD_FUNC  pfnThreadFunc,
     void*            pvThreadArgs,
-    char*            pszThreadName
+    const char*      pszThreadName
 );
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -336,9 +333,9 @@ int  fthread_cond_wait
 FT_DLL_IMPORT
 int  fthread_cond_timedwait
 (
-    fthread_cond_t*   pFT_COND_VAR,
-    fthread_mutex_t*  pFT_MUTEX,
-    struct timespec*  pTimeTimeout
+    fthread_cond_t*         pFT_COND_VAR,
+    fthread_mutex_t*        pFT_MUTEX,
+    const struct timespec*  pTimeTimeout
 );
 
 ////////////////////////////////////////////////////////////////////////////////////

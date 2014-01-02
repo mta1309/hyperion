@@ -505,7 +505,7 @@ do { \
     if( PROBSTATE(&(_regs)->psw) ) \
         (_regs)->program_interrupt( (_regs), PGM_PRIVILEGED_OPERATION_EXCEPTION)
 
-    /* Program check if r is not 0,1,4,5,8,9,12, or 13 (designating 
+    /* Program check if r is not 0,1,4,5,8,9,12, or 13 (designating
        the lower-numbered register of a floating-point register pair) */
 #define BFPREGPAIR_CHECK(_r, _regs) \
     if( ((_r) & 2) ) \
@@ -517,7 +517,7 @@ do { \
     if( ((_r1) & 2) || ((_r2) & 2) ) \
         (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
 
-    /* Program check if r is not 0,1,4,5,8,9,12, or 13 (designating 
+    /* Program check if r is not 0,1,4,5,8,9,12, or 13 (designating
        the lower-numbered register of a floating-point register pair) */
 #define DFPREGPAIR_CHECK(_r, _regs) \
     if( ((_r) & 2) ) \
@@ -578,7 +578,7 @@ do { \
     do { \
         if(!FACILITY_ENABLED( _faci, _regs ) ) \
           (_regs)->program_interrupt( (_regs), PGM_OPERATION_EXCEPTION); \
-    } while (0) 
+    } while (0)
 
 
 #define PER_RANGE_CHECK(_addr, _low, _high) \
@@ -605,10 +605,12 @@ do { \
 
 #define FETCH_HW(_value, _storage) (_value) = fetch_hw(_storage)
 #define FETCH_FW(_value, _storage) (_value) = fetch_fw(_storage)
+#define FETCH_F3(_value, _storage) (_value) = fetch_f3(_storage)
 #define FETCH_DW(_value, _storage) (_value) = fetch_dw(_storage)
 
 #define STORE_HW(_storage, _value) store_hw(_storage, _value)
 #define STORE_FW(_storage, _value) store_fw(_storage, _value)
+#define STORE_F3(_storage, _value) store_f3(_storage, _value)
 #define STORE_DW(_storage, _value) store_dw(_storage, _value)
 
 #include "machdep.h"
@@ -926,7 +928,7 @@ do { \
  * (like most general instructions when no storage access is needed)
  * therefore needing simpler prologue code.
  * The "_B" versions for some of the decoders are intended for
- * "branch" type operations where updating the PSW IA to IA+ILC 
+ * "branch" type operations where updating the PSW IA to IA+ILC
  * should only be done after the branch is deemed impossible.
  */
 
@@ -1374,7 +1376,7 @@ do { \
             if(likely((_b2))) \
                 (_effective_addr2) += (_regs)->GR((_b2)); \
     }
-    
+
 /* RXE register and indexed storage with extended op code */
 #undef RXE
 
@@ -2499,7 +2501,7 @@ do { \
             (_l) = (_inst)[1]; \
             INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
     }
-   
+
 #ifdef OPTION_OPTINST
 #define SS_LXL(_inst, _regs, _b1, _effective_addr1, _b2, _effective_addr2) \
         SS_LXL_DECODER(_inst, _regs, _b1, _effective_addr1, _b2, _effective_addr2, 6, 6)
@@ -2835,9 +2837,9 @@ do { \
 
 /* Functions in module channel.c */
 int  ARCH_DEP(startio) (REGS *regs, DEVBLK *dev, ORB *orb);
-void *s370_execute_ccw_chain (DEVBLK *dev);
-void *s390_execute_ccw_chain (DEVBLK *dev);
-void *z900_execute_ccw_chain (DEVBLK *dev);
+void *s370_execute_ccw_chain (void *dev);
+void *s390_execute_ccw_chain (void *dev);
+void *z900_execute_ccw_chain (void *dev);
 int  stchan_id (REGS *regs, U16 chan);
 int  testch (REGS *regs, U16 chan);
 int  testio (REGS *regs, DEVBLK *dev, BYTE ibyte);
@@ -2852,7 +2854,7 @@ int  ARCH_DEP(present_io_interrupt) (REGS *regs, U32 *ioid,
 int ARCH_DEP(present_zone_io_interrupt) (U32 *ioid, U32 *ioparm,
                                               U32 *iointid, BYTE zone);
 void io_reset (void);
-int  chp_reset(REGS *, BYTE chpid);
+int  chp_reset(BYTE chpid, int solicited);
 void channelset_reset(REGS *regs);
 
 
@@ -2885,7 +2887,7 @@ CPU_DLL_IMPORT void (ATTR_REGPARM(2) s370_program_interrupt) (REGS *regs, int co
 CPU_DLL_IMPORT void (ATTR_REGPARM(2) s390_program_interrupt) (REGS *regs, int code);
 #endif /*!defined(_FEATURE_ZSIE)*/
 CPU_DLL_IMPORT void (ATTR_REGPARM(2) ARCH_DEP(program_interrupt)) (REGS *regs, int code);
-void *cpu_thread (int *cpu);
+void *cpu_thread (void *cpu);
 DLL_EXPORT void copy_psw (REGS *regs, BYTE *addr);
 int display_psw (REGS *regs, char *buf, int buflen);
 char *str_psw (REGS *regs, char *buf);
@@ -2942,8 +2944,8 @@ void ARCH_DEP(diagf18_call) (int r1, int r2, REGS *regs);
 /* Functions in module ipl.c */
 int          load_ipl           (U16 lcss, U16  devnum, int cpu, int clear);
 int ARCH_DEP(load_ipl)          (U16 lcss, U16  devnum, int cpu, int clear);
-int          system_reset       (             int cpu, int clear);
-int ARCH_DEP(system_reset)      (             int cpu, int clear);
+int          system_reset       (const int cpu, const int flags, const int target_mode);
+int ARCH_DEP(system_reset)      (const int cpu, const int flags, const int target_mode);
 int          cpu_reset          (REGS *regs);
 int ARCH_DEP(cpu_reset)         (REGS *regs);
 int          initial_cpu_reset  (REGS *regs);
@@ -2957,8 +2959,8 @@ void xstorage_clear(void);
 /* Functions in module scedasd.c */
 void         set_sce_dir        (char *path);
 char        *get_sce_dir        ();
-int          load_main          (char *fname, RADR startloc);
-int ARCH_DEP(load_main)         (char *fname, RADR startloc);
+int          load_main          (char *fname, RADR startloc, int noisy );
+int ARCH_DEP(load_main)         (char *fname, RADR startloc, int noisy );
 int          load_hmc           (char *fname, int cpu, int clear);
 int ARCH_DEP(load_hmc)          (char *fname, int cpu, int clear);
 void ARCH_DEP(sclp_scedio_request) (SCCB_HEADER *);
@@ -2981,10 +2983,14 @@ int lddev_cmd (int, char **, char *);
 /* Functions in module machchk.c */
 int  ARCH_DEP(present_mck_interrupt) (REGS *regs, U64 *mcic, U32 *xdmg,
     RADR *fsta);
-U32  channel_report (REGS *);
+U32  get_next_channel_report_word( REGS * );
 void machine_check_crwpend (void);
 void ARCH_DEP(sync_mck_interrupt) (REGS *regs);
 void sigabend_handler (int signo);
+void build_attach_chrpt( DEVBLK *dev );
+void build_detach_chrpt( DEVBLK *dev );
+void build_chp_reset_chrpt( BYTE chpid, int solicited, int found );
+int  queue_channel_report( U32* crwarray, U32 crwcount );
 
 
 /* Functions in module opcode.c */
@@ -3514,9 +3520,9 @@ DEF_INST(exclusive_or);
 DEF_INST(exclusive_or_immediate);
 DEF_INST(exclusive_or_character);
 DEF_INST(execute);
-#if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
+#if defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)
 DEF_INST(execute_relative_long);                                /*208*/
-#endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
+#endif /*defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)*/
 #if defined(FEATURE_ACCESS_REGISTERS)
 DEF_INST(extract_access_register);
 #endif /*defined(FEATURE_ACCESS_REGISTERS)*/
@@ -3581,7 +3587,7 @@ DEF_INST(store_character);
   LRdefgen(r1, C); \
   LRdefgen(r1, D); \
   LRdefgen(r1, E); \
-  LRdefgen(r1, F) 
+  LRdefgen(r1, F)
 LRdefgenr2(0);
 LRdefgenr2(1);
 LRdefgenr2(2);
@@ -3615,7 +3621,7 @@ LRdefgenr2(F);
   ALRdefgen(r1, C); \
   ALRdefgen(r1, D); \
   ALRdefgen(r1, E); \
-  ALRdefgen(r1, F) 
+  ALRdefgen(r1, F)
 ALRdefgenr2(0);
 ALRdefgenr2(1);
 ALRdefgenr2(2);
@@ -3649,7 +3655,7 @@ ALRdefgenr2(F);
   CLRdefgen(r1, C); \
   CLRdefgen(r1, D); \
   CLRdefgen(r1, E); \
-  CLRdefgen(r1, F) 
+  CLRdefgen(r1, F)
 CLRdefgenr2(0);
 CLRdefgenr2(1);
 CLRdefgenr2(2);
@@ -3857,7 +3863,7 @@ DEF_INST(9101);
   SLRdefgen(r1, C); \
   SLRdefgen(r1, D); \
   SLRdefgen(r1, E); \
-  SLRdefgen(r1, F) 
+  SLRdefgen(r1, F)
 SLRdefgenr2(0);
 SLRdefgenr2(1);
 SLRdefgenr2(2);

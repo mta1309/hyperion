@@ -420,21 +420,20 @@ int i, rc, tix = 0, devtfound = 0;
 /*********************************************************************/
 /*********************************************************************/
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
 static TAMDIR* findtamdir( int rej, int minlen, const char* pszDir );
-#endif
 
 void tapedev_execute_ccw (DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual)
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual)
 {
-int             rc;                     /* Return code               */
-int             len;                    /* Length of data block      */
-long            num;                    /* Number of bytes to read   */
-int             drc;                    /* code disposition          */
-BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
+int     rc;                             /* Return code               */
+U32     len;     /*(see NOTE below)*/   /* Length of data block      */
+U32     num;     /*(see NOTE below)*/   /* Number of bytes to read   */
+int     drc;                            /* code disposition          */
+BYTE    rustat;                         /* Addl CSW stat on RewUnld  */
 
-    UNREFERENCED(ccwseq);
+    /* PROGRAMMING NOTE: len, num, count, *residual and *more are
+       used and updated automatically by the RESIDUAL_CALC macro */
 
     /* Reset flags at start of CCW chain */
     if (dev->ccwseq == 0)
@@ -448,17 +447,22 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
        in the buffer which was not used by the previous CCW */
     if (chained & CCW_FLAGS_CD)
     {
+        /* Calculate number of bytes to read and residual byte count */
+        RESIDUAL_CALC (dev->curblkrem);
+
         if (IS_CCW_RDBACK(code))
         {
             /* We don't need to move anything in this case - just set length */
         }
         else
         {
-            memmove (iobuf, iobuf + dev->curbufoff, dev->curblkrem);
+            memcpy (iobuf, dev->buf + dev->curbufoff, num);
         }
-        RESIDUAL_CALC (dev->curblkrem);
+
+        /* Save size and offset of data not used by this CCW */
         dev->curblkrem -= num;
-        dev->curbufoff = num;
+        dev->curbufoff += num;
+
         *unitstat = CSW_CE | CSW_DE;
         return;
     }
@@ -712,15 +716,19 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
 
         /* Read a block from the tape according to device type */
         /* Exit with unit check status if read error condition */
-        if ((len = dev->tmh->read( dev, iobuf, unitstat, code)) < 0)
+        if ((len = dev->tmh->read( dev, dev->buf, unitstat, code)) < 0)
             break;      // (error)
 
         /* Calculate number of bytes to read and residual byte count */
         RESIDUAL_CALC (len);
 
+        /* Copy data to I/O buffer */
+        memcpy (iobuf, dev->buf, num);
+
         /* Save size and offset of data not used by this CCW */
         dev->curblkrem = len - num;
         dev->curbufoff = num;
+        dev->buflen = len;
 
         /* Exit with unit exception status if tapemark was read */
         if (len == 0)
@@ -908,15 +916,19 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
            we just backspaced over, and exit with unit check status
            on any read error condition
         */
-        if ((len = dev->tmh->read( dev, iobuf, unitstat, code )) < 0)
+        if ((len = dev->tmh->read( dev, dev->buf, unitstat, code )) < 0)
             break;      // (error)
 
         /* Calculate number of bytes to read and residual byte count */
         RESIDUAL_CALC (len);
 
+        /* Copy data to I/O buffer */
+        memcpy (iobuf, dev->buf, num);
+
         /* Save size and offset of data not used by this CCW */
         dev->curblkrem = len - num;
         dev->curbufoff = num;
+        dev->buflen = len;
 
         /* Backspace to previous block according to device type,
            and exit with unit check status if error condition */
@@ -1210,6 +1222,14 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
         /* Copy device sense bytes to channel I/O buffer */
         memcpy (iobuf, dev->sense,
                 dev->numsense < (U32)num ? dev->numsense : (U32)num);
+
+        /* FIXME: Update for Format-30 Data and others
+         *
+         * SG24-2594-02 Magstar and IBM 3590 High Performance Tape
+         *              Subsystem: Multiplatform Implementation, H.2
+         *              Read Buffered Log (RBL, X'24') Format-30 Data,
+         *              p. 290
+         */
 
         /* Return unit status */
         build_senseX (TAPE_BSENSE_STATUSONLY, dev, unitstat, code);
@@ -1518,7 +1538,6 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
         break;
     }
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
     /*---------------------------------------------------------------*/
     /* SET DIAGNOSE      --  Special AUTOMOUNT support  --           */
     /*---------------------------------------------------------------*/
@@ -1714,7 +1733,6 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
         break;
 
     } /* End case 0x4B: SET DIAGNOSE */
-#endif /* OPTION_TAPE_AUTOMOUNT */
 
     /*---------------------------------------------------------------*/
     /* READ MESSAGE ID                                               */
@@ -3190,7 +3208,6 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
     /*---------------------------------------------------------------*/
     case 0xE4:
     {
-#if defined( OPTION_TAPE_AUTOMOUNT )
         /* AUTOMOUNT QUERY - part 2 (if command-chained from prior 0x4B) */
         if (1
             && dev->tapedevt != TAPEDEVT_SCSITAPE
@@ -3210,7 +3227,6 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
             build_senseX (TAPE_BSENSE_STATUSONLY, dev, unitstat, code);
             break;
         }
-#endif /* OPTION_TAPE_AUTOMOUNT */
 
         /* SENSE ID did not exist on the 3803 */
         /* If numdevid is 0, then 0xE4 not supported */
@@ -3380,7 +3396,6 @@ BYTE            rustat;                 /* Addl CSW stat on Rewind Unload */
 
 } /* end function tapedev_execute_ccw */
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
 /*-------------------------------------------------------------------*/
 /* Find next more-restrictive TAMDIR subdirectory entry...           */
 /*-------------------------------------------------------------------*/
@@ -3407,7 +3422,6 @@ static TAMDIR* findtamdir( int rej, int minlen, const char* pszDir )
         while ((pTAMDIR = pTAMDIR->next) != NULL);
     return NULL;
 }
-#endif // defined( OPTION_TAPE_AUTOMOUNT )
 
 /*-------------------------------------------------------------------*/
 /* Load Display channel command processing...                        */

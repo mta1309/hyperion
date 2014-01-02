@@ -55,7 +55,7 @@ int     i;                              /* Array subscript           */
     if (dev->fd >= 0)
     {
         (dev->hnd->close)(dev);
-    
+
         release_lock (&dev->lock);
         device_attention (dev, CSW_DE);
         obtain_lock (&dev->lock);
@@ -130,8 +130,16 @@ int     i;                              /* Array subscript           */
 
     /* Initialize the device identifier bytes */
     dev->devid[0] = 0xFF;
-    dev->devid[1] = 0x28; /* Control unit type is 2821-1 */
-    dev->devid[2] = 0x21;
+    if (0x3525 == dev->devtype)
+    {
+        dev->devid[1] = 0x35;
+        dev->devid[2] = 0x05;
+    }
+    else
+    {
+        dev->devid[1] = 0x28; /* Control unit type is 2821-1 */
+        dev->devid[2] = 0x21;
+    }
     dev->devid[3] = 0x01;
     dev->devid[4] = dev->devtype >> 8;
     dev->devid[5] = dev->devtype & 0xFF;
@@ -181,12 +189,12 @@ static int cardpch_close_device ( DEVBLK *dev )
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
 static void cardpch_execute_ccw (DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual)
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual)
 {
 int             rc;                     /* Return code               */
-int             i;                      /* Loop counter              */
-int             num;                    /* Number of bytes to move   */
+U32             i;                      /* Loop counter              */
+U32             num;                    /* Number of bytes to move   */
 int             open_flags;             /* File open flags           */
 BYTE            c;                      /* Output character          */
 
@@ -250,7 +258,7 @@ BYTE            c;                      /* Output character          */
         } /* end if(!data-chained) */
 
         /* Calculate number of bytes to write and set residual count */
-        num = (count < dev->cardrem) ? count : dev->cardrem;
+        num = (count < (U32)dev->cardrem) ? count : (U32)dev->cardrem;
         *residual = count - num;
 
         /* Copy data from channel buffer to card buffer */

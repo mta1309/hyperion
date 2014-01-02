@@ -21,29 +21,137 @@
 /*-------------------------------------------------------------------*/
 #if !defined(INLINE)
   #if defined(__GNUC__)
-    #define INLINE __inline__ __attribute__((always_inline))
+    #define INLINE          __inline__ __attribute__((always_inline))
   #elif defined(_MSVC_)
-    #define INLINE __forceinline
+    #define INLINE          __forceinline
   #else
-    #define INLINE inline
+    #define INLINE          __inline
   #endif
-#endif
-#if !defined(_MSVC_)
-  #if !defined(__noop)
-    #define __noop(...)
-  #endif
-#endif
-
-#if !defined(min)
- #define min(_x, _y) ((_x) < (_y) ? (_x) : (_y))
-#endif
-
-#if !defined(max)
- #define max(_x, _y) ((_x) > (_y) ? (_x) : (_y))
 #endif
 
 /*-------------------------------------------------------------------*/
-/* "Portability" macros for handling _MSVC_ port...                  */
+/*      Use '__noop()' to disable code generating macros             */
+/*-------------------------------------------------------------------*/
+#if !defined(_MSVC_)
+  #if !defined(__noop)
+    #define __noop(...)     do{;}while(0)   /*  (i.e. do nothing)    */
+  #endif
+#endif
+
+/*-------------------------------------------------------------------*/
+/*      Round a value up to the next boundary                        */
+/*-------------------------------------------------------------------*/
+#define ROUND_UP(x,y)       ((((x)+((y)-1))/(y))*(y))
+
+/*-------------------------------------------------------------------*/
+/*      Define min/max macros                                        */
+/*-------------------------------------------------------------------*/
+#if !defined(min)
+  #define min(_x, _y)       ((_x) < (_y) ? (_x) : (_y))
+#endif
+#if !defined(max)
+  #define max(_x, _y)       ((_x) > (_y) ? (_x) : (_y))
+#endif
+#if !defined(MIN)
+  #define MIN(_x,_y)        min((_x),(_y))
+#endif
+#if !defined(MAX)
+  #define MAX(_x,_y)        max((_x),(_y))
+#endif
+/*-------------------------------------------------------------------*/
+/*      MINMAX        ensures var x remains within range y to z      */
+/*-------------------------------------------------------------------*/
+#if !defined(MINMAX)
+  #define  MINMAX(_x,_y,_z) ((_x) = MIN(MAX((_x),(_y)),(_z)))
+#endif
+
+/*-------------------------------------------------------------------*/
+/*      some handy array/struct macros...                            */
+/*-------------------------------------------------------------------*/
+#ifndef   _countof
+  #define _countof(x)       ( sizeof(x) / sizeof(x[0]) )
+#endif
+#ifndef   arraysize
+  #define arraysize(x)      _countof(x)
+#endif
+#ifndef   sizeof_member
+  #define sizeof_member(_struct,_member) sizeof(((_struct*)0)->_member)
+#endif
+#ifndef   offsetof
+  #define offsetof(_struct,_member)   (size_t)&(((_struct*)0)->_member)
+#endif
+
+/*-------------------------------------------------------------------*/
+/*      CASSERT macro       a compile time assertion check           */
+/*-------------------------------------------------------------------*/
+/** 
+ *  Validates at compile time whether condition is true without
+ *  generating code. It can be used at any point in a source file
+ *  where typedefs are legal.
+ *
+ *  On success, compilation proceeds normally.
+ *
+ *  Sample usage:
+ *
+ *      CASSERT(sizeof(struct foo) == 76, demo_c)
+ *
+ *  On failure, attempts to typedef an array type of negative size
+ *  resulting in a compiler error message that might look something
+ *  like the following:
+ *
+ *      demo.c:32: error: size of array 'assertion_failed_demo_c_32' is negative
+ *
+ *  The offending line itself will look something like this:
+ *
+ *      typedef assertion_failed_demo_c_32[-1]
+ *
+ *  where demo_c is the content of the second parameter which should
+ *  typically be related in some obvious way to the containing file
+ *  name, 32 is the line number in the file on which the assertion
+ *  appears, and -1 is the result of a calculation based on the cond
+ *  failing.
+ *
+ *  \param cond         The predicate to test. It should evaluate
+ *                      to something which can be coerced into a
+ *                      normal C boolean.
+ *
+ *  \param file         A sequence of legal identifier characters
+ *                      that should uniquely identify the source
+ *                      file where the CASSERT statement appears.
+ */
+#if !defined(CASSERT)
+#define CASSERT(cond, file)     _CASSERT_LINE(cond,__LINE__,file)
+#define _CASSERT_PASTE(a,b)     a##b
+#define _CASSERT_LINE(cond, line, file) \
+  typedef char _CASSERT_PASTE(assertion_failed_##file##_,line)[2*!!(cond)-1];
+#endif
+
+/*-------------------------------------------------------------------*/
+/*      compiler optimization hints         (for performance)        */
+/*-------------------------------------------------------------------*/
+
+#undef likely
+#undef unlikely
+
+#ifdef _MSVC_
+
+  #define likely(_c)      ( (_c) ? ( __assume((_c)), 1 ) :                    0   )
+  #define unlikely(_c)    ( (_c) ?                   1   : ( __assume(!(_c)), 0 ) )
+
+#else // !_MSVC_
+
+  #if __GNUC__ >= 3
+    #define likely(_c)    __builtin_expect((_c),1)
+    #define unlikely(_c)  __builtin_expect((_c),0)
+  #else
+    #define likely(_c)    (_c)
+    #define unlikely(_c)  (_c)
+  #endif
+
+#endif // _MSVC_
+
+/*-------------------------------------------------------------------*/
+/*      _MSVC_  portability macros                                   */
 /*-------------------------------------------------------------------*/
 
 /* PROGRAMMING NOTE: the following 'tape' portability macros are
@@ -144,7 +252,18 @@
 #endif
 
 /*-------------------------------------------------------------------*/
-/* some handy quantity definitions                                   */
+/* Handle newer RUSAGE_THREAD definition for older Linux levels      */
+/* before 2.6.4 along with *nix systems not supporting...            */
+/*-------------------------------------------------------------------*/
+
+// ZZ FIXME: this should probably be handled in configure.ac...
+
+#if !defined(RUSAGE_THREAD) && !defined(_MSVC_)
+  #define   RUSAGE_THREAD       thread_id()
+#endif
+
+/*-------------------------------------------------------------------*/
+/*      Some handy quantity definitions                              */
 /*-------------------------------------------------------------------*/
 #define  ONE_KILOBYTE   ((U32)                     (1024))  /* 2^10 (16^2)  * 4  */
 #define  TWO_KILOBYTE   ((U32)(2           *        1024))  /* 2^11 (16^2)  * 8  */
@@ -208,51 +327,35 @@
 #define ONE_SEPTILLION  ((U64)ONE_SEXTILLION  * (U64)(1000))    /* zeros = 24 */
 
 /*-------------------------------------------------------------------*/
-/* some handy array/struct macros...                                 */
+/*      Some handy memory/string comparison macros                   */
 /*-------------------------------------------------------------------*/
-#define mem_eq(_a,_b,_n)        (!memcmp(_a,_b,_n))
-#define mem_ne(_a,_b,_n)        (memcmp(_a,_b,_n))
+#define mem_eq(_a,_b,_n)            (!memcmp(_a,_b,_n))
+#define mem_ne(_a,_b,_n)            ( memcmp(_a,_b,_n))
 
-#define str_eq(_a,_b)           (!strcmp(_a,_b))
-#define str_ne(_a,_b)           (strcmp(_a,_b))
+#define str_eq(_a,_b)               (!strcmp(_a,_b))
+#define str_ne(_a,_b)               ( strcmp(_a,_b))
 
-#define str_eq_n(_a,_b,_n)      (!strncmp(_a,_b,_n))
-#define str_ne_n(_a,_b,_n)      (strncmp(_a,_b,_n))
+#define str_eq_n(_a,_b,_n)          (!strncmp(_a,_b,_n))
+#define str_ne_n(_a,_b,_n)          ( strncmp(_a,_b,_n))
 
 #define str_caseless_eq(_a,_b)      (!strcasecmp(_a,_b))
-#define str_caseless_ne(_a,_b)      (strcasecmp(_a,_b))
+#define str_caseless_ne(_a,_b)      ( strcasecmp(_a,_b))
 
-#define str_caseless_eq_n(_a,_b,_n) (!strcasencmp(_a,_b,_n))
-#define str_caseless_ne_n(_a,_b,_n) (strcasencmp(_a,_b,_n))
-
-/*-------------------------------------------------------------------*/
-/* some handy array/struct macros...                                 */
-/*-------------------------------------------------------------------*/
-#ifndef   _countof
-  #define _countof(x)       ( sizeof(x) / sizeof(x[0]) )
-#endif
-#ifndef   arraysize
-  #define arraysize(x)      _countof(x)
-#endif
-#ifndef   sizeof_member
-  #define sizeof_member(_struct,_member) sizeof(((_struct*)0)->_member)
-#endif
-#ifndef   offsetof
-  #define offsetof(_struct,_member)   (size_t)&(((_struct*)0)->_member)
-#endif
+#define str_caseless_eq_n(_a,_b,_n) (!strncasecmp(_a,_b,_n))
+#define str_caseless_ne_n(_a,_b,_n) ( strncasecmp(_a,_b,_n))
 
 /*-------------------------------------------------------------------*/
-/* Large File Support portability...                                 */
+/*      Large File Support portability                               */
 /*-------------------------------------------------------------------*/
 
 #ifdef _MSVC_
   /* "Native" 64-bit Large File Support */
   #define    off_t              __int64
-  #if (_MSC_VER >= 1400)
+  #if (_MSC_VER >= VS2005)
     #define  ftruncate          _chsize_s
     #define  ftell              _ftelli64
     #define  fseek              _fseeki64
-  #else // (_MSC_VER < 1400)
+  #else // (_MSC_VER < VS2005)
     #define  ftruncate          w32_ftrunc64
     #define  ftell              w32_ftelli64
     #define  fseek              w32_fseeki64
@@ -293,7 +396,7 @@
 #endif
 
 /*-------------------------------------------------------------------*/
-/* Macro for command parsing with variable length                    */
+/*      Macro for command parsing with variable length               */
 /*-------------------------------------------------------------------*/
 #define  CMD(str,cmd,min) ( strcaseabbrev(#cmd,str,min) )
 
@@ -301,138 +404,19 @@
 #define  SNCMP(_lvar,_rvar,_svar) ( !strncasecmp( _lvar, _rvar, _svar ) )
 
 /*-------------------------------------------------------------------*/
-/* Script processing constants                                       */
+/*      Script processing constants                                  */
 /*-------------------------------------------------------------------*/
 #define  MAX_SCRIPT_STMT    1024        /* Max script stmt length    */
 #define  MAX_SCRIPT_DEPTH   10          /* Max script nesting depth  */
 
 /*-------------------------------------------------------------------*/
-/* Macros for allocate storage functions                             */
-/*-------------------------------------------------------------------*/
-#if !defined(_MSVC_)
-
-  /*       See "IMPORTANT PROGRAMMING NOTE" further below            */
-
-  #if !defined(__FreeBSD__) && !defined(__APPLE__) && !defined(__SOLARIS__)
-    #define PVALLOC     pvalloc
-    #define PVFREE      free
-    #define VALLOC      valloc
-    #define VFREE       free
-  #else
-    #define PVALLOC     valloc
-    #define PVFREE      free
-    #define VALLOC      valloc
-    #define VFREE       free
-  #endif
-#endif
-
-/*-------------------------------------------------------------------*/
-/* Macros for storage functions:                                     */
-/*                                                                   */
-/*    HPCALLOC:    Hercules page-aligned 'calloc'. Used *ONLY*       */
-/*                 for allocating mainstor and xpndstor since it     */
-/*                 also automatically sets main_clear/xpnd_clear.    */
-/*    HPCFREE:     free the memory allocated by HPCALLOC. The        */
-/*                 main_clear/xpnd_clear is automatically reset.     */
-/*    HPAGESIZE:   Retrieves the HOST system's page size.            */
-/*    MLOCK:       locks a range of memory.                          */
-/*    MUNLOCK:     unlocks a range of memory.                        */
-/*                                                                   */
-/*-------------------------------------------------------------------*/
-
-#define  HPC_MAINSTOR     1        /* mainstor being allocated/freed */
-#define  HPC_XPNDSTOR     2        /* xpndstor being allocated/freed */
-
-#if defined(_MSVC_)
-  #define  OPTION_CALLOC_GUESTMEM
-#else
-  #undef   OPTION_CALLOC_GUESTMEM
-#endif
-
-#if !defined( OPTION_CALLOC_GUESTMEM )
-
-  /*            ---  IMPORTANT PROGRAMMING NOTE  ---
-
-    'valloc' and 'getpagesize' are non-POSIX and both are deprecated
-    and considered obsolete on most all *nix platforms. Valloc/pvalloc
-    are also known to be buggy on many systems:
-
-        http://linux.die.net/man/2/getpagesize
-
-        "SVr4, 4.4BSD, SUSv2. In SUSv2 the getpagesize() call is
-        labeled LEGACY, and in POSIX.1-2001 it has been dropped.
-        HP-UX does not have this call."
-
-        http://linux.die.net/man/3/valloc
-
-        "The obsolete function memalign() allocates size bytes and
-        returns a pointer to the allocated memory. The memory address
-        will be a multiple of boundary, which must be a power of two."
-
-        "The obsolete function valloc() allocates size bytes and
-        returns a pointer to the allocated memory. The memory address
-        will be a multiple of the page size. It is equivalent to
-        memalign(sysconf(_SC_PAGESIZE),size)."
-
-        "... Some systems provide no way to reclaim memory allocated
-        with memalign() or valloc() (because one can only pass to
-        free() a pointer gotten from malloc(), ..."
-
-        "The function valloc() appeared in 3.0BSD. It is documented
-        as being obsolete in 4.3BSD, and as legacy in SUSv2. It does
-        not appear in POSIX.1-2001."
-
-
-               ---  USE AT YOUR OWN RISK  ---
-  */
-
-  #define      HPCALLOC(t,a)    PVALLOC(a)
-  #define      HPCFREE(t,a)     PVFREE(a)
-  #define      HPAGESIZE        getpagesize
-  #define      MLOCK            mlock
-  #define      MUNLOCK          munlock
-
-#else // defined( OPTION_CALLOC_GUESTMEM )
-
-  #define      HPCALLOC(t,a)    hpcalloc((t),(a))
-  #define      HPCFREE(t,a)     hpcfree((t),(a))
-
-  #if defined(_MSVC_)
-
-    #define    HPAGESIZE        w32_hpagesize
-    #define    MLOCK            w32_mlock
-    #define    MUNLOCK          w32_munlock
-
-  #else /* !defined(_MSVC_) */
-
-    #define    HPAGESIZE        getpagesize
-
-    #if defined(HAVE_MLOCK)
-      #define  MLOCK            mlock
-      #define  MUNLOCK          munlock
-    #else
-      #define  MLOCK            __noop
-      #define  MUNLOCK          __noop
-    #endif
-
-  #endif /* defined(_MSVC_) */
-
-#endif // !defined( OPTION_CALLOC_GUESTMEM )
-
-/*-------------------------------------------------------------------*/
-/* Macro for Debugging / Tracing...                                  */
+/*      Debugging / Tracing macros.                                  */
 /*-------------------------------------------------------------------*/
 #define MLVL( _lvl) \
     (sysblk.msglvl & (MLVL_ ## _lvl))
 
-#if defined(ENABLE_NLS)
-  #define _(_string) gettext(_string)
-#else
-  #define _(_string)  _string
-  #define N_(_string) _string
-  #define textdomain(_domain)
-  #define bindtextdomain(_package, _directory)
-#endif
+/* Obsolete NLS support macro */
+#define _(_string)  _string
 
 /* Opcode routing table function pointer */
 typedef void (ATTR_REGPARM(2)*FUNC)();
@@ -444,32 +428,11 @@ typedef void (ATTR_REGPARM(2) *pi_func) (REGS *regs, int pcode);
 typedef U32  (*s390_trace_br_func) (int amode,  U32 ia, REGS *regs);
 typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
 
-/*-------------------------------------------------------------------*/
-/* compiler optimization hints         (for performance)             */
-/*-------------------------------------------------------------------*/
-
-#undef likely
-#undef unlikely
-
-#ifdef _MSVC_
-
-  #define likely(_c)      ( (_c) ? ( __assume((_c)), 1 ) :                    0   )
-  #define unlikely(_c)    ( (_c) ?                   1   : ( __assume(!(_c)), 0 ) )
-
-#else // !_MSVC_
-
-  #if __GNUC__ >= 3
-    #define likely(_c)    __builtin_expect((_c),1)
-    #define unlikely(_c)  __builtin_expect((_c),0)
-  #else
-    #define likely(_c)    (_c)
-    #define unlikely(_c)  (_c)
-  #endif
-
-#endif // _MSVC_
+/* qsort comparison function typedef */
+typedef int CMPFUNC(const void*, const void*);
 
 /*-------------------------------------------------------------------*/
-/* CPU state related macros and constants...                         */
+/*      CPU state related macros and constants                       */
 /*-------------------------------------------------------------------*/
 
 /* Definitions for CPU state */
@@ -485,8 +448,8 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
  ((_regs)->hostregs->prevcount + (_regs)->hostregs->instcount)
 
 /*-------------------------------------------------------------------*/
-/* Obtain/Release mainlock.                                          */
-/* mainlock is only obtained by a CPU thread                         */
+/*      Obtain/Release mainlock                                      */
+/*      mainlock is only obtained by a CPU thread                    */
 /*-------------------------------------------------------------------*/
 
 #define OBTAIN_MAINLOCK(_regs) \
@@ -506,10 +469,18 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
  } while (0)
 
 /*-------------------------------------------------------------------*/
-/* Obtain/Release intlock.                                           */
-/* intlock can be obtained by any thread                             */
-/* if obtained by a cpu thread, check to see if synchronize_cpus     */
-/* is in progress.                                                   */
+/*      Obtain/Release crwlock                                       */
+/*      crwlock can be obtained by any thread                        */
+/*-------------------------------------------------------------------*/
+
+#define OBTAIN_CRWLOCK()    obtain_lock( &sysblk.crwlock )
+#define RELEASE_CRWLOCK()   release_lock( &sysblk.crwlock )
+
+/*-------------------------------------------------------------------*/
+/*      Obtain/Release intlock                                       */
+/*      intlock can be obtained by any thread                        */
+/*      if obtained by a cpu thread, check to see                    */
+/*      if synchronize_cpus is in progress.                          */
 /*-------------------------------------------------------------------*/
 
 #define OBTAIN_INTLOCK(_iregs) \
@@ -540,50 +511,21 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
 /*-------------------------------------------------------------------*/
 /* Returns when all other CPU threads are blocked on intlock         */
 /*-------------------------------------------------------------------*/
-
-#define SYNCHRONIZE_CPUS(_regs) \
- do { \
-   int _i, _n = 0; \
-   CPU_BITMAP _mask = sysblk.started_mask \
-             ^ (sysblk.waiting_mask | (_regs)->hostregs->cpubit); \
-   for (_i = 0; _mask && _i < sysblk.hicpu; _i++) { \
-     if ((_mask & CPU_BIT(_i))) { \
-       if (sysblk.regs[_i]->intwait || sysblk.regs[_i]->syncio) \
-         _mask ^= CPU_BIT(_i); \
-       else { \
-         ON_IC_INTERRUPT(sysblk.regs[_i]); \
-         if (SIE_MODE(sysblk.regs[_i])) \
-           ON_IC_INTERRUPT(sysblk.regs[_i]->guestregs); \
-         _n++; \
-       } \
-     } \
-   } \
-   if (_n) { \
-     if (_n < hostinfo.num_procs) { \
-       for (_n = 1; _mask; _n++) { \
-         if (_n & 0xff) \
-           sched_yield(); \
-         else \
-           usleep(1); \
-         for (_i = 0; _i < sysblk.hicpu; _i++) \
-           if ((_mask & CPU_BIT(_i)) && sysblk.regs[_i]->intwait) \
-             _mask ^= CPU_BIT(_i); \
-       } \
-     } else { \
-       sysblk.sync_mask = sysblk.started_mask \
-                        ^ (sysblk.waiting_mask | (_regs)->hostregs->cpubit); \
-       sysblk.syncing = 1; \
-       sysblk.intowner = LOCK_OWNER_NONE; \
-       wait_condition(&sysblk.sync_cond, &sysblk.intlock); \
-       sysblk.intowner = (_regs)->hostregs->cpuad; \
-       sysblk.syncing = 0; \
-       broadcast_condition(&sysblk.sync_bc_cond); \
-     } \
-   } \
- } while (0)
+#ifdef OPTION_SYNCIO
+  #define AT_SYNCPOINT(_regs)    ((_regs)->intwait || (_regs)->syncio)
+#else // OPTION_NOSYNCIO
+  #define AT_SYNCPOINT(_regs)    ((_regs)->intwait)
+#endif // OPTION_SYNCIO
 
 /*-------------------------------------------------------------------*/
-/* Macros to signal interrupt condition to a CPU[s]...               */
+/*      Synchronize CPUS                                             */
+/*      Locks used: INTLOCK(regs)                                    */
+/*-------------------------------------------------------------------*/
+#define SYNCHRONIZE_CPUS(_regs) \
+        synchronize_cpus(_regs)
+
+/*-------------------------------------------------------------------*/
+/*      Macros to signal interrupt condition to a CPU[s]             */
 /*-------------------------------------------------------------------*/
 
 #define WAKEUP_CPU(_regs) \
@@ -617,10 +559,10 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
  } while (0)
 
 /*-------------------------------------------------------------------*/
-/* Macros to queue/dequeue a device on the I/O interrupt queue...    */
+/*      Macros to queue/dequeue device on I/O interrupt queue        */
+/*      sysblk.iointqlk ALWAYS needed to examine sysblk.iointq       */
 /*-------------------------------------------------------------------*/
 
-/* NOTE: sysblk.iointqlk ALWAYS needed to examine sysblk.iointq */
 
 #define QUEUE_IO_INTERRUPT(_io) \
  do { \
@@ -629,20 +571,21 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
    release_lock(&sysblk.iointqlk); \
  } while (0)
 
-#define QUEUE_IO_INTERRUPT_QLOCKED(_io) \
- do { \
-   IOINT *prev; \
-   for (prev = (IOINT *)&sysblk.iointq; prev->next != NULL; prev = prev->next) \
-     if (prev->next == (_io) || prev->next->priority > (_io)->dev->priority) \
-       break; \
-   if (prev->next != (_io)) { \
-     (_io)->next = prev->next; \
-     prev->next = (_io); \
-     (_io)->priority = (_io)->dev->priority; \
-   } \
-        if ((_io)->pending)     (_io)->dev->pending     = 1; \
-   else if ((_io)->pcipending)  (_io)->dev->pcipending  = 1; \
-   else if ((_io)->attnpending) (_io)->dev->attnpending = 1; \
+#define QUEUE_IO_INTERRUPT_QLOCKED(_io)                               \
+ do {                                                                 \
+    IOINT *prev;                                                      \
+    for (prev = (IOINT *)&sysblk.iointq;                              \
+         prev->next != NULL                                           \
+         && prev->next != (_io)                                       \
+         && prev->next->priority >= (_io)->dev->priority;             \
+         prev = prev->next);                                          \
+    if (prev->next != (_io))                                          \
+        (_io)->next     = prev->next,                                 \
+        prev->next      = (_io),                                      \
+        (_io)->priority = (_io)->dev->priority;                       \
+         if ((_io)->pending)     (_io)->dev->pending     = 1;         \
+    else if ((_io)->pcipending)  (_io)->dev->pcipending  = 1;         \
+    else if ((_io)->attnpending) (_io)->dev->attnpending = 1;         \
  } while (0)
 
 #define DEQUEUE_IO_INTERRUPT(_io) \
@@ -665,10 +608,10 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
      } \
  } while (0)
 
-/* NOTE: sysblk.iointqlk needed to examine sysblk.iointq,
-   sysblk.intlock (which MUST be held before calling these
-   macros) needed in order to set/reset IC_IOPENDING flag */
-
+/*    NOTE: sysblk.iointqlk needed to examine sysblk.iointq,
+      sysblk.intlock (which MUST be held before calling these
+      macros) needed in order to set/reset IC_IOPENDING flag
+*/
 #define UPDATE_IC_IOPENDING() \
  do { \
    obtain_lock(&sysblk.iointqlk); \
@@ -682,23 +625,22 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
      OFF_IC_IOPENDING; \
    else { \
      ON_IC_IOPENDING; \
-     WAKEUP_CPU_MASK (sysblk.waiting_mask); \
    } \
  } while (0)
 
 /*-------------------------------------------------------------------*/
-/* Handy utility macro for channel.c                                 */
+/*      Handy utility macro for channel.c                            */
 /*-------------------------------------------------------------------*/
 
-#define IS_CCW_IMMEDIATE(_dev) \
+#define IS_CCW_IMMEDIATE(_dev,_code) \
   ( \
-    ( (_dev)->hnd->immed && (_dev)->hnd->immed[(_dev)->code]) \
-    || ( (_dev)->immed      && (_dev)->immed[(_dev)->code]) \
+    ( (_dev)->hnd->immed && (_dev)->hnd->immed[(_code)]) \
+    || ( (_dev)->immed      && (_dev)->immed[(_code)]) \
     || IS_CCW_NOP((_dev)->code) \
   )
 
 /*-------------------------------------------------------------------*/
-/* Utility macro to check if DEVBLK is for an existing device        */
+/*      Macro to check if DEVBLK is for an existing device           */
 /*-------------------------------------------------------------------*/
 
 #if defined(_FEATURE_INTEGRATED_3270_CONSOLE)
@@ -710,7 +652,7 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
 #endif // defined(_FEATURE_INTEGRATED_3270_CONSOLE)
 
 /*-------------------------------------------------------------------*/
-/* Hercules Dynamic Loader macro to call optional function override  */
+/*      HDL macro to call optional function override                 */
 /*-------------------------------------------------------------------*/
 
 #if defined(OPTION_DYNAMIC_LOAD)
@@ -742,7 +684,7 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
 #endif
 
 /*-------------------------------------------------------------------*/
-/* sleep for as long as we like                                      */
+/*      Sleep for as long as we like   (whole number of seconds)     */
 /*-------------------------------------------------------------------*/
 
 #define SLEEP(_n) \
@@ -754,19 +696,25 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
  } while (0)
 
 /*-------------------------------------------------------------------*/
-/* Perform standard utility initialization                           */
+/*      CRASH                       (with hopefully a dump)          */
 /*-------------------------------------------------------------------*/
 
-#if !defined(ENABLE_NLS)
-  #define INITIALIZE_NLS()
+#ifdef _MSVC_
+  #define CRASH() \
+    do { \
+      BYTE *p = NULL; \
+      *p=0; \
+    } while (0)
 #else
-  #define INITIALIZE_NLS() \
-  do { \
-    setlocale(LC_ALL, ""); \
-    bindtextdomain(PACKAGE, HERC_LOCALEDIR); \
-    textdomain(PACKAGE); \
-  } while (0)
+  #define CRASH() \
+    do { \
+      abort(); \
+    } while (0)
 #endif
+
+/*-------------------------------------------------------------------*/
+/*      Perform standard utility initialization                      */
+/*-------------------------------------------------------------------*/
 
 #if !defined(EXTERNALGUI)
   #define INITIALIZE_EXTERNAL_GUI()
@@ -818,7 +766,6 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
 #define INITIALIZE_UTILITY(name) \
   do { \
     SET_THREAD_NAME(name); \
-    INITIALIZE_NLS(); \
     INITIALIZE_EXTERNAL_GUI(); \
     memset (&sysblk, 0, sizeof(SYSBLK)); \
     INIT_MSGLCK \
@@ -830,7 +777,7 @@ typedef U64  (*z900_trace_br_func) (int amode,  U64 ia, REGS *regs);
   } while (0)
 
 /*-------------------------------------------------------------------*/
-/* Macro for Setting a Thread Name  (mostly for debugging purposes)  */
+/*      Assign name to thread           (debugging aid)              */
 /*-------------------------------------------------------------------*/
 
 #ifdef _MSVC_
@@ -956,18 +903,42 @@ do { \
 
 #endif /* !defined(NO_SETUID) */
 
-/* min/max macros */
+/*-------------------------------------------------------------------*/
+/*      Pipe signaling            (thread signaling via pipe)        */
+/*-------------------------------------------------------------------*/
 
-#if !defined(MIN)
-#define MIN(_x,_y) ( ( ( _x ) < ( _y ) ) ? ( _x ) : ( _y ) )
-#endif /*!defined(MIN)*/
+#define RECV_PIPE_SIGNAL( rfd, lock, flag ) \
+  do { \
+    int f; int saved_errno=get_HSO_errno(); BYTE c=0; \
+    obtain_lock(&(lock)); \
+    if ((f=(flag))>=1) (flag)=0; \
+    release_lock(&(lock)); \
+    if (f>=1) \
+      VERIFY(read_pipe((rfd),&c,1)==1); \
+    set_HSO_errno(saved_errno); \
+  } while (0)
 
-#if !defined(MAX)
-#define MAX(_x,_y) ( ( ( _x ) > ( _y ) ) ? ( _x ) : ( _y ) )
-#endif /*!defined(MAX)*/
+#define SEND_PIPE_SIGNAL( wfd, lock, flag ) \
+  do { \
+    int f; int saved_errno=get_HSO_errno(); BYTE c=0; \
+    obtain_lock(&(lock)); \
+    if ((f=(flag))<=0) (flag)=1; \
+    release_lock(&(lock)); \
+    if (f<=0) \
+      VERIFY(write_pipe((wfd),&c,1)==1); \
+    set_HSO_errno(saved_errno); \
+  } while (0)
 
-#if !defined(MINMAX)  /* (ensures var x remains within range y to z) */
-#define  MINMAX(_x,_y,_z)  ((_x) = MIN(MAX((_x),(_y)),(_z)))
-#endif /*!defined(MINMAX)*/
+#define SUPPORT_WAKEUP_SELECT_VIA_PIPE( pipe_rfd, maxfd, prset ) \
+  FD_SET((pipe_rfd),(prset)); \
+  (maxfd)=(maxfd)>(pipe_rfd)?(maxfd):(pipe_rfd)
+
+#define SUPPORT_WAKEUP_CONSOLE_SELECT_VIA_PIPE( maxfd, prset )  SUPPORT_WAKEUP_SELECT_VIA_PIPE( sysblk.cnslrpipe, (maxfd), (prset) )
+#define SUPPORT_WAKEUP_SOCKDEV_SELECT_VIA_PIPE( maxfd, prset )  SUPPORT_WAKEUP_SELECT_VIA_PIPE( sysblk.sockrpipe, (maxfd), (prset) )
+
+#define RECV_CONSOLE_THREAD_PIPE_SIGNAL()  RECV_PIPE_SIGNAL( sysblk.cnslrpipe, sysblk.cnslpipe_lock, sysblk.cnslpipe_flag )
+#define RECV_SOCKDEV_THREAD_PIPE_SIGNAL()  RECV_PIPE_SIGNAL( sysblk.sockrpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
+#define SIGNAL_CONSOLE_THREAD()            SEND_PIPE_SIGNAL( sysblk.cnslwpipe, sysblk.cnslpipe_lock, sysblk.cnslpipe_flag )
+#define SIGNAL_SOCKDEV_THREAD()            SEND_PIPE_SIGNAL( sysblk.sockwpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
 
 #endif // _HMACROS_H

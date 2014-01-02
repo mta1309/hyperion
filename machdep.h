@@ -91,7 +91,7 @@
     #define  cmpxchg4(  x, y, z )  cmpxchg4_x86( x, y, z )
     #define  cmpxchg8(  x, y, z )  cmpxchg8_x86( x, y, z )
 
-    #if ( _MSC_VER < 1400 )
+    #if ( _MSC_VER < VS2005 )
 
       // PROGRAMMING NOTE: compiler versions earlier than VS8 2005
       // do not have the _InterlockedCompareExchange64 intrinsic so
@@ -128,7 +128,7 @@
           return rc;
       }
 
-    #else // ( _MSC_VER >= 1400 )
+    #else // ( _MSC_VER >= VS2005 )
 
       #pragma intrinsic ( _InterlockedCompareExchange64 )
 
@@ -140,7 +140,7 @@
           return ((tmp == *old) ? 0 : 1);
       }
 
-    #endif // ( _MSC_VER >= 1400 )
+    #endif // ( _MSC_VER >= VS2005 )
 
     static __inline BYTE __fastcall cmpxchg4_x86 ( U32 *old, U32 unew, volatile void *ptr )
     {
@@ -670,6 +670,42 @@ U32  *ptr4, val4, old4, new4;
 #endif
 #if !defined(store_fw)
   #define store_fw(_p, _v) store_fw_noswap((_p), CSWAP32((_v)))
+#endif
+
+/*-------------------------------------------------------------------
+ * fetch_f3_noswap and fetch_f3
+ *-------------------------------------------------------------------*/
+#if !defined(fetch_f3_noswap)
+  #if defined(fetch_f3)
+    #define fetch_f3_noswap(_p) CSWAP32(fetch_f3((_p)))
+  #else
+    static __inline__ U32 fetch_f3_noswap(const void *ptr) {
+      U32 value;
+      memcpy(((BYTE *)&value), (BYTE *)ptr, 3);
+      value <<= 8;
+      return value;
+    }
+  #endif
+#endif
+#if !defined(fetch_f3)
+  #define fetch_f3(_p) CSWAP32(fetch_f3_noswap((_p)))
+#endif
+
+/*-------------------------------------------------------------------
+ * store_f3_noswap and store_f3
+ *-------------------------------------------------------------------*/
+#if !defined(store_f3_noswap)
+  #if defined(store_f3)
+    #define store_f3_noswap(_p, _v) store_f3((_p), CSWAP32(_v))
+  #else
+    static __inline__ void store_f3_noswap(void *ptr, U32 value) {
+      value >>= 8;
+      memcpy((BYTE *)ptr, ((BYTE *)&value), 3);
+    }
+  #endif
+#endif
+#if !defined(store_f3)
+  #define store_f3(_p, _v) store_f3_noswap((_p), CSWAP32((_v)))
 #endif
 
 /*-------------------------------------------------------------------

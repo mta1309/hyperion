@@ -1794,7 +1794,9 @@ int      off;                           /* Offset into record        */
         /* Make this system active on the device */
         dev->ioactive = id;
         dev->busy = 1;
+#ifdef OPTION_SYNCIO
         dev->syncio_active = dev->syncio_retry = 0;
+#endif // OPTION_SYNCIO
         sysblk.shrdcount++;
         shrdtrc(dev,"server_request active id=%d\n", id);
 
@@ -2350,7 +2352,7 @@ DEVBLK      *dev;                       /* -> Device block           */
 /*-------------------------------------------------------------------
  * Connect a new client
  *-------------------------------------------------------------------*/
-static void *serverConnect (int *psock)
+static void *serverConnect (void *psock)
 {
 int             csock;                  /* Connection socket         */
 int             rc;                     /* Return code               */
@@ -2370,7 +2372,7 @@ BYTE           *buf = hdr + SHRD_HDR_SIZE;   /* Buffer               */
 char           *ipaddr = NULL;          /* IP addr of connected peer */
 char            threadname[40];
 
-    csock = *psock;
+    csock = *(int*)psock;
     free (psock);
     ipaddr = clientip(csock);
 

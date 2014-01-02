@@ -265,6 +265,40 @@ static BYTE sba_code[] = { "\x40\xC1\xC2\xC3\xC4\xC5\xC6\xC7"
 
 #undef  FIX_QWS_BUG_FOR_MCS_CONSOLES
 
+#if defined(_MSVC_)
+/* FIXME: pselect is required to eliminate a documented timing hole with
+ *        select that can yield a deadlock. This version somewhat
+ *        emulates pselect locally for Windows, but does not use
+ *        sigmask.
+ */
+
+typedef unsigned long sigset_t;
+
+static INLINE
+int pselect(int nfds, fd_set *readfds, fd_set *writefds,
+            fd_set *exceptfds, const struct timespec *timeout,
+            const sigset_t *sigmask)
+{
+    struct timeval  select_timeout;
+    int             result;
+
+    UNREFERENCED(sigmask);
+
+    /* Convert timeout value, if specified */
+    if (timeout != NULL)
+    {
+        select_timeout.tv_sec  = timeout->tv_sec;
+        select_timeout.tv_usec = timeout->tv_nsec / 1000;
+        result = select (nfds, readfds, writefds, exceptfds,
+                         &select_timeout);
+    }
+    else
+        result = select (nfds, readfds, writefds, exceptfds, NULL);
+
+    return (result);
+}
+#endif /*defined(_MSVC_)*/
+
 /*-------------------------------------------------------------------*/
 /* SUBROUTINE TO TRACE THE CONTENTS OF AN ASCII MESSAGE PACKET       */
 /*-------------------------------------------------------------------*/
@@ -381,7 +415,7 @@ char *h_serv;
         free(sin);
         return NULL;
     }
-    
+
     free(h_serv);
     return sin;
 
@@ -840,6 +874,7 @@ static BYTE will_naws[] = { IAC, WILL, NAWS };
 static BYTE
 recv_3270_data (DEVBLK *dev)
 {
+static const struct timespec nbpoll = {0, 0};   /* Non-blocking poll */
 int     rc;                             /* Return code               */
 int     eor = 0;                        /* 1=End of record received  */
 
@@ -858,12 +893,26 @@ int     eor = 0;                        /* 1=End of record received  */
     TNSDEBUG1("console: DBG031: verifying data is available...\n");
     {
         fd_set readset;
-        struct timeval tv = {0,0};      /* (non-blocking poll) */
 
         FD_ZERO( &readset );
         FD_SET( dev->fd, &readset );
 
-        while ( (rc = select ( dev->fd+1, &readset, NULL, NULL, &tv )) < 0
+        /* Note: This select statement was updated to use the posix
+         *       pselect call to address several issues, including:
+         *       1) Time values, as used in the console.c select
+         *          statements are constants.
+         *       2) While debugging with posix, the need arose to manage
+         *          interrupts for temporary debug code, and to avoid
+         *          both real and induced deadlocks with other tasks
+         *          (including the debuggers).
+         *       For clarity, and rather than making additional botched
+         *       attempts to debug with pselect and release the final
+         *       code using just select, pselect now remains with a
+         *       NULL interrupt mask, and is functionally equivalent
+         *       to select.
+         */
+        while ( (rc = pselect ( dev->fd+1, &readset, NULL, NULL,
+                                &nbpoll, NULL )) < 0
             && HSO_EINTR == HSO_errno )
             ;   /* NOP (keep retrying if EINTR) */
 
@@ -892,7 +941,7 @@ int     eor = 0;                        /* 1=End of record received  */
 
     if (rc < 0) {
         if ( HSO_ECONNRESET == HSO_errno )
-            WRMSG(HHC01090, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+            WRMSG(HHC01090, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
                   inet_ntoa(dev->ipaddr), dev->devtype);
         else
             TNSERROR("console: DBG023: recv: %s\n", strerror(HSO_errno));
@@ -902,7 +951,7 @@ int     eor = 0;                        /* 1=End of record received  */
 
     /* If zero bytes were received then client has closed connection */
     if (rc == 0) {
-        WRMSG(HHC01022, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+        WRMSG(HHC01022, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
               inet_ntoa(dev->ipaddr), dev->devtype);
         dev->sense[0] = SENSE_IR;
         return (CSW_ATTN | CSW_UC | CSW_DE);
@@ -911,23 +960,38 @@ int     eor = 0;                        /* 1=End of record received  */
     /* Update number of bytes in receive buffer */
     dev->rlen3270 += rc;
 
-    /* Check whether Attn indicator was received */
+    /* Dr. Hans-Walter Latz -- Fix 3270 binary xfer IAC bug. */
+    /* Check for telnet IAC command sequence at end of buffer. */
     if (dev->rlen3270 >= 2
-        && dev->buf[dev->rlen3270 - 2] == IAC
-        && dev->buf[dev->rlen3270 - 1] == BRK)
-        eor = 1;
+        && dev->buf[dev->rlen3270 - 2] == IAC)
+    {
+        /* Count the number of 0xFF bytes preceding last byte of
+           the buffer. If the count is even then all of the 0xFF's
+           preceding the end of the buffer are properly escaped
+           and what we thought was an IAC command sequence isn't.
+           Else if the count is odd then the buffer ends with an
+           IAC command sequence and the last byte is the command.
+        */
+        int xFFCount = 1; /* Initialize 0xFF count (IAC == 0xFF) */
+        int remaining = dev->rlen3270 - 2;
+        BYTE *curr = &dev->buf[dev->rlen3270 - 3];
+        while (remaining-- && *curr-- == 0xFF) { xFFCount++; }
 
-    /* Check whether SysRq indicator was received */
-    if (dev->rlen3270 >= 2
-        && dev->buf[dev->rlen3270 - 2] == IAC
-        && dev->buf[dev->rlen3270 - 1] == IP)
-        eor = 1;
+        if (xFFCount & 0x01)
+        {
+            /* Check whether Attn indicator was received */
+            if (dev->buf[dev->rlen3270 - 1] == BRK)
+                eor = 1;
 
-    /* Check whether end of record marker was received */
-    if (dev->rlen3270 >= 2
-        && dev->buf[dev->rlen3270 - 2] == IAC
-        && dev->buf[dev->rlen3270 - 1] == EOR_MARK)
-        eor = 1;
+            /* Check whether SysRq indicator was received */
+            else if (dev->buf[dev->rlen3270 - 1] == IP)
+                eor = 1;
+
+            /* Check whether end of record marker was received */
+            else if (dev->buf[dev->rlen3270 - 1] == EOR_MARK)
+                eor = 1;
+        }
+    }
 
     /* If record is incomplete, test for buffer full */
     if (eor == 0 && dev->rlen3270 >= BUFLEN_3270)
@@ -1067,7 +1131,7 @@ BYTE    c;                              /* Character work area       */
 
     /* If zero bytes were received then client has closed connection */
     if (num == 0) {
-        WRMSG(HHC01022, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+        WRMSG(HHC01022, "I", SSID_TO_LCSS(dev->ssid), dev->devnum,
               inet_ntoa(dev->ipaddr), dev->devtype);
         dev->sense[0] = SENSE_IR;
         return (CSW_ATTN | CSW_UC);
@@ -1463,8 +1527,8 @@ static char *build_logo(char **logodata,size_t logosize,size_t *blen)
 /*-------------------------------------------------------------------*/
 /* NEW CLIENT CONNECTION THREAD                                      */
 /*-------------------------------------------------------------------*/
-static void *
-connect_client (int *csockp)
+static void*
+connect_client (void *csockp)
 {
 int                     rc;             /* Return code               */
 DEVBLK                 *dev;            /* -> Device block           */
@@ -1490,7 +1554,7 @@ char                    *logoout;
 
     logobfr=NULL;
     /* Load the socket address from the thread parameter */
-    csock = *csockp;
+    csock = *(int*)csockp;
 
     /* Obtain the client's IP address */
     namelen = sizeof(client);
@@ -1523,6 +1587,11 @@ char                    *logoout;
     TNSDEBUG1("console: DBG018: Received connection from %s\n",
             clientip );
 #endif
+
+    /*  Dr. Hans-Walter Latz -- binary xfer mode performance tweak   */
+    /*  See: http://www.unixguide.net/network/socketfaq/2.16.shtml   */
+    if (disable_nagle(csock) < 0)
+        TNSERROR("console: DBG035: setsockopt: %s\n", strerror(HSO_errno));
 
     /* Negotiate telnet parameters */
     rc = negotiate (csock, &devclass, &model, &extended, &devnum, group);
@@ -1615,7 +1684,7 @@ char                    *logoout;
          hostinfo.num_physical_cpu != 0 &&
          hostinfo.num_logical_cpu  != 0 )
     {
-        MSGBUF( num_procs, "LP=%d, Cores=%d, CPUs=%d", hostinfo.num_logical_cpu, 
+        MSGBUF( num_procs, "LP=%d, Cores=%d, CPUs=%d", hostinfo.num_logical_cpu,
                             hostinfo.num_physical_cpu, hostinfo.num_packages );
     }
     else
@@ -1628,7 +1697,7 @@ char                    *logoout;
             strlcpy( num_procs,   "",  sizeof(num_procs) );
     }
 
-    MSGBUF( hostmsg, 
+    MSGBUF( hostmsg,
             MSG(HHC01031, "I"
                 ,hostinfo.nodename
                 ,hostinfo.sysname
@@ -1647,9 +1716,9 @@ char                    *logoout;
         {
             if(!group[0])
             {
-                MSGBUF( rejmsg, MSG(HHC01028, "E", 
+                MSGBUF( rejmsg, MSG(HHC01028, "E",
                         (devclass=='D' ? "3270" : (devclass=='P' ? "3287" : "1052 or 3215"))));
-                WRMSG( HHC01028, "E", 
+                WRMSG( HHC01028, "E",
                         (devclass=='D' ? "3270" : (devclass=='P' ? "3287" : "1052 or 3215")));
             }
             else
@@ -1807,7 +1876,7 @@ char    fn[FILENAME_MAX] = { 0 };
         if ( p == NULL)
             p = "herclogo.txt";
     }
-    else 
+    else
         p = sysblk.logofile;
 
     hostpath( fn, p, sizeof(fn) );
@@ -1821,7 +1890,7 @@ char    fn[FILENAME_MAX] = { 0 };
         char pathname[MAX_PATH];
 
         memset(altfn, 0, sizeof(altfn));
-    
+
         MSGBUF(altfn,"%s%c%s", sysblk.hercules_pgmpath, PATHSEPC, fn);
 
         hostpath( pathname, altfn, sizeof(pathname));
@@ -1840,6 +1909,7 @@ static int     console_cnslcnt  = 0;    /* count of connected terms  */
 static void *
 console_connection_handler (void *arg)
 {
+static const struct timespec tv_100ms = {0, 100000000}; /* Slow poll */
 int                    rc = 0;          /* Return code               */
 int                    lsock;           /* Socket for listening      */
 int                    csock;           /* Socket for conversation   */
@@ -1847,6 +1917,8 @@ struct sockaddr_in    *server;          /* Server address structure  */
 fd_set                 readset;         /* Read bit map for select   */
 int                    maxfd;           /* Highest fd for select     */
 int                    optval;          /* Argument for setsockopt   */
+int                    scan_incomplete; /* DEVBLK scan incomplete    */
+int                    incomplete_count;/* DEVBLK scan incomplete    */
 TID                    tidneg;          /* Negotiation thread id     */
 DEVBLK                *dev;             /* -> Device block           */
 BYTE                   unitstat;        /* Status after receive data */
@@ -1862,7 +1934,7 @@ BYTE                   unitstat;        /* Status after receive data */
 
     /* Back to user mode */
     SETMODE(USER);
-    
+
     /* Display thread started message on control panel */
     WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Console connection");
 
@@ -1925,22 +1997,46 @@ BYTE                   unitstat;        /* Status after receive data */
 
     WRMSG(HHC01024, "I", ntohs(server->sin_port));
 
+    /* Initialize scan incomplete */
+    scan_incomplete = 0;
+    incomplete_count = 0;
+
     /* Handle connection requests and attention interrupts */
     while(console_cnslcnt > 0)
     {
         /* Initialize the select parameters */
-
         FD_ZERO ( &readset ); maxfd=INT_MIN;
         FD_SET  ( lsock, &readset ); maxfd = lsock;
         SUPPORT_WAKEUP_CONSOLE_SELECT_VIA_PIPE( maxfd, &readset );
 
         /* Include the socket for each valid connected console */
-        for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
+        for (;;)
         {
-            if ( !dev->allocated) continue;
-
-            obtain_lock( &dev->lock );
+            /* FIXME: Incorrectly running chain that may have a DEVBLK
+             *        removed while in flight. For example, a device may
+             *        be deleted between the loading of the nextdev and
+             *        before the check for dev != NULL. This will result
+             *        in aninvalid storage reference and may result in a
+             *        crash.
+             */
+            for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
             {
+                if (!dev->allocated ||
+                    !dev->console)
+                    continue;
+
+                /* Obtain the device lock */
+                if (try_obtain_lock(&dev->lock))
+                {
+                     ++scan_incomplete;
+
+                    if (incomplete_count <= 10 ||
+                        scan_incomplete > 1)
+                        continue;
+
+                    obtain_lock(&dev->lock);
+                }
+
                 if ( dev->console )
                 {
                     if ( dev->connected )
@@ -1990,13 +2086,48 @@ BYTE                   unitstat;        /* Status after receive data */
                     } /* if (dev->connected) */
 
                 } /* if (dev->console) */
-            }
-            release_lock( &dev->lock );
 
-        } /* end for(dev) */
+                release_lock( &dev->lock );
 
-        /* Wait for a file descriptor to become ready */
-        rc = select ( maxfd+1, &readset, NULL, NULL, NULL );
+            } /* end for(dev) */
+
+            /* Double negative test for completeness */
+            if (!scan_incomplete)
+                break;
+
+            /* Probable lock conflict; wait a moment and try again */
+            if (++incomplete_count >= 10)
+                sched_yield();
+
+            /* Reset scan */
+            scan_incomplete = 0;
+
+        }
+
+        /* Reset incomplete scan count */
+        incomplete_count = 0;
+
+
+        /* Wait for a file descriptor to become ready; use a slow poll
+         * to ensure no hang occurs (this is consistent with the
+         * operations of "hardware" controllers providing telnet
+         * services).
+         *
+         * Note: This select statement was updated to use the posix
+         *       pselect call to address several issues, including:
+         *       1) Time values, as used in the console.c select
+         *          statements are constants.
+         *       2) While debugging with posix, the need arose to manage
+         *          interrupts for temporary debug code, and to avoid
+         *          both real and induced deadlocks with other tasks
+         *          (including the debuggers).
+         *       For clarity, and rather than making additional botched
+         *       attempts to debug with pselect and release the final
+         *       code using just select, pselect now remains with a
+         *       NULL interrupt mask, and is functionally equivalent
+         *       to select.
+         */
+        rc = pselect ( maxfd+1, &readset, NULL, NULL, &tv_100ms, NULL );
 
         /* Clear the pipe signal if necessary */
         RECV_CONSOLE_THREAD_PIPE_SIGNAL();
@@ -2073,123 +2204,196 @@ BYTE                   unitstat;        /* Status after receive data */
         } /* end if(FD_ISSET(lsock, &readset)) */
 
         /* Check if any connected client has data ready to send */
-        for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
+        for (;;)
         {
-            /* Obtain the device lock */
-            obtain_lock (&dev->lock);
-
-            /* Test for valid connected console with data available */
-            if (1
-                && dev->allocated
-                && dev->console
-                && dev->connected
-                && (!dev->busy || (dev->scsw.flag3 & SCSW3_AC_SUSP))
-                && !( IOPENDING(dev) || (dev->scsw.flag3 & SCSW3_SC_PEND) )
-                && FD_ISSET (dev->fd, &readset)
-            )
+            /* FIXME: Incorrectly running chain that may have a DEVBLK
+             *        removed while in flight. For example, a device may
+             *        be deleted between the loading of the nextdev and
+             *        before the check for dev != NULL. This will result
+             *        in aninvalid storage reference and may result in a
+             *        crash.
+             */
+            for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
             {
-                /* Receive console input data from the client */
-                if ((dev->devtype == 0x3270) || (dev->devtype == 0x3287))
-                    unitstat = recv_3270_data (dev);
-                else
-                    unitstat = recv_1052_data (dev);
-
-                /* Nothing more to do if incomplete record received */
-                if (unitstat == 0)
-                {
-                    release_lock (&dev->lock);
+                /* Just iterate if not an allocated and connected
+                 * console device
+                 */
+                if (!dev->allocated ||
+                    !dev->console   ||
+                    !dev->connected)
                     continue;
-                }
 
-                /* Close the connection if an error occurred */
-                if (unitstat & CSW_UC)
+                /* Obtain the device lock */
+                if (try_obtain_lock(&dev->lock))
                 {
-                    close_socket (dev->fd);
-                    dev->fd = -1;
-                    dev->connected = 0;
+                     ++scan_incomplete;
+
+                    if (incomplete_count <= 10 ||
+                        scan_incomplete > 1)
+                        continue;
+
+                    obtain_lock(&dev->lock);
                 }
 
-                /* Indicate that data is available at the device */
-                if(dev->rlen3270)
-                    dev->readpending = 1;
+                /* Test for valid connected console with data available */
+                if (1
+                    && dev->allocated
+                    && dev->console
+                    && dev->connected
+                    && (!dev->busy || (dev->scsw.flag3 & SCSW3_AC_SUSP))
+                    && !( IOPENDING(dev) || (dev->scsw.flag3 & SCSW3_SC_PEND) )
+                    && FD_ISSET (dev->fd, &readset)
+                )
+                {
+                    /* Receive console input data from the client */
+                    if ((dev->devtype == 0x3270) || (dev->devtype == 0x3287))
+                        unitstat = recv_3270_data (dev);
+                    else
+                        unitstat = recv_1052_data (dev);
+
+                    /* Nothing more to do if incomplete record received */
+                    if (unitstat == 0)
+                    {
+                        release_lock (&dev->lock);
+                        continue;
+                    }
+
+                    /* Close the connection if an error occurred */
+                    if (unitstat & CSW_UC)
+                    {
+                        close_socket (dev->fd);
+                        dev->fd = -1;
+                        dev->connected = 0;
+                    }
+
+                    /* Indicate that data is available at the device */
+                    if(dev->rlen3270)
+                        dev->readpending = 1;
+
+                    /* Release the device lock */
+                    release_lock (&dev->lock);
+
+                    /* Raise attention interrupt for the device */
+
+                    /* Do NOT raise attention interrupt for 3287  */
+                    /* Otherwise zVM loops after ENABLE ccuu     */
+                    /* Following 5 lines are repeated on Hercules console: */
+                    /* console: sending 3270 data */
+                    /*   +0000   F5C2FFEF     */
+                    /*   console: Packet received length=7 */
+                    /*   +0000   016CD902 00FFEF */
+                    /*           I do not know what is this */
+                    /*   console: CCUU attention requests raised */
+
+                    /* Do not raise attention interrupt for the SYSG console */
+
+                    /* Do NOT raise attention interrupt if this is */
+                    /* the System-370 mode initial power-on state */
+
+                    if (!dev->connected         ||
+                        dev->devtype == 0x3287  ||
+                        INITIAL_POWERON_370())
+                        continue; /* (note: dev->lock already released) */
+
+                  #if defined(_FEATURE_INTEGRATED_3270_CONSOLE)
+                    /* For the SYSG console, generate an external interrupt */
+                    if (dev == sysblk.sysgdev)
+                    {
+                        sclp_sysg_attention();
+                    }
+                    else
+                  #endif /*defined(_FEATURE_INTEGRATED_3270_CONSOLE)*/
+                    {
+                        rc = device_attention (dev, unitstat);
+
+                        /* Trace the attention request */
+                        TNSDEBUG2("console: DBG020: "
+                                  "%4.4X attention request %s; rc=%d\n",
+                                  dev->devnum,
+                                  (rc == 0 ? "raised" : "rejected"), rc);
+                    }
+
+                    continue; /* (note: dev->lock already released) */
+
+                } /* end if(data available) */
 
                 /* Release the device lock */
                 release_lock (&dev->lock);
 
-                /* Raise attention interrupt for the device */
+            } /* end for(dev) */
 
-                /* Do NOT raise attention interrupt for 3287  */
-                /* Otherwise zVM loops after ENABLE ccuu     */
-                /* Following 5 lines are repeated on Hercules console: */
-                /* console: sending 3270 data */
-                /*   +0000   F5C2FFEF     */
-                /*   console: Packet received length=7 */
-                /*   +0000   016CD902 00FFEF */
-                /*           I do not know what is this */
-                /*   console: CCUU attention requests raised */
+            /* Double negative test for completeness */
+            if (!scan_incomplete)
+                break;
 
-                /* Do not raise attention interrupt for the SYSG console */
+            /* Probable lock conflict; wait a moment and try again */
+            if (++incomplete_count >= 10)
+                sched_yield();
 
-                /* Do NOT raise attention interrupt if this is */
-                /* the System-370 mode initial power-on state */
+            /* Reset scan */
+            scan_incomplete = 0;
 
-                if (1
-                    && dev->connected
-                    && dev->devtype != 0x3287
-              #if defined(_FEATURE_INTEGRATED_3270_CONSOLE)
-                    && dev != sysblk.sysgdev
-              #endif /*defined(_FEATURE_INTEGRATED_3270_CONSOLE)*/
-                    && !INITIAL_POWERON_370()
-                )
-                {
-                    rc = device_attention (dev, unitstat);
-
-                    /* Trace the attention request */
-                    TNSDEBUG2("console: DBG020: "
-                            "%4.4X attention request %s; rc=%d\n",
-                            dev->devnum,
-                            (rc == 0 ? "raised" : "rejected"), rc);
-                }
-
-              #if defined(_FEATURE_INTEGRATED_3270_CONSOLE)
-                /* For the SYSG console, generate an external interrupt */
-                if (dev == sysblk.sysgdev && dev->connected)
-                {
-                    sclp_sysg_attention();
-                }
-              #endif /*defined(_FEATURE_INTEGRATED_3270_CONSOLE)*/
-
-                continue; /* (note: dev->lock already released) */
-
-            } /* end if(data available) */
-
-            /* Release the device lock */
-            release_lock (&dev->lock);
-
-        } /* end for(dev) */
+        }
 
     } /* end for */
 
-    /* Close all connected terminals */
-    for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
-    {
-        /* Obtain the device lock */
-        obtain_lock (&dev->lock);
+    /* Reset scan incomplete count */
+    incomplete_count = 0;
 
-        /* Test for connected console with data available */
-        if (dev->console
-            && dev->fd>=0)
+    /* Close all connected terminals */
+    for (;;)
+    {
+        /* FIXME: Incorrectly running chain that may have a DEVBLK
+         *        removed while in flight. For example, a device may
+         *        be deleted between the loading of the nextdev and
+         *        before the check for dev != NULL. This will result
+         *        in an invalid storage reference and may result in a
+         *        crash.
+         */
+        for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
         {
-            close_socket(dev->fd);
-            dev->connected=0;
-            dev->fd=-1;
+            /* Obtain the device lock */
+            if (try_obtain_lock(&dev->lock))
+            {
+                ++scan_incomplete;
+
+                if (incomplete_count <= 10 ||
+                    scan_incomplete > 1)
+                    continue;
+
+                obtain_lock(&dev->lock);
+            }
+
+            /* Test for connected console with data available */
+            if (dev->console
+                && dev->fd>=0)
+            {
+                close_socket(dev->fd);
+                dev->connected=0;
+                dev->fd=-1;
+            }
+            release_lock (&dev->lock);
         }
-        release_lock (&dev->lock);
+
+        /* Double negative test for completeness */
+        if (!scan_incomplete)
+            break;
+
+        /* Probable lock conflict; wait a moment and try again */
+        if (++incomplete_count >= 10)
+            sched_yield();
+
+        /* Reset scan */
+        scan_incomplete = 0;
+
     }
+
+    /* Reset scan incomplete count */
+    incomplete_count = 0;
 
     /* Close the listening socket */
     close_socket (lsock);
-  
+
     free(server);
 
     WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Console connection");
@@ -2332,7 +2536,7 @@ loc3270_init_handler ( DEVBLK *dev, int argc, char *argv[] )
                         rc = -1;
                     }
                 }
-                     
+
                 if ( rc == 0 && isalpha( r[0] ))
                 {
                     strlcpy(dev->filename,r,sizeof(dev->filename));
@@ -2355,7 +2559,7 @@ loc3270_init_handler ( DEVBLK *dev, int argc, char *argv[] )
         {
             if ((dev->acc_ipaddr = inet_addr(argv[ac])) == (in_addr_t)(-1))
             {
-                WRMSG(HHC01007, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+                WRMSG(HHC01007, "E", SSID_TO_LCSS(dev->ssid), dev->devnum,
                       "IP address", argv[ac]);
                 return -1;
             }
@@ -2366,7 +2570,7 @@ loc3270_init_handler ( DEVBLK *dev, int argc, char *argv[] )
                 {
                     if ((dev->acc_ipmask = inet_addr(argv[ac])) == (in_addr_t)(-1))
                     {
-                        WRMSG(HHC01007, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+                        WRMSG(HHC01007, "E", SSID_TO_LCSS(dev->ssid), dev->devnum,
                               "mask value", argv[ac]);
                         return -1;
                     }
@@ -2375,7 +2579,7 @@ loc3270_init_handler ( DEVBLK *dev, int argc, char *argv[] )
                         argc--; ac++;
                         if (argc > 0)   // too many args?
                         {
-                            WRMSG(HHC01019, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+                            WRMSG(HHC01019, "E", SSID_TO_LCSS(dev->ssid), dev->devnum,
                                   argv[ac] );
                             return -1;
                         }
@@ -2548,7 +2752,7 @@ loc3270_hresume(DEVBLK *dev, void *file)
             {
                 char buf[40];
                 MSGBUF( buf, "malloc(%d)", (int)len);
-                WRMSG(HHC01000, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, buf, 
+                WRMSG(HHC01000, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, buf,
                       strerror(errno));
                 return 0;
             }
@@ -2763,7 +2967,7 @@ constty_query_device (DEVBLK *dev, char **devclass,
             {
                 if (!dev->prompt1052)
                 {
-                    snprintf(buffer, buflen, "noprompt %s IO[%" I64_FMT "u]", 
+                    snprintf(buffer, buflen, "noprompt %s IO[%" I64_FMT "u]",
                                              acc, dev->excps );
                     buffer[buflen-1] = '\0';
                 }
@@ -2984,12 +3188,12 @@ int     woff = 0;                       /* Current offset in buffer  */
 /*-------------------------------------------------------------------*/
 static void
 loc3270_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual )
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual )
 {
 int             rc;                     /* Return code               */
-int             num;                    /* Number of bytes to copy   */
-int             len;                    /* Data length               */
+U32             num;                    /* Number of bytes to copy   */
+U32             len;                    /* Data length               */
 int             aid;                    /* First read: AID present   */
 U32             off;                    /* Offset in device buffer   */
 BYTE            cmd;                    /* tn3270 command code       */
@@ -3414,12 +3618,12 @@ BYTE            buf[BUFLEN_3270];       /* tn3270 write buffer       */
 /*-------------------------------------------------------------------*/
 static void
 constty_execute_ccw ( DEVBLK *dev, BYTE code, BYTE flags,
-        BYTE chained, U16 count, BYTE prevcode, int ccwseq,
-        BYTE *iobuf, BYTE *more, BYTE *unitstat, U16 *residual )
+        BYTE chained, U32 count, BYTE prevcode, int ccwseq,
+        BYTE *iobuf, BYTE *more, BYTE *unitstat, U32 *residual )
 {
 int     rc;                             /* Return code               */
-int     len;                            /* Length of data            */
-int     num;                            /* Number of bytes to move   */
+U32     len;                            /* Length of data            */
+U32     num;                            /* Number of bytes to move   */
 BYTE    c;                              /* Print character           */
 BYTE    stat;                           /* Unit status               */
 
@@ -3623,6 +3827,31 @@ BYTE    stat;                           /* Unit status               */
 
 } /* end function constty_execute_ccw */
 
+
+/*-------------------------------------------------------------------*/
+/* Redrive console select                                            */
+/*-------------------------------------------------------------------*/
+static void
+redrive_console_select ( DEVBLK *dev )
+{
+    UNREFERENCED(dev);
+
+    SIGNAL_CONSOLE_THREAD();
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Redrive clear 3270 read buffer                                    */
+/*-------------------------------------------------------------------*/
+static void
+redrive_clear3270_read ( DEVBLK *dev )
+{
+    dev->readpending = 0;
+    dev->rlen3270 = 0;
+    SIGNAL_CONSOLE_THREAD();
+}
+
+
 #if defined(OPTION_DYNAMIC_LOAD)
 static
 #endif
@@ -3633,10 +3862,10 @@ DEVHND constty_device_hndinfo = {
         &constty_query_device,         /* Device Query               */
         NULL,                          /* Device Extended Query      */
         NULL,                          /* Device Start channel pgm   */
-        NULL,                          /* Device End channel pgm     */
+        &redrive_console_select,       /* Device End channel pgm     */
         NULL,                          /* Device Resume channel pgm  */
         NULL,                          /* Device Suspend channel pgm */
-        NULL,                          /* Device Halt channel pgm    */
+        &redrive_console_select,       /* Device Halt channel pgm    */
         NULL,                          /* Device Read                */
         NULL,                          /* Device Write               */
         NULL,                          /* Device Query used          */
@@ -3654,7 +3883,7 @@ DEVHND constty_device_hndinfo = {
         NULL                           /* Hercules resume            */
 };
 
-/* Libtool static name colision resolution */
+/* Libtool static name collision resolution */
 /* note : lt_dlopen will look for symbol & modulename_LTX_symbol */
 #if !defined(HDL_BUILD_SHARED) && defined(HDL_USE_LIBTOOL)
 #define hdl_ddev hdt3270_LTX_hdl_ddev
@@ -3675,10 +3904,10 @@ DEVHND loc3270_device_hndinfo = {
         &loc3270_query_device,         /* Device Query               */
         NULL,                          /* Device Extended Query      */
         NULL,                          /* Device Start channel pgm   */
-        NULL,                          /* Device End channel pgm     */
+        &redrive_clear3270_read,       /* Device End channel pgm     */
         NULL,                          /* Device Resume channel pgm  */
         NULL,                          /* Device Suspend channel pgm */
-        NULL,                          /* Device Halt channel pgm    */
+        &redrive_clear3270_read,       /* Device Halt channel pgm    */
         NULL,                          /* Device Read                */
         NULL,                          /* Device Write               */
         NULL,                          /* Device Query used          */

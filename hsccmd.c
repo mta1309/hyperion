@@ -1,7 +1,7 @@
 /* HSCCMD.C     (c) Copyright Roger Bowler, 1999-2012                */
 /*              (c) Copyright Jan Jaeger, 1999-2012                  */
 /*              (c) Copyright "Fish" (David B. Trout), 2002-2009     */
-/*              (c) Copyright TurboHercules, SAS 2011                */
+/*              (c) Copyright TurboHercules SAS, 2011                */
 /*              Execute Hercules System Commands                     */
 /*                                                                   */
 /*   Released under "The Q Public License Version 1"                 */
@@ -63,10 +63,6 @@
 #include "history.h"
 #include "httpmisc.h"
 
-#if defined(OPTION_FISHIO)
-#include "w32chan.h"
-#endif /* defined(OPTION_FISHIO) */
-
 #include "tapedev.h"
 #include "dasdtab.h"
 #include "ctcadpt.h"
@@ -109,6 +105,16 @@ static void* test_thread( void* parg)
     return NULL;
 }
 
+/* $test command helper thread */
+static void* test_locks_thread( void* parg)
+{
+    // test thread exit with lock still held
+    static LOCK testlock;
+    UNREFERENCED(parg);
+    initialize_lock( &testlock );
+    obtain_lock( &testlock );
+    return NULL;
+}
 
 #define  NUM_THREADS    10
 #define  MAX_WAIT_SECS  6
@@ -124,8 +130,18 @@ int test_cmd(int argc, char *argv[],char *cmdline)
     UNREFERENCED(cmdline);
 
     if (argc > 1)
+    {
         if ( CMD(argv[1],crash,5) )
-            cause_crash(); // (see hscutl.c)
+            CRASH();
+        else if (CMD( argv[1], locks, 5 ))
+        {
+            // test thread exit with lock still held
+            static TID tid;
+            VERIFY( create_thread( &tid, DETACHED,
+                test_locks_thread, 0, "test_locks_thread" ) == 0);
+            return 0;
+        }
+    }
 
     /*-------------------------------------------*/
     /*             test 'nanosleep'              */
@@ -188,6 +204,132 @@ static inline int all_stopped()
              sysblk.regs[i]->cpustate != CPUSTATE_STOPPED )
             return 0;
     return 1;
+}
+
+
+/**********************************************************************/
+/*                                                                    */
+/* setOperationMode - Set the operation mode for the system           */
+/*                                                                    */
+/* Operations Mode:                                                   */
+/*   BASIC: lparmode = 0                                              */
+/*   MIF:   lparmode = 1; cpuidfmt = 0; lparnum = 1...16 (decimal)    */
+/*   EMIF:  lparmode = 1; cpuidfmt = 1                                */
+/**********************************************************************/
+
+static INLINE void
+setOperationMode
+(
+    void
+)
+{
+    sysblk.operation_mode =
+      sysblk.lparmode ?
+      ((sysblk.cpuidfmt || sysblk.lparnum < 1 || sysblk.lparnum > 16) ?
+       om_emif : om_mif) : om_basic;
+}
+
+
+/* Set/update all CPU IDs */
+static INLINE int
+setAllCpuIds(const S32 model, const S16 version, const S32 serial, const S32 MCEL)
+{
+    int i;
+
+    /* Determine and update system CPU model */
+    if (model >= 0)
+        sysblk.cpumodel = model & 0x0000FFFF;
+
+    /* Determine and update CPU version */
+    if (version >= 0)
+        sysblk.cpuversion = version & 0xFF;
+
+    /* Determine and update CPU serial number */
+    if (serial >= 0)
+        sysblk.cpuserial = serial & 0x00FFFFFF;
+
+    /* Determine and update MCEL */
+    if (sysblk.lparmode)
+        i = sysblk.cpuidfmt ? 0x8000 : 0;
+    else if (MCEL >= 0)
+        i = MCEL & 0xFFFF;
+    else if ((sysblk.cpuid & 0xFFFF) == 0x8000)
+        i = 0;
+    else
+        i = sysblk.cpuid & 0xFFFF;
+
+    /* Set the system global CPU ID */
+    sysblk.cpuid = createCpuId(sysblk.cpumodel, sysblk.cpuversion, sysblk.cpuserial, i);
+
+    /* Set a tailored CPU ID for each and every defined CPU */
+    for ( i = 0; i < MAX_CPU_ENGINES; ++i )
+        setCpuId(i, model, version, serial, MCEL);
+
+   return 1;
+}
+
+/* Obtain INTLOCK and then set all CPU IDs */
+static INLINE int
+setAllCpuIds_lock(const S32 model, const S16 version, const S32 serial, const S32 MCEL)
+{
+    int result;
+
+    /* Obtain INTLOCK */
+    OBTAIN_INTLOCK(NULL);
+
+    /* Call unlocked version of setAllCpuIds */
+    result = setAllCpuIds(model, version, serial, MCEL);
+
+   /* Release INTLOCK and return */
+   RELEASE_INTLOCK(NULL);
+   return result;
+}
+
+/* Re-set all CPU IDs based on sysblk CPU ID updates */
+static INLINE int
+resetAllCpuIds()
+{
+    return setAllCpuIds(-1, -1, -1, -1);
+}
+
+
+
+/* Enable/Disable LPAR mode */
+static INLINE void
+enable_lparmode(const int enable)
+{
+    static const int    fbyte = STFL_LOGICAL_PARTITION / 8;
+    static const int    fbit = 0x80 >> (STFL_LOGICAL_PARTITION % 8);
+
+    if(enable)
+    {
+#if defined(_370)
+        sysblk.facility_list[ARCH_370][fbyte] |= fbit;
+#endif
+#if defined(_390)
+        sysblk.facility_list[ARCH_390][fbyte] |= fbit;
+#endif
+#if defined(_900)
+        sysblk.facility_list[ARCH_900][fbyte] |= fbit;
+#endif
+    }
+    else
+    {
+#if defined(_370)
+        sysblk.facility_list[ARCH_370][fbyte] &= ~fbit;
+#endif
+#if defined(_390)
+        sysblk.facility_list[ARCH_390][fbyte] &= ~fbit;
+#endif
+#if defined(_900)
+        sysblk.facility_list[ARCH_900][fbyte] &= ~fbit;
+#endif
+
+    }
+
+    /* Set system lparmode and operation mode indicators accordingly */
+    sysblk.lparmode = enable;
+    setOperationMode();
 }
 
 
@@ -918,7 +1060,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
             if (errno != 0 || nxt == ptr || *nxt != 0 || ( wlpi != 6 && wlpi != 8 && wlpi != 10) )
             {
                 jarg = ptr - argv[iarg] ;
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                 return -1;
             }
             continue;
@@ -928,7 +1070,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
         {
             if (0x3211 != dev->devtype )
             {
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, 1);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], 1);
                 return -1;
             }
             ptr = argv[iarg]+6;
@@ -937,7 +1079,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
             if (errno != 0 || nxt == ptr || *nxt != 0 || ( windex < 0 || windex > 15) )
             {
                 jarg = ptr - argv[iarg] ;
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                 return -1;
             }
             continue;
@@ -951,7 +1093,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
             if (errno != 0 || nxt == ptr || *nxt != 0 ||wlpp > FCBSIZE)
             {
                 jarg = ptr - argv[iarg] ;
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                 return -1;
             }
             continue;
@@ -965,7 +1107,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
             if (errno != 0 || nxt == ptr || *nxt != 0 ||  wffchan < 1 || wffchan > 12)
             {
                 jarg = ptr - argv[iarg] ;
-                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                 return -1;
             }
             continue ;
@@ -986,7 +1128,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
                     if (errno != 0 || *nxt != ':' || nxt == ptr || line > wlpp || wfcb[line] != 0 )
                     {
                         jarg = ptr - argv[iarg] ;
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                         return -1;
                     }
 
@@ -996,7 +1138,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
                     if (errno != 0 || (*nxt != ',' && *nxt != 0) || nxt == ptr || chan < 1 || chan > 12 )
                     {
                         jarg = ptr - argv[iarg] ;
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                         return -1;
                     }
                     wfcb[line] = chan;
@@ -1018,14 +1160,14 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
                     if (errno != 0 || (*nxt != ',' && *nxt != 0) || nxt == ptr || line > wlpp || wfcb[line] != 0 )
                     {
                         jarg = ptr - argv[iarg] ;
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                         return -1;
                     }
                     chan += 1;
                     if ( chan > 12 )
                     {
                         jarg = ptr - argv[iarg] ;
-                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                        WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                         return -1;
                     }
                     wfcb[line] = chan;
@@ -1036,7 +1178,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
                 if ( chan != 12 )
                 {
                     jarg = 5 ;
-                    WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1, jarg);
+                    WRMSG (HHC01103, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg], jarg);
                     return -1;
                 }
             }
@@ -1044,7 +1186,7 @@ int fcb_cmd(int argc, char *argv[], char *cmdline)
             continue;
         }
 
-        WRMSG (HHC01102, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[iarg], iarg + 1);
+        WRMSG (HHC01102, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, iarg + 1, argv[iarg]);
         return -1;
     }
 
@@ -1360,7 +1502,6 @@ int autoinit_cmd( int argc, char *argv[], char *cmdline )
     return 0;
 }
 
-#if defined( OPTION_TAPE_AUTOMOUNT )
 static char * check_define_default_automount_dir()
 {
     /* Define default AUTOMOUNT directory if needed */
@@ -1846,7 +1987,6 @@ int rc;
     return 0;
 }
 
-#endif /* OPTION_TAPE_AUTOMOUNT */
 
 #if defined( OPTION_SCSI_TAPE )
 
@@ -3249,7 +3389,7 @@ BYTE c;
 
                     if ( tid == 0 ) continue; // the mask check should prevent this.
 
-                    curprio = getpriority(PRIO_PROCESS, tid );
+                    curprio = getpriority(PRIO_PROCESS, (id_t)tid );
 
                     if ( curprio == cpuprio ) continue;
 
@@ -3370,12 +3510,12 @@ BYTE c;
                 if ( tid == 0 )
                     break;
 
-                curprio = getpriority(PRIO_PROCESS, tid );
+                curprio = getpriority(PRIO_PROCESS, (id_t)tid );
 
                 if ( curprio == todprio )
                     break;
 
-                rc = setpriority( PRIO_PROCESS, tid, todprio );
+                rc = setpriority( PRIO_PROCESS, (id_t)tid, todprio );
                 if ( MLVL(VERBOSE) )
                 {
                     if ( rc == 0 )
@@ -3440,12 +3580,12 @@ BYTE c;
                 if ( tid[i] == 0 )
                     continue;
 
-                curprio = tid[i] == 0 ? 0: getpriority(PRIO_PROCESS, tid[i] );
+                curprio = tid[i] == 0 ? 0: getpriority(PRIO_PROCESS, (id_t)tid[i] );
 
                 if ( curprio == srvprio )
                     continue;
 
-                rc = setpriority( PRIO_PROCESS, tid[i], srvprio );
+                rc = setpriority( PRIO_PROCESS, (id_t)tid[i], srvprio );
                 if ( MLVL(VERBOSE) )
                 {
                     if ( rc == 0 )
@@ -4453,7 +4593,6 @@ int codepage_cmd(int argc, char *argv[], char *cmdline)
 }
 
 
-#if defined(OPTION_SET_STSI_INFO)
 /*-------------------------------------------------------------------*/
 /* model config statement                                            */
 /* operands: hardware_model [capacity_model [perm_model temp_model]] */
@@ -4649,7 +4788,6 @@ int stsi_manufacturer_cmd(int argc, char *argv[], char *cmdline)
 
     return 0;
 }
-#endif /* defined(OPTION_SET_STSI_INFO) */
 
 
 #if defined(OPTION_SHARED_DEVICES)
@@ -4748,32 +4886,97 @@ BYTE    c;
     /* Update LPAR identification number if operand is specified */
     if ( argc == 2 )
     {
-        if ( strlen(argv[1]) >= 1 && strlen(argv[1]) <= 2
-          && sscanf(argv[1], "%hx%c", &id, &c) == 1)
+        int n = strlen(argv[1]);
+
+        if ( (n == 2 || n == 1)
+             && sscanf(argv[1], "%hx%c", &id, &c) == 1)
         {
+            /* Obtain INTLOCK */
+            OBTAIN_INTLOCK(NULL);
+
+            /* Set new LPAR number, CPU ID format and operation mode */
+            enable_lparmode(1);
             sysblk.lparnum = id;
-            if ( MLVL(VERBOSE) )
+            if (id == 0)
+                sysblk.cpuidfmt = 1;
+            else if (sysblk.cpuidfmt)
             {
-                char buf[20];
-                MSGBUF( buf, "%02X", sysblk.lparnum);
-                WRMSG(HHC02204, "I", argv[0], buf);
+                if (n == 1)
+                    sysblk.cpuidfmt = 0;
+            }
+            else if (n == 2 && id != 16)
+                sysblk.cpuidfmt = 1;
+            setOperationMode();
+
+            /* Update CPU IDs indicating LPAR mode active */
+            if (!resetAllCpuIds())
+                return -1;
+
+            /* Release INTLOCK */
+            RELEASE_INTLOCK(NULL);
 
 #if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
-                set_symbol("LPARNUM", buf );
-#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
-
+            {
+                char buf[20];
+                MSGBUF(buf, "%02X", sysblk.lparnum);
+                set_symbol("LPARNUM", buf);
+                set_symbol("CPUIDFMT", sysblk.cpuidfmt ? "1" : "0");
+                if (MLVL( VERBOSE ))
+                    WRMSG(HHC02204, "I", argv[0], buf);
             }
+#else /* !defined(OPTION_CONFIG_SYMBOLS) || !defined(OPTION_BUILTIN_SYMBOLS) */
+
+            if (MLVL( VERBOSE ))
+            {
+                char buf[20];
+                MSGBUF( buf, sysblk.cpuidfmt ? "%02X" : "%01X",
+                        sysblk.lparnum);
+                WRMSG(HHC02204, "I", argv[0], buf);
+            }
+#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
+        }
+        else if (n == 5 && str_caseless_eq_n(argv[1], "BASIC", 5))
+        {
+            /* Obtain INTLOCK */
+            OBTAIN_INTLOCK(NULL);
+
+            /* Update all CPU identifiers to CPUID format 0 with LPAR
+             * mode inactive and LPAR number 0.
+             */
+            enable_lparmode(0);
+            sysblk.lparnum  = 0;
+            sysblk.cpuidfmt = 0;
+            sysblk.operation_mode = om_basic;
+
+            if (!resetAllCpuIds())
+                return -1;
+
+            /* Release INTLOCK */
+            RELEASE_INTLOCK(NULL);
+
+            if ( MLVL(VERBOSE) )
+            {
+                WRMSG(HHC02204, "I", argv[0], "BASIC");
+            }
+#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
+            set_symbol("LPARNUM", "BASIC");
+            set_symbol("CPUIDFMT", "BASIC");
+#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
         }
         else
         {
-            WRMSG(HHC02205, "E", argv[1], ": must be within 00 to 3F (hex)" );
+            WRMSG(HHC02205, "E", argv[1], ": must be BASIC, 1 to F (hex) or 00 to FF (hex)");
             return -1;
         }
     }
     else
     {
         char buf[20];
-        MSGBUF( buf, "%02X", sysblk.lparnum);
+        if (sysblk.lparmode)
+            MSGBUF( buf, sysblk.cpuidfmt ? "%02X" : "%01X",
+                    sysblk.lparnum);
+        else
+            strncpy(buf, "BASIC", sizeof(buf));
         WRMSG(HHC02203, "I", argv[0], buf);
     }
     return 0;
@@ -4798,14 +5001,16 @@ BYTE    c;
         {
             char buf[8];
 
+            /* Update all CPU identifiers */
+            if (!setAllCpuIds_lock(-1, cpuverid, -1, -1))
+                return -1;
+
             MSGBUF(buf,"%02X",cpuverid);
 
 #if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
             set_symbol("CPUVERID", buf);
 #endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
 
-            sysblk.cpuid &= 0x00FFFFFFFFFFFFFFULL;
-            sysblk.cpuid |= (U64)cpuverid << 56;
             if ( MLVL(VERBOSE) )
                 WRMSG( HHC02204, "I", argv[0], buf );
         }
@@ -4814,11 +5019,12 @@ BYTE    c;
             WRMSG( HHC01451, "E", argv[1], argv[0] );
             return -1;
         }
+
     }
     else if ( argc == 1 )
     {
         char msgbuf[8];
-        MSGBUF( msgbuf, "%02X",(unsigned int)((sysblk.cpuid & 0xFF00000000000000ULL) >> 56));
+        MSGBUF( msgbuf, "%02X", sysblk.cpuversion );
         WRMSG( HHC02203, "I", argv[0], msgbuf );
     }
     else
@@ -4848,14 +5054,18 @@ BYTE    c;
           && (sscanf(argv[1], "%x%c", &cpumodel, &c) == 1) )
         {
             char buf[8];
+
+
+            /* Update all CPU IDs */
+            if (!setAllCpuIds_lock(cpumodel, -1, -1, -1))
+                return -1;
+
             sprintf(buf,"%04X",cpumodel);
 
 #if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
             set_symbol("CPUMODEL", buf);
 #endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
 
-            sysblk.cpuid &= 0xFFFFFFFF0000FFFFULL;
-            sysblk.cpuid |= (U64)cpumodel << 16;
             if ( MLVL(VERBOSE) )
                 WRMSG( HHC02204, "I", argv[0], buf );
         }
@@ -4868,7 +5078,7 @@ BYTE    c;
     else if ( argc == 1 )
     {
         char msgbuf[8];
-        MSGBUF( msgbuf, "%04X",(unsigned int)((sysblk.cpuid & 0x00000000FFFF0000ULL) >> 16));
+        MSGBUF( msgbuf, "%04X", sysblk.cpumodel);
         WRMSG( HHC02203, "I", argv[0], msgbuf );
     }
     else
@@ -4894,18 +5104,24 @@ BYTE    c;
     /* Update CPU serial if operand is specified */
     if (argc == 2)
     {
-        if ( (strlen(argv[1]) > 1) && (strlen(argv[1]) < 7)
+        int n = strlen(argv[1]);
+
+
+        if ( (n >= 1) && (n <= 6)
           && (sscanf(argv[1], "%x%c", &cpuserial, &c) == 1) )
         {
             char buf[8];
+
+            /* Update all CPU IDs */
+            if (!setAllCpuIds_lock(-1, -1, cpuserial, -1))
+                return -1;
+
             sprintf(buf,"%06X",cpuserial);
 
 #if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
             set_symbol("CPUSERIAL", buf);
 #endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
 
-            sysblk.cpuid &= 0xFF000000FFFFFFFFULL;
-            sysblk.cpuid |= (U64)cpuserial << 32;
             if ( MLVL(VERBOSE) )
                 WRMSG( HHC02204, "I", argv[0], buf );
         }
@@ -4932,7 +5148,7 @@ BYTE    c;
 
 
 /*-------------------------------------------------------------------*/
-/* cpuidfmt command - set or display STIDP format {0|1}              */
+/* cpuidfmt command - set or display STIDP format {0|1|BASIC}        */
 /*-------------------------------------------------------------------*/
 int cpuidfmt_cmd(int argc, char *argv[], char *cmdline)
 {
@@ -4941,11 +5157,12 @@ u_int     id;
     UNREFERENCED(cmdline);
 
     /* Update CPU ID format if operand is specified */
-    if (argc > 1)
+    if (argc > 1 && argv[1] != NULL)
     {
-        if (argv[1] != NULL
-          && strlen(argv[1]) == 1
-          && sscanf(argv[1], "%u", &id) == 1)
+        int n = strlen(argv[1]);
+
+        if (strlen(argv[1]) == 1
+            && sscanf(argv[1], "%u", &id) == 1)
         {
             if (id > 1)
             {
@@ -4953,10 +5170,73 @@ u_int     id;
                 return -1;
             }
 
-            if(id)
-                sysblk.cpuid &= ~0x8000ULL;
-            else
-                sysblk.cpuid |= 0x8000ULL;
+            if (!sysblk.lparmode)
+            {
+                WRMSG(HHC02205, "E", argv[1],": not in LPAR mode");
+                return -1;
+            }
+
+            if(!id && (!sysblk.lparnum || sysblk.lparnum > 16))
+            {
+                WRMSG(HHC02205, "E", argv[1],": LPAR number not in range of 1 to 10 (hex)");
+                return -1;
+            }
+
+            if (sysblk.cpuidfmt != id)
+            {
+                /* Obtain INTLOCK */
+                OBTAIN_INTLOCK(NULL);
+
+                /* Set the CPU ID format and subsequent operation mode
+                 */
+                sysblk.cpuidfmt = id;
+                setOperationMode();
+
+                /* Update all CPU IDs */
+                if (!resetAllCpuIds())
+                    return -1;
+
+                /* Release INTLOCK */
+                RELEASE_INTLOCK(NULL);
+
+#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
+                set_symbol("CPUIDFMT", (sysblk.cpuidfmt) ? "1" : "0");
+#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
+
+            }
+        }
+        else if (n == 5 && str_caseless_eq_n(argv[1], "BASIC", 5))
+        {
+            if (sysblk.lparmode)
+            {
+                WRMSG(HHC02205, "E", argv[1],": In LPAR mode");
+                return -1;
+            }
+
+            if (sysblk.cpuidfmt)
+            {
+
+                /* Obtain INTLOCK */
+                OBTAIN_INTLOCK(NULL);
+
+                sysblk.lparnum = 0;
+                sysblk.cpuidfmt = 0;
+                sysblk.operation_mode = om_basic;
+
+                /* Update all CPU IDs */
+                if (!resetAllCpuIds())
+                    return -1;
+
+                /* Release INTLOCK */
+                RELEASE_INTLOCK(NULL);
+
+#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
+                set_symbol("CPUIDFMT", "BASIC");
+#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
+
+                if ( MLVL(VERBOSE) )
+                    WRMSG(HHC02204, "I", argv[0], "BASIC");
+            }
         }
         else
         {
@@ -4966,14 +5246,20 @@ u_int     id;
         if ( MLVL(VERBOSE) )
         {
             char buf[40];
-            MSGBUF( buf, "%d", (sysblk.cpuid & 0x8000ULL) ? 1 : 0);
+            if (sysblk.lparmode)
+                MSGBUF( buf, "%d", sysblk.cpuidfmt );
+            else
+                strncpy(buf, "BASIC", sizeof(buf));
             WRMSG(HHC02204, "I", argv[0], buf);
         }
     }
     else
     {
         char buf[40];
-        MSGBUF( buf, "%d", (sysblk.cpuid & 0x8000ULL) ? 1 : 0);
+        if (sysblk.lparmode)
+            MSGBUF( buf, "%d", sysblk.cpuidfmt );
+        else
+            strncpy(buf, "BASIC", sizeof(buf));
         WRMSG(HHC02203, "I", argv[0], buf);
     }
     return 0;
@@ -5384,9 +5670,6 @@ int qd_cmd(int argc, char *argv[], char *cmdline)
 int attach_cmd(int argc, char *argv[], char *cmdline)
 {
     int rc;
-#if !defined(OPTION_ENHANCED_DEVICE_ATTACH)
-    U16 lcss,devnum;
-#endif /*!defined(OPTION_ENHANCED_DEVICE_ATTACH)*/
 
     UNREFERENCED(cmdline);
 
@@ -5395,14 +5678,7 @@ int attach_cmd(int argc, char *argv[], char *cmdline)
         WRMSG(HHC02202, "E", argv[0] );
         return -1;
     }
-#if defined(OPTION_ENHANCED_DEVICE_ATTACH)
     rc = parse_and_attach_devices(argv[1],argv[2],argc-3,&argv[3]);
-#else /*defined(OPTION_ENHANCED_DEVICE_ATTACH)*/
-    if(!(rc = parse_single_devnum(argv[1],&lcss, &devnum)))
-        rc = attach_device(lcss, devnum,argv[2],argc-3,&argv[3]);
-    else
-        rc = -2;
-#endif /*defined(OPTION_ENHANCED_DEVICE_ATTACH)*/
     if ( rc == 0 && MLVL(DEBUG) )
         WRMSG(HHC02198, "I");
 
@@ -5667,7 +5943,7 @@ DEVBLK*  dev;
 U16      devnum;
 U16      lcss;
 int rc;
-char buf[1024];
+char buf[4096];
 
     UNREFERENCED(cmdline);
 
@@ -5702,6 +5978,7 @@ char buf[1024];
 }
 
 
+#ifdef OPTION_SYNCIO
 /*-------------------------------------------------------------------*/
 /* syncio command - list syncio devices statistics                   */
 /*-------------------------------------------------------------------*/
@@ -5746,11 +6023,10 @@ int syncio_cmd(int argc, char *argv[], char *cmdline)
 
     return 0;
 }
+#endif // OPTION_SYNCIO
 
 
-#if !defined(OPTION_FISHIO)
 void *device_thread(void *arg);
-#endif /* !defined(OPTION_FISHIO) */
 
 /*-------------------------------------------------------------------*/
 /* devtmax command - display or set max device threads               */
@@ -5758,38 +6034,6 @@ void *device_thread(void *arg);
 int devtmax_cmd(int argc, char *argv[], char *cmdline)
 {
     int devtmax = -2;
-
-#if defined(OPTION_FISHIO)
-
-    UNREFERENCED(cmdline);
-
-    /* Note: no need to lock scheduler vars since WE are
-     * the only one that updates "ios_devtmax" (the scheduler
-     * just references it) and we only display (but not update)
-     * all the other variables.
-     */
-
-    if (argc > 1)
-    {
-        sscanf(argv[1], "%d", &devtmax);
-
-        if (devtmax >= -1)
-            ios_devtmax = devtmax;
-        else
-        {
-            WRMSG(HHC02205, "E", argv[1], ": must be -1 to n");
-            return -1;
-        }
-
-        TrimDeviceThreads();    /* (enforce newly defined threshold) */
-    }
-    else
-        WRMSG(HHC02241, "I",
-            ios_devtmax, ios_devtnbr, ios_devthwm,
-            (int)ios_devtwait, ios_devtunavail
-        );
-
-#else /* !defined(OPTION_FISHIO) */
 
     TID tid;
 
@@ -5834,8 +6078,6 @@ int devtmax_cmd(int argc, char *argv[], char *cmdline)
         WRMSG(HHC02242, "I",
             sysblk.devtmax, sysblk.devtnbr, sysblk.devthwm,
             sysblk.devtwait, sysblk.devtunavail );
-
-#endif /* defined(OPTION_FISHIO) */
 
     return 0;
 }
@@ -6231,51 +6473,61 @@ BYTE     unitstat, code = 0;
         {
             if ( dev->blockid == 0 )
             {
-                BYTE    sLABEL[65536];
+                BYTE *sLABEL = malloc( MAX_BLKLEN );
 
-                rc = dev->tmh->read( dev, sLABEL, &unitstat, code );
-
-                if ( rc == 80 )
+                if (!sLABEL)
                 {
-                    int a = TRUE;
-                    if ( strncmp( (char *)sLABEL, "VOL1", 4 ) != 0 )
-                    {
-                        str_guest_to_host( sLABEL, sLABEL, 51 );
-                        a = FALSE;
-                    }
-
-                    if ( strncmp( (char *)sLABEL, "VOL1", 4 ) == 0 )
-                    {
-                        char msgbuf[64];
-                        char volser[7];
-                        char owner[15];
-
-                        memset( msgbuf, 0, sizeof(msgbuf) );
-                        memset( volser, 0, sizeof(volser) );
-                        memset( owner,  0, sizeof(owner)  );
-
-                        strncpy( volser, (char*)&sLABEL[04],  6 );
-                        strncpy( owner,  (char*)&sLABEL[37], 14 );
-
-                        MSGBUF( msgbuf, "%s%s%s%s%s",
-                                        volser,
-                                        strlen(owner) == 0? "":", Owner = \"",
-                                        strlen(owner) == 0? "": owner,
-                                        strlen(owner) == 0? "": "\"",
-                                        a ? " (ASCII LABELED) ": "" );
-
-                        WRMSG( HHC02805, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, msgbuf );
-                        msg = FALSE;
-                    }
-                    else
-                        WRMSG( HHC02806, "I", SSID_TO_LCSS(dev->ssid), dev->devnum );
+                    WRMSG( HHC02801, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, argv[2], "Out of memory" );
+                    msg = FALSE;
                 }
                 else
                 {
-                    WRMSG( HHC02806, "I", SSID_TO_LCSS(dev->ssid), dev->devnum );
-                }
+                    rc = dev->tmh->read( dev, sLABEL, &unitstat, code );
 
-                rc = dev->tmh->rewind( dev, &unitstat, code);
+                    if ( rc == 80 )
+                    {
+                        int a = TRUE;
+                        if ( strncmp( (char *)sLABEL, "VOL1", 4 ) != 0 )
+                        {
+                            str_guest_to_host( sLABEL, sLABEL, 51 );
+                            a = FALSE;
+                        }
+
+                        if ( strncmp( (char *)sLABEL, "VOL1", 4 ) == 0 )
+                        {
+                            char msgbuf[64];
+                            char volser[7];
+                            char owner[15];
+
+                            memset( msgbuf, 0, sizeof(msgbuf) );
+                            memset( volser, 0, sizeof(volser) );
+                            memset( owner,  0, sizeof(owner)  );
+
+                            strncpy( volser, (char*)&sLABEL[04],  6 );
+                            strncpy( owner,  (char*)&sLABEL[37], 14 );
+
+                            MSGBUF( msgbuf, "%s%s%s%s%s",
+                                            volser,
+                                            strlen(owner) == 0? "":", Owner = \"",
+                                            strlen(owner) == 0? "": owner,
+                                            strlen(owner) == 0? "": "\"",
+                                            a ? " (ASCII LABELED) ": "" );
+
+                            WRMSG( HHC02805, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, msgbuf );
+                            msg = FALSE;
+                        }
+                        else
+                            WRMSG( HHC02806, "I", SSID_TO_LCSS(dev->ssid), dev->devnum );
+                    }
+                    else
+                    {
+                        WRMSG( HHC02806, "I", SSID_TO_LCSS(dev->ssid), dev->devnum );
+                    }
+
+                    rc = dev->tmh->rewind( dev, &unitstat, code);
+
+                    free( sLABEL );
+                }
             }
             else
             {
@@ -6496,17 +6748,24 @@ REGS *regs;
 
     char   *fname;                      /* -> File name (ASCIIZ)     */
     char   *loadaddr;                   /* loadcore memory address   */
-    U32     aaddr;                      /* Absolute storage address  */
-    U32     aaddr2;                     /* Absolute storage address  */
+    U64     work64;                     /* 64-bit work variable      */
+    RADR    aaddr;                      /* Absolute storage address  */
+    RADR    aaddr2;                     /* Absolute storage address  */
     int     fd;                         /* File descriptor           */
-    int     len;                        /* Number of bytes read      */
+    U32     chunk;                      /* Bytes to write this time  */
+    U32     written;                    /* Bytes written this time   */
+    U64     total;                      /* Total bytes to be written */
+    U64     saved;                      /* Total bytes saved so far  */
     BYTE    c;                          /* (dummy sscanf work area)  */
     char    pathname[MAX_PATH];         /* fname in host path format */
+    time_t  begtime, curtime;           /* progress messages times   */
+    char    fmt_mem[8];                 /* #of M/G/etc. saved so far */
 
     UNREFERENCED(cmdline);
 
     if (argc < 2)
     {
+        // "Missing argument(s). Type 'help %s' for assistance."
         WRMSG(HHC02202,"E", argv[0] );
         return -1;
     }
@@ -6518,6 +6777,7 @@ REGS *regs;
     if (!IS_CPU_ONLINE(sysblk.pcpu))
     {
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
+        // "Processor %s%02X: processor is not %s"
         WRMSG(HHC00816, "W", PTYPSTR(sysblk.pcpu), sysblk.pcpu, "online");
         return 0;
     }
@@ -6536,13 +6796,16 @@ REGS *regs;
         else
             aaddr &= ~0xFFF;
     }
-    else if (sscanf(loadaddr, "%x%c", &aaddr, &c) !=1 ||
-                                       aaddr >= sysblk.mainsize )
+    else if (sscanf(loadaddr, "%"I64_FMT"x%c", &work64, &c) !=1
+        || work64 >= (U64) sysblk.mainsize )
     {
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
+        // "Invalid argument %s%s"
         WRMSG(HHC02205, "E", loadaddr, ": invalid starting address" );
         return -1;
     }
+    else
+        aaddr = (RADR) work64;
 
     if (argc < 4 || '*' == *(loadaddr = argv[3]))
     {
@@ -6557,22 +6820,26 @@ REGS *regs;
         else
         {
             release_lock(&sysblk.cpulock[sysblk.pcpu]);
+            // "Savecore: no modified storage found"
             WRMSG(HHC02246, "E");
             return -1;
         }
     }
-    else if (sscanf(loadaddr, "%x%c", &aaddr2, &c) !=1 ||
-                                       aaddr2 >= sysblk.mainsize )
+    else if (sscanf(loadaddr, "%"I64_FMT"x%c", &work64, &c) !=1
+        || work64 >= (U64) sysblk.mainsize )
     {
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
+        // "Invalid argument %s%s"
         WRMSG(HHC02205, "E", loadaddr, ": invalid ending address" );
         return -1;
     }
+    else
+        aaddr2 = (RADR) work64;
 
-    /* Command is valid only when CPU is stopped */
     if (CPUSTATE_STOPPED != regs->cpustate)
     {
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
+        // "Operation rejected: CPU not stopped"
         WRMSG(HHC02247, "E");
         return -1;
     }
@@ -6581,13 +6848,20 @@ REGS *regs;
     {
         char buf[40];
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
-        MSGBUF( buf, "%08X-%08X", aaddr, aaddr2);
+        MSGBUF( buf, I64_FMTX"-"I64_FMTX, (U64) aaddr, (U64) aaddr2);
+        // "Invalid argument %s%s"
         WRMSG(HHC02205, "W", buf, ": invalid range" );
         return -1;
     }
 
-    /* Save the file from absolute storage */
-    WRMSG(HHC02248, "I", aaddr, aaddr2, fname );
+    // "Saving locations %016X-%016X to file %s"
+    {
+        char buf1[32];
+        char buf2[32];
+        MSGBUF( buf1, "%"I64_FMT"X", (U64) aaddr );
+        MSGBUF( buf2, "%"I64_FMT"X", (U64) aaddr2 );
+        WRMSG(HHC02248, "I", buf1, buf2, fname );
+    }
 
     hostpath(pathname, fname, sizeof(pathname));
 
@@ -6595,19 +6869,63 @@ REGS *regs;
     {
         int saved_errno = errno;
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
+        // "Error in function %s: %s"
         WRMSG(HHC02219, "E", "open()", strerror(saved_errno) );
         return -1;
     }
 
-    if ((len = write(fd, regs->mainstor + aaddr, (aaddr2 - aaddr) + 1)) < 0)
-        WRMSG(HHC02219, "E", "write()", strerror(errno) );
-    else if ( (U32)len < (aaddr2 - aaddr) + 1 )
-        WRMSG(HHC02219, "E", "write()", "incomplete" );
+    /* Calculate total number of bytes to be written */
+    total = ((U64)aaddr2 - (U64)aaddr) + 1;
+    saved = 0;
+
+    /* Save start time */
+    time( &begtime );
+
+    /* Write smaller more manageable chunks until all is written */
+    do
+    {
+        chunk = (64 * 1024 * 1024);
+
+        if (chunk > total)
+            chunk = total;
+
+        written = write( fd, regs->mainstor + aaddr, chunk );
+
+        if (written < 0)
+        {
+            // "Error in function %s: %s"
+            WRMSG(HHC02219, "E", "write()", strerror(errno) );
+            return -1;
+        }
+
+        if (written < chunk)
+        {
+            // "Error in function %s: %s"
+            WRMSG(HHC02219, "E", "write()", "incomplete" );
+            return -1;
+        }
+
+        aaddr += chunk;
+        saved += chunk;
+
+        /* Time for progress message? */
+        time( &curtime );
+        if (difftime( curtime, begtime ) > 2.0)
+        {
+            begtime = curtime;
+            // "%s bytes %s so far..."
+            WRMSG( HHC02317, "I",
+                fmt_memsize_rounded( saved, fmt_mem, sizeof( fmt_mem )),
+                    "saved" );
+        }
+    }
+    while ((total -= chunk) > 0);
 
     close(fd);
 
     release_lock(&sysblk.cpulock[sysblk.pcpu]);
 
+    // "Operation complete"
     WRMSG(HHC02249, "I");
 
     return 0;
@@ -6753,7 +7071,8 @@ int OnOffCommand(int argc, char *argv[], char *cmdline)
     char   *cmd = cmdline;              /* Copy of panel command     */
     int     oneorzero;                  /* 1=x+ command, 0=x-        */
     char   *onoroff;                    /* "on" or "off"             */
-    U32     aaddr;                      /* Absolute storage address  */
+    U64     work64;                     /* 64-bit work variable      */
+    RADR    aaddr;                      /* Absolute storage address  */
     DEVBLK* dev;
     U16     devnum;
     U16     lcss;
@@ -6784,13 +7103,14 @@ BYTE c;                                 /* Character work area       */
 
     // f- and f+ commands - mark frames unusable/usable
 
-    if ((cmd[0] == 'f') && sscanf(cmd+2, "%x%c", &aaddr, &c) == 1)
+    if ((cmd[0] == 'f') && sscanf(cmd+2, "%"I64_FMT"x%c", &work64, &c) == 1)
     {
-        char buf[20];
+        char buf[40];
+        aaddr = (RADR) work64;
         if (aaddr > regs->mainlim)
         {
             RELEASE_INTLOCK(NULL);
-            MSGBUF( buf, "%08X", aaddr);
+            MSGBUF( buf, F_RADR, aaddr);
             WRMSG(HHC02205, "E", buf, "" );
             return -1;
         }
@@ -6798,7 +7118,7 @@ BYTE c;                                 /* Character work area       */
         if (!oneorzero)
             STORAGE_KEY(aaddr, regs) |= STORKEY_BADFRM;
         RELEASE_INTLOCK(NULL);
-        MSGBUF( buf, "frame %08X", aaddr);
+        MSGBUF( buf, "frame "F_RADR, aaddr);
         WRMSG(HHC02204, "I", buf, oneorzero ? "usable" : "unusable");
         return 0;
     }
@@ -7812,9 +8132,7 @@ int qproc_cmd(int argc, char *argv[], char *cmdline)
     int i, j, k;
     int cpupct = 0;
     U32 mipsrate = 0;
-#if defined(_MSVC_)
     char msgbuf[128];
-#endif
 
     UNREFERENCED(cmdline);
     UNREFERENCED(argv);
@@ -7853,8 +8171,6 @@ int qproc_cmd(int argc, char *argv[], char *cmdline)
                     sysblk.siosrate, "" );
 #endif
 
-#if defined(OPTION_CAPPING)
-
     if ( sysblk.capvalue > 0 )
     {
         cpupct = 0;
@@ -7878,72 +8194,65 @@ int qproc_cmd(int argc, char *argv[], char *cmdline)
                                 ( mipsrate % 1000000 ) / 10000 );
         }
     }
-#endif
+
     for ( i = 0; i < sysblk.maxcpu; i++ )
     {
         if ( IS_CPU_ONLINE(i) )
         {
-            char *pmsg = "";
-#if defined(_MSVC_)
-            FILETIME ftCreate, ftExit, ftKernel, ftUser;
+            char           *pmsg = "";
+            struct rusage   rusage;
 
-            if ( GetThreadTimes(win_thread_handle(sysblk.cputid[i]), &ftCreate, &ftExit, &ftKernel, &ftUser) != 0 )
+            if (getrusage((int)sysblk.cputid[i], &rusage) == 0)
             {
-                char    msgKernel[64];
-                char    msgUser[64];
-                char    yy[8], mm[8], dd[8], hh[8], mn[8], ss[8], ms[8];
+                char    kdays[16], udays[16];
 
-                SYSTEMTIME  st;
+                U64     kdd, khh, kmm, kss, kms,
+                        udd, uhh, umm, uss, ums;
 
-                FileTimeToSystemTime( &ftKernel, &st );
-                st.wYear    -= 1601;
-                st.wDay     -= 1;
-                st.wMonth   -= 1;
-
-                MSGBUF( yy, "%02d", st.wYear );
-                MSGBUF( mm, "%02d", st.wMonth );
-                MSGBUF( dd, "%02d", st.wDay );
-                MSGBUF( hh, "%02d", st.wHour );
-                MSGBUF( mn, "%02d", st.wMinute );
-                MSGBUF( ss, "%02d", st.wSecond );
-                MSGBUF( ms, "%03d", st.wMilliseconds );
-
-                if ( st.wYear != 0 )
-                    MSGBUF( msgKernel, "%s/%s/%s %s:%s:%s.%s", yy, mm, dd, hh, mn, ss, ms );
-                else if ( st.wMonth != 0 )
-                    MSGBUF( msgKernel, "%s/%s %s:%s:%s.%s", mm, dd, hh, mn, ss, ms );
-                else if ( st.wDay != 0 )
-                    MSGBUF( msgKernel, "%s %s:%s:%s.%s", dd, hh, mn, ss, ms );
+                if (unlikely(rusage.ru_stime.tv_usec >= 1000000))
+                {
+                    rusage.ru_stime.tv_sec += rusage.ru_stime.tv_usec / 1000000;
+                    rusage.ru_stime.tv_usec %= 1000000;
+                }
+                kss = rusage.ru_stime.tv_sec;
+                kdd = kss / 86400;
+                if (kdd)
+                {
+                    kss %= 86400;
+                    MSGBUF( kdays, "%"I64_FMT"u/", kdd);
+                }
                 else
-                    MSGBUF( msgKernel, "%s:%s:%s.%s", hh, mn, ss, ms );
+                    kdays[0] = 0;
+                khh = kss /  3600, kss %=  3600;
+                kmm = kss /    60, kss %=    60;
+                kms = (rusage.ru_stime.tv_usec + 500) / 1000;
 
-                FileTimeToSystemTime( &ftUser, &st );
-                st.wYear    -= 1601;
-                st.wDay     -= 1;
-                st.wMonth   -= 1;
-
-                MSGBUF( yy, "%02d", st.wYear );
-                MSGBUF( mm, "%02d", st.wMonth );
-                MSGBUF( dd, "%02d", st.wDay );
-                MSGBUF( hh, "%02d", st.wHour );
-                MSGBUF( mn, "%02d", st.wMinute );
-                MSGBUF( ss, "%02d", st.wSecond );
-                MSGBUF( ms, "%03d", st.wMilliseconds );
-
-                if ( st.wYear != 0 )
-                    MSGBUF( msgUser, "%s/%s/%s %s:%s:%s.%s", yy, mm, dd, hh, mn, ss, ms );
-                else if ( st.wMonth != 0 )
-                    MSGBUF( msgUser, "%s/%s %s:%s:%s.%s", mm, dd, hh, mn, ss, ms );
-                else if ( st.wDay != 0 )
-                    MSGBUF( msgUser, "%s %s:%s:%s.%s", dd, hh, mn, ss, ms );
+                if (unlikely(rusage.ru_utime.tv_usec >= 1000000))
+                {
+                    rusage.ru_utime.tv_sec += rusage.ru_utime.tv_usec / 1000000;
+                    rusage.ru_utime.tv_usec %= 1000000;
+                }
+                uss = rusage.ru_utime.tv_sec;
+                udd = uss / 86400;
+                if (udd)
+                {
+                    uss %= 86400;
+                    MSGBUF( udays, "%"I64_FMT"u/", udd);
+                }
                 else
-                    MSGBUF( msgUser, "%s:%s:%s.%s", hh, mn, ss, ms );
+                    udays[0] = 0;
+                uhh = uss /  3600, uss %=  3600;
+                umm = uss /    60, uss %=    60;
+                ums = (rusage.ru_utime.tv_usec + 500) / 1000;
 
-                MSGBUF( msgbuf, " - Host Kernel(%s) User(%s)", msgKernel, msgUser );
+                MSGBUF( msgbuf, " - Host Kernel(%s%02d:%02d:%02d.%03d) "
+                                          "User(%s%02d:%02d:%02d.%03d)",
+                        kdays, (int)khh, (int)kmm, (int)kss, (int)kms,
+                        udays, (int)uhh, (int)umm, (int)uss, (int)ums);
 
                 pmsg = msgbuf;
             }
-#endif
+
             mipsrate = sysblk.regs[i]->mipsrate;
             WRMSG( HHC17009, "I", PTYPSTR(i), i,
                                 ( sysblk.regs[i]->cpustate == CPUSTATE_STARTED ) ? '-' :
@@ -7996,16 +8305,10 @@ int qstor_cmd(int argc, char *argv[], char *cmdline)
 
     if ( display_main )
     {
-        U64 mainsize = sysblk.mainsize;
-        if (!sysblk.maxcpu && mainsize <= _64_KILOBYTE )
-            mainsize = 0;
-        else if (mainsize)
-            mainsize >>= SHIFT_KIBIBYTE;
-        else /* 16E and quite unlikely */
-            mainsize = 16ULL << (SHIFT_EXBIBYTE - SHIFT_KIBIBYTE);
-        WRMSG( HHC17003, "I", "MAIN", fmt_memsize_KB((U64)mainsize),
+        WRMSG( HHC17003, "I", "MAIN", fmt_memsize_KB((U64)sysblk.mainsize >> SHIFT_KIBIBYTE),
                               "main", sysblk.mainstor_locked ? "":"not " );
     }
+
     if ( display_xpnd )
     {
         WRMSG( HHC17003, "I", "EXPANDED",

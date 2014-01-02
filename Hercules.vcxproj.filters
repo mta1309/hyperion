@@ -8,9 +8,6 @@
     <Filter Include="Source Files\Utilities">
       <UniqueIdentifier>{5e506d73-848f-472b-b316-248621986b67}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\Utilities\cmpsctst">
-      <UniqueIdentifier>{CB697219-81FE-4ecd-8BF1-FE9DBFBE85FE}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\Hercules">
       <UniqueIdentifier>{00b04ad3-7bbc-4c0f-b3b9-42351a5a8e4c}</UniqueIdentifier>
     </Filter>
@@ -158,42 +155,6 @@
     </ClCompile>
     <ClCompile Include="cckdswap.c">
       <Filter>Source Files\Utilities</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst.h">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst.cmd">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst.rexx">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_stdinc.h">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpsc.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpsc_2012.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpscdbg.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpscdct.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpscget.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpscmem.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
-    </ClCompile>
-    <ClCompile Include="cmpsctst_cmpscput.c">
-      <Filter>Source Files\Utilities\cmpsctst</Filter>
     </ClCompile>
     <ClCompile Include="conspawn.c">
       <Filter>Source Files\Utilities</Filter>
@@ -474,6 +435,9 @@
     <ClCompile Include="fthreads.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hthreads.c">
+      <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="general1.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
@@ -645,13 +609,7 @@
     <ClCompile Include="vstore.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="w32chan.c">
-      <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="w32util.c">
-      <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="wthreads.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="xstore.c">
@@ -735,6 +693,9 @@
       <Filter>Other Files\DOC\README</Filter>
     </None>
     <None Include="README.OSX">
+      <Filter>Other Files\DOC\README</Filter>
+    </None>
+    <None Include="README.PTT">
       <Filter>Other Files\DOC\README</Filter>
     </None>
     <None Include="README.REXX">
@@ -947,6 +908,12 @@
     <None Include="msvc.makefile.includes\HERC_FLAGS.msvc">
       <Filter>Other Files\Build\msvc\makefile includes</Filter>
     </None>
+    <None Include="msvc.makefile.includes\HQA_DIR.msvc">
+      <Filter>Other Files\Build\msvc\makefile includes</Filter>
+    </None>
+    <None Include="msvc.makefile.includes\HQA_FLAGS.msvc">
+      <Filter>Other Files\Build\msvc\makefile includes</Filter>
+    </None>
     <None Include="msvc.makefile.includes\MOD_RULES1.msvc">
       <Filter>Other Files\Build\msvc\makefile includes</Filter>
     </None>
@@ -1020,12 +987,6 @@
       <Filter>Other Files\Build\other</Filter>
     </None>
     <None Include="Makefile.am">
-      <Filter>Other Files\Build\other</Filter>
-    </None>
-    <None Include="makefile.generic">
-      <Filter>Other Files\Build\other</Filter>
-    </None>
-    <None Include="makefile.w32">
       <Filter>Other Files\Build\other</Filter>
     </None>
     <None Include="util\awssl-v19g">
@@ -1513,6 +1474,12 @@
     <ClInclude Include="hostopts.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hqadefs.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hqainc.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hscutl.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
@@ -1585,22 +1552,19 @@
     <ClInclude Include="sr.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="version.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vstore.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="w32chan.h">
-      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="w32dl.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="w32util.h">
-      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="wthreads.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hdiagf18.h">

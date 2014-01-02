@@ -50,13 +50,13 @@ int     cfba_used(DEVBLK *dev);
 int     cckd_read_trk(DEVBLK *dev, int trk, int ra, BYTE *unitstat);
 void    cckd_readahead(DEVBLK *dev, int trk);
 int     cckd_readahead_scan(int *answer, int ix, int i, void *data);
-void    cckd_ra();
+void*   cckd_ra(void* arg);
 void    cckd_flush_cache(DEVBLK *dev);
 int     cckd_flush_cache_scan(int *answer, int ix, int i, void *data);
 void    cckd_flush_cache_all();
 void    cckd_purge_cache(DEVBLK *dev);
 int     cckd_purge_cache_scan(int *answer, int ix, int i, void *data);
-void    cckd_writer(void *arg);
+void*   cckd_writer(void *arg);
 int     cckd_writer_scan(int *o, int ix, int i, void *data);
 off_t   cckd_get_space(DEVBLK *dev, int *size, int flags);
 void    cckd_rel_space(DEVBLK *dev, off_t pos, int len, int size);
@@ -93,10 +93,12 @@ DLL_EXPORT void   *cckd_sf_remove(void *data);
 DLL_EXPORT void   *cckd_sf_comp(void *data);
 DLL_EXPORT void   *cckd_sf_chk(void *data);
 DLL_EXPORT void   *cckd_sf_stats(void *data);
+#ifdef OPTION_SYNCIO
 int     cckd_disable_syncio(DEVBLK *dev);
+#endif // OPTION_SYNCIO
 void    cckd_lock_devchain(int flag);
 void    cckd_unlock_devchain();
-void    cckd_gcol();
+void*   cckd_gcol(void* arg);
 int     cckd_gc_percolate(DEVBLK *dev, unsigned int size);
 int     cckd_gc_l2(DEVBLK *dev, BYTE *buf);
 DEVBLK *cckd_find_device_by_devnum (U16 devnum);
@@ -467,7 +469,11 @@ int             trk = 0;                /* Last active track         */
     dev->bufoff = 0;
     dev->bufoffhi = cckd->ckddasd ? dev->ckdtrksz : CFBA_BLOCK_SIZE;
 
+#ifdef OPTION_SYNCIO
     /* Check for merge - synchronous i/o should be disabled */
+#else // OPTION_NOSYNCIO
+    /* Check for merge */
+#endif // OPTION_SYNCIO
     obtain_lock(&cckd->iolock);
     if (cckd->merging)
     {
@@ -810,7 +816,9 @@ int             rc;                     /* Return code               */
 int             len;                    /* Compressed length         */
 BYTE           *newbuf;                 /* Uncompressed buffer       */
 int             cache;                  /* New active cache entry    */
+#ifdef OPTION_SYNCIO
 int             syncio;                 /* Syncio indicator          */
+#endif // OPTION_SYNCIO
 
     cckd = dev->cckd_ext;
 
@@ -821,10 +829,12 @@ int             syncio;                 /* Syncio indicator          */
         cache_setval (CACHE_DEVBUF, dev->cache, dev->buflen);
     }
 
+#ifdef OPTION_SYNCIO
     /* Turn off the synchronous I/O bit if trk overflow or trk 0 */
     syncio = dev->syncio_active;
     if (dev->ckdtrkof || trk == 0)
         dev->syncio_active = 0;
+#endif // OPTION_SYNCIO
 
     /* Reset buffer offsets */
     dev->bufoff = 0;
@@ -837,6 +847,7 @@ int             syncio;                 /* Syncio indicator          */
         if ((dev->buf[0] & CCKD_COMPRESS_MASK) != 0
          && (dev->buf[0] & dev->comps) == 0)
         {
+#ifdef OPTION_SYNCIO
 #if 0
             /* Return if synchronous i/o */
             if (dev->syncio_active)
@@ -847,13 +858,16 @@ int             syncio;                 /* Syncio indicator          */
                 return -1;
             }
 #endif
+#endif // OPTION_SYNCIO
             len = cache_getval(CACHE_DEVBUF, dev->cache);
             newbuf = cckd_uncompress (dev, dev->buf, len, dev->ckdtrksz, trk);
             if (newbuf == NULL) {
                 ckd_build_sense (dev, SENSE_EC, 0, 0, FORMAT_1, MESSAGE_0);
                 *unitstat = CSW_CE | CSW_DE | CSW_UC;
                 dev->bufcur = dev->cache = -1;
+#ifdef OPTION_SYNCIO
                 dev->syncio_active = syncio;
+#endif // OPTION_SYNCIO
                 return -1;
             }
             cache_setbuf (CACHE_DEVBUF, dev->cache, newbuf, dev->ckdtrksz);
@@ -873,7 +887,10 @@ int             syncio;                 /* Syncio indicator          */
     }
 
     cckd_trace (dev, "read  trk   %d (%s)", trk,
-                dev->syncio_active ? "synchronous" : "asynchronous");
+#ifdef OPTION_SYNCIO
+                dev->syncio_active ? "synchronous" :
+#endif // OPTION_SYNCIO
+                "asynchronous");
 
     /* read the new track */
     dev->bufupd = 0;
@@ -903,7 +920,9 @@ int             syncio;                 /* Syncio indicator          */
     else
         rc = 0;
 
+#ifdef OPTION_SYNCIO
     dev->syncio_active = syncio;
+#endif // OPTION_SYNCIO
     return rc;
 } /* end function cckd_read_track */
 
@@ -1032,6 +1051,7 @@ int             maxlen;                 /* Size for cache entry      */
         if ((cbuf[0] & CCKD_COMPRESS_MASK) != 0
          && (cbuf[0] & dev->comps) == 0)
         {
+#ifdef OPTION_SYNCIO
 #if 0
             /* Return if synchronous i/o */
             if (dev->syncio_active)
@@ -1043,6 +1063,7 @@ int             maxlen;                 /* Size for cache entry      */
                 return -1;
             }
 #endif
+#endif // OPTION_SYNCIO
             len = cache_getval(CACHE_DEVBUF, dev->cache) + CKDDASD_TRKHDR_SIZE;
             newbuf = cckd_uncompress (dev, cbuf, len, maxlen, blkgrp);
             if (newbuf == NULL) {
@@ -1068,7 +1089,10 @@ int             maxlen;                 /* Size for cache entry      */
     }
 
     cckd_trace (dev, "read blkgrp  %d (%s)", blkgrp,
-                dev->syncio_active ? "synchronous" : "asynchronous");
+#ifdef OPTION_SYNCIO
+                dev->syncio_active ? "synchronous" :
+#endif // OPTION_SYNCIO
+                "asynchronous");
 
     /* Read the new blkgrp */
     dev->bufupd = 0;
@@ -1236,6 +1260,7 @@ cckd_read_trk_retry:
             return fnd;
         }
 
+#ifdef OPTION_SYNCIO
         /* If synchronous I/O and I/O is active then return
            with syncio_retry bit on */
         if (dev->syncio_active)
@@ -1253,6 +1278,7 @@ cckd_read_trk_retry:
             }
             else cckdblk.stats_syncios++;
         }
+#endif // OPTION_SYNCIO
 
         /* Mark the new entry active */
         cache_setflag(CACHE_DEVBUF, fnd, ~0, CCKD_CACHE_ACTIVE | CCKD_CACHE_USED);
@@ -1302,6 +1328,7 @@ cckd_read_trk_retry:
 
     } /* cache hit */
 
+#ifdef OPTION_SYNCIO
     /* If not readahead and synchronous I/O then retry */
     if (!ra && dev->syncio_active)
     {
@@ -1312,6 +1339,7 @@ cckd_read_trk_retry:
         dev->syncio_retry = 1;
         return -1;
     }
+#endif // OPTION_SYNCIO
 
     cckd_trace (dev, "%d rdtrk[%d] %d cache miss", ra, lru, trk);
 
@@ -1511,7 +1539,7 @@ int             k;                      /* Index                     */
 /*-------------------------------------------------------------------*/
 /* Asynchronous readahead thread                                     */
 /*-------------------------------------------------------------------*/
-void cckd_ra ()
+void* cckd_ra (void* arg)
 {
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
 DEVBLK         *dev;                    /* Readahead devblk          */
@@ -1522,6 +1550,8 @@ TID             tid;                    /* Readahead thread id       */
 char            threadname[40];
 int             rc;
 
+    UNREFERENCED( arg );
+
     obtain_lock (&cckdblk.ralock);
     ra = ++cckdblk.ras;
 
@@ -1530,7 +1560,7 @@ int             rc;
     {
         --cckdblk.ras;
         release_lock (&cckdblk.ralock);
-        return;
+        return NULL;
     }
 
     if (!cckdblk.batch)
@@ -1594,7 +1624,7 @@ int             rc;
     --cckdblk.ras;
     if (!cckdblk.ras) signal_condition(&cckdblk.termcond);
     release_lock(&cckdblk.ralock);
-
+    return NULL;
 } /* end thread cckd_ra_thread */
 
 /*-------------------------------------------------------------------*/
@@ -1701,7 +1731,7 @@ DEVBLK         *dev = data;             /* -> device block           */
 /*-------------------------------------------------------------------*/
 /* Writer thread                                                     */
 /*-------------------------------------------------------------------*/
-void cckd_writer(void *arg)
+void* cckd_writer(void *arg)
 {
 DEVBLK         *dev;                    /* Device block              */
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
@@ -1742,7 +1772,7 @@ int             rc;
     {
         --cckdblk.wrs;
         release_lock (&cckdblk.wrlock);
-        return;
+        return NULL;
     }
 
     if (!cckdblk.batch)
@@ -1879,6 +1909,7 @@ int             rc;
     cckdblk.wrs--;
     if (cckdblk.wrs == 0) signal_condition(&cckdblk.termcond);
     release_lock(&cckdblk.wrlock);
+    return NULL;
 } /* end thread cckd_writer */
 
 int cckd_writer_scan (int *o, int ix, int i, void *data)
@@ -3763,7 +3794,9 @@ void *cckd_sf_add (void *data)
 {
 DEVBLK         *dev = data;             /* -> DEVBLK                 */
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
+#ifdef OPTION_SYNCIO
 int             syncio;                 /* Saved syncio bit          */
+#endif // OPTION_SYNCIO
 
     if (dev == NULL)
     {
@@ -3786,14 +3819,18 @@ int             syncio;                 /* Saved syncio bit          */
         return NULL;
     }
 
+#ifdef OPTION_SYNCIO
     /* Disable synchronous I/O for the device */
     syncio = cckd_disable_syncio(dev);
+#endif // OPTION_SYNCIO
 
     /* Schedule updated track entries to be written */
     obtain_lock (&cckd->iolock);
     if (cckd->merging)
     {
+#ifdef OPTION_SYNCIO
         dev->syncio = syncio;
+#endif // OPTION_SYNCIO
         release_lock (&cckd->iolock);
         WRMSG (HHC00318, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name (dev, cckd->sfn));
         return NULL;
@@ -3841,7 +3878,9 @@ cckd_sf_add_exit:
     cckd->merging = 0;
     if (cckd->iowaiters)
         broadcast_condition (&cckd->iocond);
+#ifdef OPTION_SYNCIO
     dev->syncio = syncio;
+#endif // OPTION_SYNCIO
     release_lock (&cckd->iolock);
 
     cckd_sf_stats (dev);
@@ -3855,7 +3894,9 @@ void *cckd_sf_remove (void *data)
 {
 DEVBLK         *dev = data;             /* -> DEVBLK                 */
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
+#ifdef OPTION_SYNCIO
 int             syncio;                 /* Saved syncio bit          */
+#endif // OPTION_SYNCIO
 int             rc;                     /* Return code               */
 int             from_sfx, to_sfx;       /* From/to file index        */
 int             fix;                    /* nullfmt index             */
@@ -3906,14 +3947,18 @@ BYTE            buf[65536];             /* Buffer                    */
     cckd_trace (dev, "merge starting: %s %s",
                 merge ? "merge" : "nomerge", force ? "force" : "");
 
+#ifdef OPTION_SYNCIO
     /* Disable synchronous I/O for the device */
     syncio = cckd_disable_syncio(dev);
+#endif // OPTION_SYNCIO
 
     /* Schedule updated track entries to be written */
     obtain_lock (&cckd->iolock);
     if (cckd->merging)
     {
+#ifdef OPTION_SYNCIO
         dev->syncio = syncio;
+#endif // OPTION_SYNCIO
         release_lock (&cckd->iolock);
         WRMSG (HHC00322, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
@@ -3935,7 +3980,9 @@ BYTE            buf[65536];             /* Buffer                    */
 
     if (cckd->sfn == 0)
     {
+#ifdef OPTION_SYNCIO
         dev->syncio = syncio;
+#endif // OPTION_SYNCIO
         release_lock (&cckd->filelock);
         WRMSG (HHC00323, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         cckd->merging = 0;
@@ -4146,7 +4193,9 @@ sf_remove_exit:
     cckd->merging = 0;
     if (cckd->iowaiters)
         broadcast_condition (&cckd->iocond);
+#ifdef OPTION_SYNCIO
     dev->syncio = syncio;
+#endif // OPTION_SYNCIO
     cckd_trace (dev, "merge complete%s","");
     release_lock (&cckd->iolock);
 
@@ -4182,7 +4231,9 @@ void *cckd_sf_comp (void *data)
 {
 DEVBLK         *dev = data;             /* -> DEVBLK                 */
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
+#ifdef OPTION_SYNCIO
 int             syncio;                 /* Saved syncio bit          */
+#endif // OPTION_SYNCIO
 int             rc;                     /* Return code               */
 
     if (dev == NULL)
@@ -4206,14 +4257,18 @@ int             rc;                     /* Return code               */
         return NULL;
     }
 
+#ifdef OPTION_SYNCIO
     /* Disable synchronous I/O for the device */
     syncio = cckd_disable_syncio(dev);
+#endif // OPTION_SYNCIO
 
     /* schedule updated track entries to be written */
     obtain_lock (&cckd->iolock);
     if (cckd->merging)
     {
+#ifdef OPTION_SYNCIO
         dev->syncio = syncio;
+#endif // OPTION_SYNCIO
         release_lock (&cckd->iolock);
         WRMSG (HHC00329, "W",  SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
@@ -4249,7 +4304,9 @@ int             rc;                     /* Return code               */
     cckd->merging = 0;
     if (cckd->iowaiters)
         broadcast_condition (&cckd->iocond);
+#ifdef OPTION_SYNCIO
     dev->syncio = syncio;
+#endif // OPTION_SYNCIO
     release_lock (&cckd->iolock);
 
     /* Display the shadow file statistics */
@@ -4265,7 +4322,9 @@ void *cckd_sf_chk (void *data)
 {
 DEVBLK         *dev = data;             /* -> DEVBLK                 */
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
+#ifdef OPTION_SYNCIO
 int             syncio;                 /* Saved syncio bit          */
+#endif // OPTION_SYNCIO
 int             rc;                     /* Return code               */
 int             level = 2;              /* Check level               */
 
@@ -4296,14 +4355,18 @@ int             level = 2;              /* Check level               */
     level = cckd->sflevel;
     cckd->sflevel = 0;
 
+#ifdef OPTION_SYNCIO
     /* Disable synchronous I/O for the device */
     syncio = cckd_disable_syncio(dev);
+#endif // OPTION_SYNCIO
 
     /* schedule updated track entries to be written */
     obtain_lock (&cckd->iolock);
     if (cckd->merging)
     {
+#ifdef OPTION_SYNCIO
         dev->syncio = syncio;
+#endif // OPTION_SYNCIO
         release_lock (&cckd->iolock);
         WRMSG (HHC00331, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
@@ -4339,7 +4402,9 @@ int             level = 2;              /* Check level               */
     cckd->merging = 0;
     if (cckd->iowaiters)
         broadcast_condition (&cckd->iocond);
+#ifdef OPTION_SYNCIO
     dev->syncio = syncio;
+#endif // OPTION_SYNCIO
     release_lock (&cckd->iolock);
 
     /* Display the shadow file statistics */
@@ -4434,6 +4499,7 @@ int             freenbr=0;              /* Total number free spaces  */
     return NULL;
 } /* end function cckd_sf_stats */
 
+#ifdef OPTION_SYNCIO
 /*-------------------------------------------------------------------*/
 /* Disable synchronous I/O for a device                              */
 /*-------------------------------------------------------------------*/
@@ -4452,6 +4518,7 @@ int cckd_disable_syncio(DEVBLK *dev)
     cckd_trace (dev, "syncio disabled%s","");
     return 1;
 }
+#endif // OPTION_SYNCIO
 
 /*-------------------------------------------------------------------*/
 /* Lock/unlock the device chain                                      */
@@ -4466,9 +4533,6 @@ void cckd_lock_devchain(int flag)
         cckdblk.devwaiters++;
 #if FALSE
         {
-#if defined( OPTION_WTHREADS )
-            timeout = timed_wait_condition(&cckdblk.devcond, &cckdblk.devlock, 2000);
-#else
         struct timespec tm;
         struct timeval  now;
         int             timeout;
@@ -4477,7 +4541,6 @@ void cckd_lock_devchain(int flag)
             tm.tv_sec = now.tv_sec + 2;
             tm.tv_nsec = now.tv_usec * 1000;
             timeout = timed_wait_condition(&cckdblk.devcond, &cckdblk.devlock, &tm);
-#endif
             if (timeout) cckd_print_itrace();
         }
 #else
@@ -4510,7 +4573,7 @@ void cckd_unlock_devchain()
 /*-------------------------------------------------------------------*/
 /* Garbage Collection thread                                         */
 /*-------------------------------------------------------------------*/
-void cckd_gcol()
+void* cckd_gcol(void* arg)
 {
 int             gcol;                   /* Identifier                */
 int             rc;                     /* Return code               */
@@ -4519,9 +4582,7 @@ CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
 S64             size, fsiz;             /* File size, free size      */
 struct timeval  tv_now;                 /* Time-of-day (as timeval)  */
 time_t          tt_now;                 /* Time-of-day (as time_t)   */
-#if !defined( OPTION_WTHREADS )
 struct timespec tm;                     /* Time-of-day to wait       */
-#endif
 int             gc;                     /* Garbage collection state  */
 int             gctab[5]= {             /* default gcol parameters   */
                            4096,        /* critical  50%   - 100%    */
@@ -4529,6 +4590,8 @@ int             gctab[5]= {             /* default gcol parameters   */
                            1024,        /* moderate  12.5% -  25%    */
                             512,        /* light      6.3% -  12.5%  */
                             256};       /* none       0%   -   6.3%  */
+
+    UNREFERENCED( arg );
 
     gettimeofday (&tv_now, NULL);
 
@@ -4540,7 +4603,7 @@ int             gctab[5]= {             /* default gcol parameters   */
     {
         --cckdblk.gcs;
         release_lock (&cckdblk.gclock);
-        return;
+        return NULL;
     }
 
     if (!cckdblk.batch)
@@ -4650,16 +4713,9 @@ int             gctab[5]= {             /* default gcol parameters   */
         cckd_trace (dev, "gcol wait %d seconds at %s",
                     cckdblk.gcwait, ctime (&tt_now));
 
-#if defined( OPTION_WTHREADS )
-// Use a relative time value
-        timed_wait_condition (&cckdblk.gccond, &cckdblk.gclock, cckdblk.gcwait * 1000);
-
-#else
         tm.tv_sec = tv_now.tv_sec + cckdblk.gcwait;
         tm.tv_nsec = tv_now.tv_usec * 1000;
         timed_wait_condition (&cckdblk.gccond, &cckdblk.gclock, &tm);
-#endif
-
     }
 
     if (!cckdblk.batch)
@@ -4668,6 +4724,7 @@ int             gctab[5]= {             /* default gcol parameters   */
     cckdblk.gcs--;
     if (!cckdblk.gcs) signal_condition (&cckdblk.termcond);
     release_lock (&cckdblk.gclock);
+    return NULL;
 } /* end thread cckd_gcol */
 
 /*-------------------------------------------------------------------*/
@@ -5331,10 +5388,7 @@ void cckd_command_help()
     int i;
     char *help[] = {
                     "Command parameters for cckd:"
-                    ,"  help          Display help message"
-                    ,"  stats         Display cckd statistics"
-                    ,"  opts          Display cckd options"
-                    ,"  comp=<n>      Override compression                 (-1 ... 2)"
+                    ,"  comp=<n>      Override compression                 (-1,0,1,2)"
                     ,"  compparm=<n>  Override compression parm            (-1 ... 9)"
                     ,"  ra=<n>        Set number readahead threads         ( 1 ... 9)"
                     ,"  raq=<n>       Set readahead queue size             ( 0 .. 16)"
@@ -5342,12 +5396,15 @@ void cckd_command_help()
                     ,"  wr=<n>        Set number writer threads            ( 1 ... 9)"
                     ,"  gcint=<n>     Set garbage collector interval (sec) ( 1 .. 60)"
                     ,"  gcparm=<n>    Set garbage collector parameter      (-8 ... 8)"
-                    ,"  gcstart       Start garbage collector"
-                    ,"  nostress=<n>  1=Disable stress writes"
                     ,"  freepend=<n>  Set free pending cycles              (-1 ... 4)"
-                    ,"  fsync=<n>     1=Enable fsync"
-                    ,"  linuxnull=<n> 1=Check for null linux tracks"
-                    ,"  trace=<n>     Set trace table size            ( 0 ... 200000)"
+                    ,"  trace=<n>     Set trace table size             (0 ... 200000)"
+                    ,"  gcstart=<n>   Start garbage collector                (0 or 1)"
+                    ,"  nostress=<n>  Disable stress writes                  (0 or 1)"
+                    ,"  fsync=<n>     Enable fsync                           (0 or 1)"
+                    ,"  linuxnull=<n> Check for null linux tracks            (0 or 1)"
+                    ,"  opts          Display cckd options"
+                    ,"  stats         Display cckd statistics"
+                    ,"  help          Display help message"
                     ,NULL };
 
     for( i = 0; help[i] != NULL; i++ )
@@ -5398,9 +5455,11 @@ void cckd_command_stats()
                     cckdblk.stats_readaheads, cckdblk.stats_readaheadmisses );
     WRMSG( HHC00347, "I", msgbuf );
 
+#ifdef OPTION_SYNCIO
     MSGBUF( msgbuf, "  syncios..%10" I64_FMT "d misses...%10" I64_FMT "d",
                     cckdblk.stats_syncios, cckdblk.stats_synciomisses );
     WRMSG( HHC00347, "I", msgbuf );
+#endif // OPTION_SYNCIO
 
     MSGBUF( msgbuf, "  switches.%10" I64_FMT "d l2 reads.%10" I64_FMT "d strs wrt.%10" I64_FMT "d",
                     cckdblk.stats_switches, cckdblk.stats_l2reads, cckdblk.stats_stresswrites );
@@ -5438,7 +5497,7 @@ void cckd_command_debug()
 /*-------------------------------------------------------------------*/
 DLL_EXPORT int cckd_command(char *op, int cmd)
 {
-char  *kw, *p, c = '\0', buf[256];
+char  *kw, *p, c, buf[256];
 int   val, opts = 0;
 int   rc;
 
@@ -5468,9 +5527,9 @@ int   rc;
         if ((p = strchr (kw, '=')))
         {
             *p++ = '\0';
-            sscanf (p, "%d%c", &val, &c);
+            rc = sscanf (p, "%d%c", &val, &c);
         }
-        else val = -77;
+        else rc = 0;
 
         /* Parse the keyword */
         if ( CMD(kw,help,4 ) )
@@ -5493,22 +5552,35 @@ int   rc;
             if (!cmd) return 0;
             cckd_command_debug();
         }
+        else if (rc != 1)
+        {
+            WRMSG(HHC00348, "E", val, kw);
+            return -1;
+        }
         else if ( CMD(kw,comp,4) )
         {
-            if (val < -1 || ((val & CCKD_COMPRESS_MASK) & ~cckdblk.comps) || c != '\0')
+            if (val < -1 || (val > 0 && (val & ~cckdblk.comps)))
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
-            else
+            else switch (val)
             {
+            case -1:
+            case CCKD_COMPRESS_NONE:
+            case CCKD_COMPRESS_ZLIB:
+            case CCKD_COMPRESS_BZIP2:
                 cckdblk.comp = val < 0 ? 0xff : val;
                 opts = 1;
+                break;
+            default: /* unsupported algorithm */
+                WRMSG(HHC00348, "E", val, kw);
+                return -1;
             }
         }
         else if ( CMD(kw,compparm,8) )
         {
-            if (val < -1 || val > 9 || c != '\0')
+            if (val < -1 || val > 9)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5521,7 +5593,7 @@ int   rc;
         }
         else if ( CMD(kw,ra,2) )
         {
-            if (val < CCKD_MIN_RA || val > CCKD_MAX_RA || c != '\0')
+            if (val < CCKD_MIN_RA || val > CCKD_MAX_RA)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5534,7 +5606,7 @@ int   rc;
         }
         else if ( CMD(kw,raq,3) )
         {
-            if (val < 0 || val > CCKD_MAX_RA_SIZE || c != '\0')
+            if (val < 0 || val > CCKD_MAX_RA_SIZE)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5547,7 +5619,7 @@ int   rc;
         }
         else if ( CMD(kw,rat,3) )
         {
-            if (val < 0 || val > CCKD_MAX_RA_SIZE || c != '\0')
+            if (val < 0 || val > CCKD_MAX_RA_SIZE)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5560,7 +5632,7 @@ int   rc;
         }
         else if ( CMD(kw,wr,2) )
         {
-            if (val < CCKD_MIN_WRITER || val > CCKD_MAX_WRITER || c != '\0')
+            if (val < CCKD_MIN_WRITER || val > CCKD_MAX_WRITER)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5573,7 +5645,7 @@ int   rc;
         }
         else if ( CMD(kw,gcint,5) )
         {
-            if (val < 1 || val > 60 || c != '\0')
+            if (val < 1 || val > 60)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5586,7 +5658,7 @@ int   rc;
         }
         else if ( CMD(kw,gcparm,6) )
         {
-            if (val < -8 || val > 8 || c != '\0')
+            if (val < -8 || val > 8)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5599,7 +5671,7 @@ int   rc;
         }
         else if ( CMD(kw,nostress,8) )
         {
-            if (val < 0 || val > 1 || c != '\0')
+            if (val < 0 || val > 1)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5612,7 +5684,7 @@ int   rc;
         }
         else if ( CMD(kw,freepend,8) )
         {
-            if (val < -1 || val > CCKD_MAX_FREEPEND || c != '\0')
+            if (val < -1 || val > CCKD_MAX_FREEPEND)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5625,7 +5697,7 @@ int   rc;
         }
         else if ( CMD(kw,fsync,5) )
         {
-            if (val < 0 || val > 1 || c != '\0')
+            if (val < 0 || val > 1)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5638,7 +5710,7 @@ int   rc;
         }
         else if ( CMD(kw,trace,5) )
         {
-            if (val < 0 || val > CCKD_MAX_TRACE || c != '\0')
+            if (val < 0 || val > CCKD_MAX_TRACE)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5679,7 +5751,7 @@ int   rc;
         }
         else if ( CMD(kw,linuxnull,5) )
         {
-            if (val < 0 || val > 1 || c != '\0')
+            if (val < 0 || val > 1)
             {
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
@@ -5692,30 +5764,38 @@ int   rc;
         }
         else if ( CMD(kw,gcstart,7) )
         {
-            DEVBLK *dev;
-            CCKDDASD_EXT *cckd;
-            TID tid;
-            int flag = 0;
-
-            cckd_lock_devchain(0);
-            for (dev = cckdblk.dev1st; dev; dev = cckd->devnext)
+            if (val < 0 || val > 1)
             {
-                cckd = dev->cckd_ext;
-                obtain_lock (&cckd->filelock);
-                if (cckd->cdevhdr[cckd->sfn].free_total)
-                {
-                    cckd->cdevhdr[cckd->sfn].options |= (CCKD_OPENED | CCKD_ORDWR);
-                    cckd_write_chdr (dev);
-                    flag = 1;
-                }
-                release_lock (&cckd->filelock);
+                WRMSG(HHC00348, "E", val, kw);
+                return -1;
             }
-            cckd_unlock_devchain();
-            if (flag && cckdblk.gcs < cckdblk.gcmax)
+            else if (val == 1)
             {
-                rc = create_thread (&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
-                if (rc)
-                    WRMSG(HHC00102, "E", strerror(rc));
+                DEVBLK *dev;
+                CCKDDASD_EXT *cckd;
+                TID tid;
+                int flag = 0;
+
+                cckd_lock_devchain(0);
+                for (dev = cckdblk.dev1st; dev; dev = cckd->devnext)
+                {
+                    cckd = dev->cckd_ext;
+                    obtain_lock (&cckd->filelock);
+                    if (cckd->cdevhdr[cckd->sfn].free_total)
+                    {
+                        cckd->cdevhdr[cckd->sfn].options |= (CCKD_OPENED | CCKD_ORDWR);
+                        cckd_write_chdr (dev);
+                        flag = 1;
+                    }
+                    release_lock (&cckd->filelock);
+                }
+                cckd_unlock_devchain();
+                if (flag && cckdblk.gcs < cckdblk.gcmax)
+                {
+                    rc = create_thread (&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
+                    if (rc)
+                        WRMSG(HHC00102, "E", strerror(rc));
+                }
             }
         }
         else

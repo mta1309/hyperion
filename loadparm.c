@@ -33,7 +33,7 @@ static const BYTE default_plant[4]      = { 0xE9,0xE9,0x40,0x40 };
 static const BYTE dflt_cpid[16]         = { 0xC8,0xC5,0xD9,0xC3,0xE4,0xD3,0xC5,0xE2,
                                             0x40,0x40,0x40,0x40,0x40,0x40,0x40,0x40 };
                                           /*  H    E    R    C    U    L    E    S  */
-static const BYTE dflt_vmid[8]          = { 0xC8,0xC5,0xD9,0xC3,0xE4,0xD3,0xC5,0xE2 };      
+static const BYTE dflt_vmid[8]          = { 0xC8,0xC5,0xD9,0xC3,0xE4,0xD3,0xC5,0xE2 };
 
 static int gsysinfo_init_flg = FALSE;
 
@@ -698,9 +698,22 @@ void get_mpfactors(BYTE *dest)
 /* The new z10 machine will use a denominator of 65535 for better    */
 /* granularity. But this will mess up old software. We will stick    */
 /* to the old value of 100. Bernard Feb 26, 2010.                    */
+/*                                                                   */
+/* Calculations will be done in a higher precision to prevent early  */
+/* truncation and degradation of the factors. To achieve this, the   */
+/* factors are calculated * 256. When storing the values, the        */
+/* individual values are rounded up by 128 and then divided by 256   */
+/* for the store operation.                                          */
+/*                                                                   */
+/* Once the number of host logical CPUs is reached, subsequent MP    */
+/* factors are no longer adjusted.                                   */
+/*                                                                   */
+/* MPFACTOR_DENOMINATOR must be 100, 255, or 65535.                  */
+/*                                                                   */
+/* It is recommended that MPFACTOR_PERCENT remain at 95 (95%).       */
 /*-------------------------------------------------------------------*/
-#define  MPFACTOR_DENOMINATOR   100
-#define  MPFACTOR_PERCENT       95
+#define  MPFACTOR_DENOMINATOR     100
+#define  MPFACTOR_PERCENT          95
 
     static U16 mpfactors[MAX_CPU_ENGINES-1] = {0};
     static BYTE didthis = 0;
@@ -708,18 +721,94 @@ void get_mpfactors(BYTE *dest)
     if (!didthis)
     {
         /* First time: initialize array... */
-        U32 mpfactor = MPFACTOR_DENOMINATOR;
-        size_t i;
-        for (i=0; i < arraysize( mpfactors ); i++)
+        size_t  limit = get_RealCPCount();
+        size_t  i;
+        U32     mpfactor = MPFACTOR_DENOMINATOR << 8;
+        U16     result = 0;
+        U16     resmin = 1;
+
+        switch (MPFACTOR_DENOMINATOR)
         {
-            /* Calculate the value of each subsequent entry
-               as percentage of the previous entry's value. */
-            mpfactor = (mpfactor * MPFACTOR_PERCENT) / 100;
-            STORE_HW( &mpfactors[i], (U16) mpfactor );
+            default: /* resmin =   1; break; */
+            case   100: resmin =   1; break;
+            case   255: resmin = 101; break;
+            case 65535: resmin = 256; break;
+        }
+
+        for (i=0; i < arraysize(mpfactors); i++)
+        {
+            /* Calculate the value of each subsequent entry as a
+             * percentage of the previous entry's value for the real
+             * defined CPU entries.
+             */
+            if (i < limit)
+            {
+                mpfactor = (mpfactor * MPFACTOR_PERCENT) / 100;
+                result = (mpfactor + 128) >> 8;
+                result = MAX(result, resmin);
+            }
+            STORE_HW( &mpfactors[i], result );
         }
         didthis = 1;
     }
 
     /* Return the requested information... */
-    memcpy( dest, &mpfactors[0], (sysblk.maxcpu-1) * sizeof(U16) );
+    memcpy( dest, &mpfactors[0], (MAX_CPU_ENGINES-1) * sizeof(U16) );
+}
+
+
+/*-------------------------------------------------------------------*/
+/* get_RealCPCount - Get the maximum count of possible concurrently  */
+/*                   dispatchable CP engines on the host processor.  */
+/*-------------------------------------------------------------------*/
+unsigned int
+get_RealCPCount (void)
+{
+    unsigned int    possible;
+    unsigned int    reserved;
+    unsigned int    cp = 0;
+    unsigned int    cpu;
+    unsigned int    result;
+
+    /* Initialize the number of possible concurrently dispatchable CP
+     * engines, taking into account that any of the hostinfo fields
+     * may be zero when not reported by the host OS.
+     */
+    if (hostinfo.num_logical_cpu)
+        possible = hostinfo.num_logical_cpu;
+    else if (hostinfo.num_procs)
+    {
+        if (hostinfo.num_physical_cpu)
+            possible = hostinfo.num_procs * hostinfo.num_physical_cpu;
+        else
+            possible = hostinfo.num_procs;
+    }
+    else
+        possible = MAX_CPU_ENGINES;
+
+    /* Limit to the maximum number of Hercules CPU engines */
+    if (possible > MAX_CPU_ENGINES)
+        possible = MAX_CPU_ENGINES;
+
+    /* Set number of reserved processors */
+    reserved = possible - sysblk.cpus;
+
+    /* Count the number of defined CP processors */
+    for ( cpu = 0; cpu < (unsigned) sysblk.hicpu; ++cpu )
+    {
+        /* Loop through online CP CPUs */
+        if ( IS_CPU_ONLINE(cpu) )
+        {
+            if ( sysblk.ptyp[cpu] == SCCB_PTYP_CP )
+                ++cp;
+        }
+    }
+
+    /* The result is the number of CP processors plus the number of
+     * reserved processors that may become CP processors, limited by the
+     * number of possible physical/logical processors.
+     */
+    result = MIN(cp + reserved, possible);
+
+    return (result);
 }

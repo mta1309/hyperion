@@ -363,7 +363,6 @@ DLL_EXPORT void del_symbol(const char *sym)
 DLL_EXPORT void set_symbol(const char *sym,const char *value)
 {
     SYMBOL_TOKEN        *tok;
-    extern int          pttmadethread;         /* pthreads is active */
 
     if ( sym == NULL || value == NULL || strlen(sym) == 0 )
         return;
@@ -414,7 +413,7 @@ DLL_EXPORT void set_symbol(const char *sym,const char *value)
     maximum atomic pipe buffer size PIPE_BUF.
 
     #endif
-    if (!pttmadethread)
+    if (!pttthread)
     {
        if ( setenv( sym, value, TRUE ) )
            WRMSG(HHC00136, "W", "setenv()", strerror(errno));
@@ -712,11 +711,11 @@ DLL_EXPORT int timeval_add
     accum_timeval->tv_sec  += dif_timeval->tv_sec;
     accum_timeval->tv_usec += dif_timeval->tv_usec;
 
-    if (accum_timeval->tv_usec > 1000000)
+    if (accum_timeval->tv_usec >= 1000000)
     {
-        int nsec = accum_timeval->tv_usec / 1000000;
-        accum_timeval->tv_sec  += nsec;
-        accum_timeval->tv_usec -= nsec * 1000000;
+        int usec = accum_timeval->tv_usec / 1000000;
+        accum_timeval->tv_sec  += usec;
+        accum_timeval->tv_usec -= usec * 1000000;
     }
 
     return ((accum_timeval->tv_sec < 0 || accum_timeval->tv_usec < 0) ? -1 : 0);
@@ -747,20 +746,14 @@ DLL_EXPORT int timed_wait_condition_relative_usecs
     timeout_timespec.tv_sec  = pTV->tv_sec  + ( usecs / 1000000 );
     timeout_timespec.tv_nsec = pTV->tv_usec + ( usecs % 1000000 );
 
-    if ( timeout_timespec.tv_nsec > 1000000 )
+    if ( timeout_timespec.tv_nsec >= 1000000 )
     {
         timeout_timespec.tv_sec  += timeout_timespec.tv_nsec / 1000000;
         timeout_timespec.tv_nsec %=                            1000000;
     }
 
     timeout_timespec.tv_nsec *= 1000;
-
-#if defined( OPTION_WTHREADS )
-    if ( usecs < 1000 ) return ( ETIMEDOUT );
-    else return timed_wait_condition( pCOND, pLOCK, usecs/1000 );
-#else
     return timed_wait_condition( pCOND, pLOCK, &timeout_timespec );
-#endif
 }
 
 /*********************************************************************
@@ -830,7 +823,19 @@ void socket_keepalive( int sfd, int idle_time, int probe_interval,
         int probe_count )
 {
     int rc, optval = 1;
-    rc = setsockopt(sfd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+    struct protoent * tcpproto = getprotobyname("TCP");
+    int l_tcp;
+
+    if (!tcpproto)
+    {
+       WRMSG(HHC02219, "E", "getprotobyname(\"TCP\")", strerror(errno));
+       fprintf(stderr, "Could not resolve protocol 'TCP'\n");
+       return;
+    }
+
+    l_tcp = tcpproto->p_proto;
+
+    rc = setsockopt(sfd, l_tcp, SO_KEEPALIVE, &optval, sizeof(optval));
     if (rc) WRMSG(HHC02219, "E", "setsockopt(SO_KEEPALIVE)", strerror(errno));
 
   #if defined(TCP_KEEPALIVE)
@@ -839,7 +844,7 @@ void socket_keepalive( int sfd, int idle_time, int probe_interval,
     if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPALIVE)", strerror(errno));
   #elif defined(TCP_KEEPIDLE)
     optval = idle_time;
-    rc = setsockopt(sfd, SOL_TCP, TCP_KEEPIDLE, &optval, sizeof(optval));
+    rc = setsockopt(sfd, l_tcp, TCP_KEEPIDLE, &optval, sizeof(optval));
     if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPIDLE)", strerror(errno));
   #else
     UNREFERENCED(idle_time);
@@ -847,7 +852,7 @@ void socket_keepalive( int sfd, int idle_time, int probe_interval,
 
   #if defined(TCP_KEEPINTVL)
     optval = probe_interval;
-    rc = setsockopt(sfd, SOL_TCP, TCP_KEEPINTVL, &optval, sizeof(optval));
+    rc = setsockopt(sfd, l_tcp, TCP_KEEPINTVL, &optval, sizeof(optval));
     if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPALIVE)", strerror(errno));
   #else
     UNREFERENCED(probe_interval);
@@ -855,7 +860,7 @@ void socket_keepalive( int sfd, int idle_time, int probe_interval,
 
   #if defined(TCP_KEEPCNT)
     optval = probe_count;
-    rc = setsockopt(sfd, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(optval));
+    rc = setsockopt(sfd, l_tcp, TCP_KEEPCNT, &optval, sizeof(optval));
     if (rc) WRMSG(HHC02219, "E", "setsockopt(TCPKEEPCNT)", strerror(errno));
   #else
     UNREFERENCED(probe_count);
@@ -880,23 +885,6 @@ DLL_EXPORT  int hopen( const char* path, int oflag, ... )
 #endif // !defined(_MSVC_)
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// (testing)
-
-#ifdef _MSVC_
-#pragma optimize( "", off )
-#endif
-
-DLL_EXPORT void cause_crash()
-{
-    static int x = 0; x = x / x - x;
-}
-
-#ifdef _MSVC_
-#pragma optimize( "", on )
-#endif
-
-//////////////////////////////////////////////////////////////////////////////////////////
-
 
 /*******************************************/
 /* Read/Write to socket functions          */
@@ -1101,4 +1089,113 @@ DLL_EXPORT int drop_all_caps(void)
 
     return failed;
 }
+#endif /* defined(HAVE_SYS_CAPABILITY_H) && defined(HAVE_SYS_PRCTL_H) && defined(OPTION_CAPABILITIES) */
+
+#if defined( _MSVC_ )
+/*-------------------------------------------------------------------*/
+/* Trim path information from __FILE__ macro value                   */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT const char* trimloc( const char* loc )
+{
+    /*
+    ** Under certain unknown circumstances MSVC sometimes
+    ** sets the __FILE__ macro to a full path filename
+    ** rather than just the filename only. The following
+    ** compensates for this condition.
+    */
+    char* p = strrchr( loc, '\\' );
+    if (!p) p = strrchr( loc, '/' );
+    if (p)
+        loc = p+1;
+    return loc;
+}
+#endif /* defined( _MSVC_ ) */
+
+/*********************************************************************/
+/* Format TIMEVAL to printable value: "YYYY-MM-DD HH:MM:SS.uuuuuu",  */
+/* being exactly 26 characters long (27 bytes with null terminator). */
+/* pTV points to the TIMEVAL to be formatted. If NULL is passed then */
+/* the curent time of day as returned by a call to 'gettimeofday' is */
+/* used instead. buf must point to a char work buffer where the time */
+/* is formatted into and must not be NULL. bufsz is the size of buf  */
+/* and must be >= 2. If successful then the value of buf is returned */
+/* and is always zero terminated. If an error occurs or an invalid   */
+/* parameter is passed then NULL is returned instead.                */
+/*********************************************************************/
+DLL_EXPORT char* FormatTIMEVAL( const TIMEVAL* pTV, char* buf, int bufsz )
+{
+    struct timeval  tv;
+    struct tm*      pTM;
+    time_t          todsecs;
+    if (!buf || bufsz < 2)
+        return NULL;
+    if (!pTV)
+    {
+        gettimeofday( &tv, NULL );
+        pTV = &tv;
+    }
+    todsecs = pTV->tv_sec;
+    pTM = localtime( &todsecs );
+    strftime( buf, bufsz, "%Y-%m-%d %H:%M:%S", pTM );
+    if (bufsz > 20)
+        snprintf( &buf[19], bufsz-19, ".%06d", (int)pTV->tv_usec );
+    buf[ bufsz-1 ] = 0;
+    return buf;
+}
+
+
+/*-------------------------------------------------------------------*/
+/* fmt_memsize_rounded:   128K,  64M,  8G,  etc...                   */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT char *fmt_memsize_rounded( const U64 memsize, char* buf, const size_t bufsz )
+{
+    /* Mainframe memory and DASD amounts are reported in 2**(10*n)
+     * values, (x_iB international format, and shown as x_ or x_B, when
+     * x >= 1024; x when x < 1024). Open Systems and Windows report
+     * memory in the same format, but report DASD storage in 10**(3*n)
+     * values. (Thank you, various marketing groups and international
+     * standards committees...)
+     *
+     * For Hercules, mainframe oriented reporting characteristics will
+     * be formatted and shown as x_, when x >= 1024, and as x when x <
+     * 1024. Reporting of Open Systems and Windows specifics should
+     * follow the international format, shown as x_iB, when x >= 1024,
+     * and x or xB when x < 1024. Reporting is done at the highest
+     * integral boundary.
+     *
+     * Format storage in 2**(10*n) values at the highest rounded
+     * (truncated) integral integer boundary.
+     */
+
+    const  char     suffix[9] = {0x00, 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'};
+    char            fmt_mem[128];   /* Max of 21 bytes used for U64 */
+    register U64    mem = memsize;
+    register u_int  i = 0;
+
+    if (mem)
+    {
+#if SIZEOF_SIZE_T > 8
+             if ( mem > ONE_YOBIBYTE )
+            mem &= 0xFFFFFFFFC0000000ULL;
+        else if ( mem > ONE_ZEBIBYTE )
+            mem &= 0xF000000000000000ULL;
+        else
 #endif
+             if ( mem > ONE_EXBIBYTE )
+            mem &= 0xFFFC000000000000ULL;
+        else if ( mem > ONE_PEBIBYTE )
+            mem &= 0xFFFFFF0000000000ULL;
+        else if ( mem > ONE_TEBIBYTE )
+            mem &= 0xFFFFFFFFC0000000ULL;
+        else if ( mem > ONE_GIBIBYTE )
+            mem &= 0xFFFFFFFFFFF00000ULL;
+        else if ( mem > ONE_MEBIBYTE )
+            mem &= 0xFFFFFFFFFFFFFC00ULL;
+
+        for (; i < sizeof(suffix) && !(mem & 0x03FF); mem >>= 10, ++i);
+    }
+
+    MSGBUF( fmt_mem, "%5"I64_FMT"u%c", mem, suffix[i]);
+    strlcpy( buf, fmt_mem, bufsz );
+    return buf;
+}

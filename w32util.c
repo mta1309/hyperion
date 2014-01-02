@@ -39,7 +39,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Support for disabling of CRT Invalid Parameter Handler...
 
-#if defined( _MSC_VER ) && ( _MSC_VER >= 1400 )
+#if defined( _MSC_VER ) && ( _MSC_VER >= VS2005 )
 
 static void DummyCRTInvalidParameterHandler
 (
@@ -79,7 +79,7 @@ DLL_EXPORT void EnableInvalidParameterHandling()
 #endif
 }
 
-#endif // defined( _MSC_VER ) && ( _MSC_VER >= 1400 )
+#endif // defined( _MSC_VER ) && ( _MSC_VER >= VS2005 )
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -191,8 +191,6 @@ DLL_EXPORT char* w32_w32errmsg( int errnum, char* pszBuffer, size_t nBuffSize )
         NULL
     );
 
-    ASSERT( dwBytesReturned );
-
     // (remove trailing whitespace)
     {
         char* p = pszBuffer + dwBytesReturned - 1;
@@ -206,7 +204,7 @@ DLL_EXPORT char* w32_w32errmsg( int errnum, char* pszBuffer, size_t nBuffSize )
 //////////////////////////////////////////////////////////////////////////////////////////
 // Large File Support...
 
-#if (_MSC_VER < 1400)
+#if (_MSC_VER < VS2005)
 
 //----------------------------------------------------------------------------------------
 
@@ -370,7 +368,7 @@ error_return:
     return rc;
 }
 
-#endif // (_MSC_VER < 1400)
+#endif // (_MSC_VER < VS2005)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -390,7 +388,8 @@ DLL_EXPORT pid_t  fork( void )
 
 DLL_EXPORT int sched_yield ( void )
 {
-    Sleep(0);
+    if (!SwitchToThread())
+        Sleep(0);
     return 0;
 }
 
@@ -442,8 +441,17 @@ static ULARGE_INTEGER FileTimeTo1970Nanoseconds( const FILETIME* pFT )
 
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// (PUBLIC) Nanosecond resolution TOD clock (clock_gettime)
-
+// (PUBLIC) Nanosecond resolution (not quite but almost!) TOD clock (clock_gettime)
+//
+//                      **  CRITICAL PROGRAMMING NOTE!  **
+//
+// Because the new hthreads design calls gettimeofday to save the time when a lock is
+// initialized or obtained, etc, the below function nor any of the functions it calls
+// may call logmsg either directly or indirectly (such as using the 'TRACE' macro) or
+// else an infinite loop will occur since our logger design uses locks! hthreads will
+// call gettimeofday which issues a message which calls logger which uses a lock and
+// hthreads calls gettimeofday again, etc.
+//
 DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
 {
     ULARGE_INTEGER          uliWork;                    // (current HPC tick count and work)
@@ -493,7 +501,6 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
         if (!uliHPCTicksPerSec.QuadPart)  // (we only need to do this once)
         {
             VERIFY( QueryPerformanceFrequency( (LARGE_INTEGER*)&uliHPCTicksPerSec ));
-            TRACE("w32util: uliHPCTicksPerSec = 0x%16.16llX (%llu)\n", uliHPCTicksPerSec.QuadPart, uliHPCTicksPerSec.QuadPart );
 
             // Verify the length of time between host TOD clock resyncs isn't
             // so very long that the number of High Performance Counter ticks
@@ -502,11 +509,9 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
 
             while (uliHPCTicksPerSec.QuadPart > (_UI64_MAX / (uiResyncSecs + 1)))
                 uiResyncSecs--;
-            TRACE("w32util: uiResyncSecs = %lu\n", uiResyncSecs );
 
             uliMaxElapsedHPCTicks.QuadPart =
                 uliHPCTicksPerSec.QuadPart * uiResyncSecs;
-            TRACE("w32util: uliMaxElapsedHPCTicks = 0x%16.16llX (%llu)\n", uliMaxElapsedHPCTicks.QuadPart, uliMaxElapsedHPCTicks.QuadPart );
 
             // Calculate the maximum supported clock resolution such that we don't
             // resync with the host TOD clock more than once every resync interval.
@@ -516,7 +521,6 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
             {
                 u64ClockResolution /= 10;  // (decrease TOD clock resolution)
             }
-            TRACE("w32util: u64ClockResolution = %llu (%11.9f)\n", u64ClockResolution, 1.0 / (double)u64ClockResolution );
 
             // (check for error condition...)
 
@@ -528,7 +532,6 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
             }
 
             u64ClockNanoScale = (MAX_GTOD_RESOLUTION / u64ClockResolution);
-            TRACE("w32util: u64ClockNanoScale = %llu\n", u64ClockNanoScale );
         }
 
         uliStartingNanoTime = FileTimeTo1970Nanoseconds( &ftStartingSystemTime );
@@ -602,6 +605,7 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
         }
     }
 
+
     // Save previously returned high clock value for next MONOTONIC clock time...
 
     if (likely( tp->tv_sec > tsPrevRetVal.tv_sec ||
@@ -612,6 +616,7 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
         tsPrevRetVal.tv_nsec = tp->tv_nsec;
     }
 
+
     // Done!
 
     return 0;       // (always, unless user error)
@@ -620,7 +625,16 @@ DLL_EXPORT int clock_gettime ( clockid_t clk_id, struct timespec *tp )
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // (PUBLIC) Microsecond resolution GTOD (getimeofday)...
-
+//
+//                      **  CRITICAL PROGRAMMING NOTE!  **
+//
+// Because the new hthreads design calls gettimeofday to save the time when a lock is
+// initialized or obtained, etc, the below function nor any of the functions it calls
+// may call logmsg either directly or indirectly (such as using the 'TRACE' macro) or
+// else an infinite loop will occur since our logger design uses locks! hthreads will
+// call gettimeofday which issues a message which calls logger which uses a lock and
+// hthreads calls gettimeofday again, etc.
+//
 DLL_EXPORT int gettimeofday ( struct timeval* pTV, void* pTZ )
 {
     static struct timeval tvPrevRetVal = {0};
@@ -1089,119 +1103,175 @@ DLL_EXPORT int alphasort ( const struct dirent **a, const struct dirent **b )
 
 #if !defined(HAVE_SYS_RESOURCE_H)
 
-static int DoGetRUsage( HANDLE hProcess, struct rusage* r_usage )
+enum rusage_type
+{
+    rusage_type_process,
+    rusage_type_thread,
+    rusage_type_unknown
+};
+
+
+static int INLINE
+rusage_failure (struct rusage* r_usage)
+{
+    r_usage->ru_stime.tv_sec  = 0;
+    r_usage->ru_stime.tv_usec = 0;
+    r_usage->ru_utime.tv_sec  = 0;
+    r_usage->ru_utime.tv_usec = 0;
+    errno = EINVAL;
+    return ( -1 );
+}
+
+
+static INLINE U64 FileTime2us (const FILETIME ft)
+{
+    ULARGE_INTEGER  uliWork;                // Work area
+
+    uliWork.HighPart = ft.dwHighDateTime;   // Initialize work area for 64-bit
+    uliWork.LowPart  = ft.dwLowDateTime;    // operations
+
+    uliWork.QuadPart +=  5;                 // Round FILETIME 100ns increments
+    uliWork.QuadPart /= 10;                 // Convert to microseconds
+    return ( uliWork.QuadPart );
+}
+
+
+static INLINE void FileTime2timeval (const FILETIME ft, struct timeval* tv)
+{
+    us2timeval( FileTime2us( ft ), tv );    // Convert to timeval
+}
+
+
+int DoGetRUsage( const int who, const int whotype, struct rusage* r_usage )
 {
     FILETIME  ftCreation;   // When the process was created(*)
     FILETIME  ftExit;       // When the process exited(*)
 
     // (*) Windows standard FILETIME format: date/time expressed as the
-    //     amount of time that has elapsed since midnight January 1, 1601.
+    //     amount of time that has elapsed since midnight January 1,
+    //     1601. These fields are NOT used in converting FILETIME usage
+    //     times to rusage times.
 
     FILETIME  ftKernel;     // CPU time spent in kernel mode (in #of 100-nanosecond units)
     FILETIME  ftUser;       // CPU time spent in user   mode (in #of 100-nanosecond units)
 
-    LARGE_INTEGER  liWork;  // (work area)
+    int result = 0;
 
-    if ( !GetProcessTimes( hProcess, &ftCreation, &ftExit, &ftKernel, &ftUser ) )
+    HANDLE  whoHandle;
+
+    switch ( whotype )
     {
-        ftCreation.dwHighDateTime = ftCreation.dwLowDateTime = 0;
-        ftExit    .dwHighDateTime = ftExit    .dwLowDateTime = 0;
-        ftKernel  .dwHighDateTime = ftKernel  .dwLowDateTime = 0;
-        ftUser    .dwHighDateTime = ftUser    .dwLowDateTime = 0;
+        case rusage_type_process:
+            whoHandle = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, who );
+            if ( whoHandle == NULL )
+                return rusage_failure( r_usage );
+            result = GetProcessTimes( whoHandle, &ftCreation, &ftExit, &ftKernel, &ftUser );
+            CloseHandle( whoHandle );
+            break;
+        case rusage_type_thread:
+            whoHandle = win_thread_handle( who );
+            if ( whoHandle == NULL )
+                return rusage_failure( r_usage );
+            result = GetThreadTimes( whoHandle, &ftCreation, &ftExit, &ftKernel, &ftUser );
+            break;
+        default:
+            // Check for thread ID first. If failure, handle as process ID.
+            result = DoGetRUsage( who, rusage_type_thread, r_usage );
+            if ( result == -1 )
+                result = DoGetRUsage( who, rusage_type_process, r_usage );
+            return (result);
     }
 
-    // Kernel time...
 
-    liWork.HighPart = ftKernel.dwHighDateTime;
-    liWork.LowPart  = ftKernel.dwLowDateTime;
+    if ( !result )
+        return rusage_failure( r_usage );
 
-    liWork.QuadPart /= 10;  // (convert to microseconds)
+    FileTime2timeval( ftKernel, &r_usage->ru_stime );   // Kernel time...
+    FileTime2timeval( ftUser,   &r_usage->ru_utime );   // User time...
 
-    r_usage->ru_stime.tv_sec  = (long)(liWork.QuadPart / MILLION);
-    r_usage->ru_stime.tv_usec = (long)(liWork.QuadPart % MILLION);
-
-    // User time...
-
-    liWork.HighPart = ftUser.dwHighDateTime;
-    liWork.LowPart  = ftUser.dwLowDateTime;
-
-    liWork.QuadPart /= 10;  // (convert to microseconds)
-
-    r_usage->ru_utime.tv_sec  = (long)(liWork.QuadPart / MILLION);
-    r_usage->ru_utime.tv_usec = (long)(liWork.QuadPart % MILLION);
-
-    return 0;
+    errno = 0;
+    return ( 0 );
 }
+
 
 DLL_EXPORT int getrusage ( int who, struct rusage* r_usage )
 {
-    if ( !r_usage )
+    int result;
+
+    if ( !r_usage || r_usage == NULL)
     {
         errno = EFAULT;
-        return -1;
+        return ( -1 );
     }
 
-    if ( RUSAGE_SELF == who )
-        return DoGetRUsage( GetCurrentProcess(), r_usage );
-
-    if ( RUSAGE_CHILDREN != who )
+    switch ( who )
     {
-        errno = EINVAL;
-        return -1;
-    }
+        case RUSAGE_SELF:
+            return DoGetRUsage( GetCurrentProcessId(), rusage_type_process, r_usage );
 
-    // RUSAGE_CHILDREN ...
-
-    {
-        DWORD           dwOurProcessId  = GetCurrentProcessId();
-        HANDLE          hProcessSnap    = NULL;
-        PROCESSENTRY32  pe32;
-        HANDLE          hChildProcess;
-        struct rusage   child_usage;
-
-        memset( &pe32, 0, sizeof(pe32) );
-
-        // Take a snapshot of all active processes...
-
-        hProcessSnap = CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 );
-
-        if ( INVALID_HANDLE_VALUE == hProcessSnap )
-            return DoGetRUsage( INVALID_HANDLE_VALUE, r_usage );
-
-        pe32.dwSize = sizeof( PROCESSENTRY32 );
-
-        //  Walk the snapshot...
-
-        if ( !Process32First( hProcessSnap, &pe32 ) )
+        case RUSAGE_CHILDREN:
         {
-            CloseHandle( hProcessSnap );
-            return DoGetRUsage( INVALID_HANDLE_VALUE, r_usage );
+            DWORD           dwOurProcessId  = GetCurrentProcessId();
+            HANDLE          hProcessSnap    = NULL;
+            PROCESSENTRY32  pe32;
+            struct rusage   child_usage;
+
+            memset( &pe32, 0, sizeof(pe32) );
+
+            // Take a snapshot of all active processes...
+
+            hProcessSnap = CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 );
+
+            if ( INVALID_HANDLE_VALUE == hProcessSnap )
+                return rusage_failure(r_usage);
+
+            pe32.dwSize = sizeof( PROCESSENTRY32 );
+
+            //  Walk the snapshot...
+
+            if ( !Process32First( hProcessSnap, &pe32 ) )
+            {
+                CloseHandle( hProcessSnap );
+                return rusage_failure( r_usage );
+            }
+
+            r_usage->ru_stime.tv_sec = r_usage->ru_stime.tv_usec = 0;
+            r_usage->ru_utime.tv_sec = r_usage->ru_utime.tv_usec = 0;
+
+            // Locate all children of the current process
+            // and accumulate their process times together...
+
+            do
+            {
+                if ( pe32.th32ParentProcessID != dwOurProcessId )
+                    continue;
+
+                result = DoGetRUsage( pe32.th32ProcessID, rusage_type_process, &child_usage );
+                if ( result != 0 )
+                    return rusage_failure( r_usage );
+
+                VERIFY( timeval_add( &child_usage.ru_stime, &r_usage->ru_stime ) == 0 );
+                VERIFY( timeval_add( &child_usage.ru_utime, &r_usage->ru_utime ) == 0 );
+            }
+            while ( Process32Next( hProcessSnap, &pe32 ) );
+
+            VERIFY( CloseHandle( hProcessSnap ) );
+
+            result = 0;
+            break;
         }
 
-        r_usage->ru_stime.tv_sec = r_usage->ru_stime.tv_usec = 0;
-        r_usage->ru_utime.tv_sec = r_usage->ru_utime.tv_usec = 0;
+        case RUSAGE_THREAD:
+            result = DoGetRUsage( GetCurrentThreadId(), rusage_type_thread, r_usage );
+            break;
 
-        // Locate all children of the current process
-        // and accumulate their process times together...
-
-        do
-        {
-            if ( pe32.th32ParentProcessID != dwOurProcessId )
-                continue;
-
-            hChildProcess = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, pe32.th32ProcessID );
-            DoGetRUsage( hChildProcess, &child_usage );
-            CloseHandle( hChildProcess );
-
-            VERIFY( timeval_add( &child_usage.ru_stime, &r_usage->ru_stime ) == 0 );
-            VERIFY( timeval_add( &child_usage.ru_utime, &r_usage->ru_utime ) == 0 );
-        }
-        while ( Process32Next( hProcessSnap, &pe32 ) );
-
-        VERIFY( CloseHandle( hProcessSnap ) );
+        default:
+            result = DoGetRUsage( who, rusage_type_unknown, r_usage );
+            break;
     }
 
-    return 0;
+    errno = ( result == 0 ) ? 0 : errno;
+    return ( result );
 }
 
 #endif
@@ -1536,7 +1606,7 @@ DLL_EXPORT void w32_init_hostinfo( HOST_INFO* pHostInfo )
     PSYSTEM_LOGICAL_PROCESSOR_INFORMATION ptr = NULL;
     PCACHE_DESCRIPTOR Cache;
 
-#if _MSC_VER >= 1500 // && defined(PRODUCT_ULTIMATE_E)
+#if _MSC_VER >= VS2008 // && defined(PRODUCT_ULTIMATE_E)
     PGPI              pgpi;
 #endif /* VS9 && SDK7 */
 
@@ -1609,7 +1679,7 @@ DLL_EXPORT void w32_init_hostinfo( HOST_INFO* pHostInfo )
                     pHostInfo->num_logical_cpu += CountSetBits(ptr->ProcessorMask);
                 }
                 else
-#if _MSC_VER >= 1500
+#if _MSC_VER >= VS2008
                 if ( ptr->Relationship == RelationProcessorPackage )
                 {
                     pHostInfo->num_packages++;
@@ -1711,7 +1781,7 @@ DLL_EXPORT void w32_init_hostinfo( HOST_INFO* pHostInfo )
             psz = "9x";
             break;
         case VER_PLATFORM_WIN32_NT:
-#if _MSC_VER >= 1500 // && defined(PRODUCT_ULTIMATE_E)
+#if _MSC_VER >= VS2008 // && defined(PRODUCT_ULTIMATE_E)
 // This list is current as of 2010-03-13 using V7.0 MS SDK
             if ( vi.dwMajorVersion == 6 )
             {
@@ -4020,7 +4090,7 @@ typedef struct tagTHREADNAME_INFO
 }
 THREADNAME_INFO;
 
-DLL_EXPORT void w32_set_thread_name( TID tid, char* name )
+DLL_EXPORT void w32_set_thread_name( TID tid, const char* name )
 {
     THREADNAME_INFO info;
 
@@ -4028,7 +4098,7 @@ DLL_EXPORT void w32_set_thread_name( TID tid, char* name )
 
     info.dwType     = 0x1000;
     info.pszName    = name;         // (should really be LPCTSTR)
-    info.dwThreadID = tid;          // (-1 == current thread, else tid)
+    info.dwThreadID = (DWORD)tid;   // (-1 == current thread, else tid)
     info.dwFlags    = 0;
 
     __try
