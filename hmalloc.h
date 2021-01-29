@@ -41,7 +41,7 @@
 
 #if !defined(CACHE_ALIGN)
 
-    #if defined(_MSVC_)
+    #if defined(_MSC_VER) || defined(_MSVC_)
         #define __ALIGN(_n)     __declspec(align(_n))
     #else
         #define __ALIGN(_n)     __attribute__ ((aligned(_n)))
@@ -311,8 +311,13 @@ ALIGN_16 BYTE   blkend[16];             /* eye-end                   */\
   #define      HPCALLOC(t,a)    PVALLOC(a)
   #define      HPCFREE(t,a)     PVFREE(a)
   #define      HPAGESIZE        getpagesize
-  #define      MLOCK            mlock
-  #define      MUNLOCK          munlock
+  #if defined(HAVE_MLOCK)
+    #define    MLOCK            mlock
+    #define    MUNLOCK          munlock
+  #else
+    #define    MLOCK(a,b)       0
+    #define    MUNLOCK(a,b)     0
+  #endif
 
 #else // defined( OPTION_CALLOC_GUESTMEM )
 
@@ -333,8 +338,8 @@ ALIGN_16 BYTE   blkend[16];             /* eye-end                   */\
       #define  MLOCK            mlock
       #define  MUNLOCK          munlock
     #else
-      #define  MLOCK            __noop
-      #define  MUNLOCK          __noop
+      #define  MLOCK(a,b)       0
+      #define  MUNLOCK(a,b)     0
     #endif
 
   #endif /* defined(_MSVC_) */

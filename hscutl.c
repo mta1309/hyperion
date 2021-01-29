@@ -5,6 +5,9 @@
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
 /*   Hercules.                                                       */
+/*   Modifications to HSCUTL.C Copyright 2017 by Stephen Orso,       */
+/*     and distributed under the terms of the Q Public License       */
+/*     Version 1                                                     */
 
 /*********************************************************************/
 /* HSCUTL.C   --   Implementation of functions used in hercules that */
@@ -18,8 +21,13 @@
 
 #include "hstdinc.h"
 
+#ifndef _HSCUTL_C_
 #define _HSCUTL_C_
+#endif
+
+#ifndef _HUTIL_DLL_
 #define _HUTIL_DLL_
+#endif
 
 #include "hercules.h"
 
@@ -250,11 +258,11 @@ strlcat(char *dst, const char *src, size_t siz)
 }
 #endif // !defined(HAVE_STRLCAT)
 
-#if defined(OPTION_CONFIG_SYMBOLS)
+#if defined(ENABLE_SYSTEM_SYMBOLS)
 
+#if defined(ENABLE_BUILTIN_SYMBOLS)
 /* The following structures are defined herein because they are private structures */
 /* that MUST be opaque to the outside world                                        */
-
 typedef struct _SYMBOL_TOKEN
 {
     char *var;
@@ -271,9 +279,11 @@ typedef struct _SYMBOL_TOKEN
 static SYMBOL_TOKEN **symbols=NULL;
 static int symbol_count=0;
 static int symbol_max=0;
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
+#if defined(ENABLE_BUILTIN_SYMBOLS)
 /* This function retrieves or allocates a new SYMBOL_TOKEN */
-static SYMBOL_TOKEN *get_symbol_token(const char *sym,int alloc)
+static SYMBOL_TOKEN *get_symbol_token(const char *sym, int alloc)
 {
     SYMBOL_TOKEN        *tok;
     int i;
@@ -285,7 +295,11 @@ static SYMBOL_TOKEN *get_symbol_token(const char *sym,int alloc)
         {
             continue;
         }
+#if defined(CASELESS_SYMBOLS)
         if(strcasecmp(symbols[i]->var,sym)==0)
+#else
+        if(strcmp(symbols[i]->var,sym)==0)
+#endif
         {
             return(symbols[i]);
         }
@@ -335,6 +349,9 @@ static SYMBOL_TOKEN *get_symbol_token(const char *sym,int alloc)
     symbol_count++;
     return(tok);
 }
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
 DLL_EXPORT void del_symbol(const char *sym)
 {
     SYMBOL_TOKEN        *tok;
@@ -347,7 +364,11 @@ DLL_EXPORT void del_symbol(const char *sym)
         {
             continue;
         }
+#if defined(CASELESS_SYMBOLS)
         if(strcasecmp(symbols[i]->var,sym)==0)
+#else
+        if(strcmp(symbols[i]->var,sym)==0)
+#endif
         {
             if ( tok->val != NULL ) free(tok->val);
             if ( tok->var != NULL ) free(tok->var);
@@ -359,78 +380,16 @@ DLL_EXPORT void del_symbol(const char *sym)
 
     return;
 }
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
-DLL_EXPORT void set_symbol(const char *sym,const char *value)
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+DLL_EXPORT void set_symbol(const char *sym, const char *value)
 {
-    SYMBOL_TOKEN        *tok;
+    SYMBOL_TOKEN *tok;
+    size_t size;
 
     if ( sym == NULL || value == NULL || strlen(sym) == 0 )
         return;
-
-#if defined ( _MSVC_ )
-    {
-        size_t   evl = strlen(sym)+strlen(value)+2;
-        char    *ev=malloc(evl);
-
-        if ( !ev )
-        {
-            WRMSG(HHC00136, "W", "malloc()", strerror(errno));
-        }
-        else
-        {
-            int rc;
-
-            strlcpy( ev, sym, evl );
-            strlcat( ev, "=", evl );
-            strlcat( ev, value, evl );
-            rc = putenv( ev );
-            free( ev );
-            if ( rc )
-                WRMSG(HHC00136, "W", "putenv()", strerror(errno));
-        }
-    }
-
-#else
-    #if 0
-
-    setenv/putenv are not thread safe.  This needs redesign.  Essentially,
-    you must maintain your own set of variables, under proper mutexing,
-    in front of the environment proper, which must remain read only.  When
-    running a command (system()), you must fork(), kill all other threads,
-    stow the local variables in the environment, and issue the command.
-
-    It will not work to restrict all access to the environment from Hercules
-    to a single thread as many library routines access _environment
-    directly.  That is, once you do setenv(), even getenv() is unsafe.
-
-    In short, pthreads is not for the average Joe COBOL.
-
-    A workable solution is to have a separate process that is not
-    multithreaded.  It can maintain its environment as this code tries to;
-    it can issue system() with impunity.  Of course, you have the problem
-    of designing a working protocol, but that can be done with a message
-    queue, or with pipes as long as the message length is within the
-    maximum atomic pipe buffer size PIPE_BUF.
-
-    #endif
-    if (!pttthread)
-    {
-       if ( setenv( sym, value, TRUE ) )
-           WRMSG(HHC00136, "W", "setenv()", strerror(errno));
-    }
-    else
-    {
-        char b[4096];
-        static int toldhim;
-
-        if (!toldhim)
-        {
-            sprintf (b, "cannot set %s: Not thread safe--setting disabled", sym);
-            WRMSG(HHC00136, "W", "setenv()", b);
-            toldhim = 1;
-        }
-    }
-#endif
 
     tok=get_symbol_token(sym,1);
     if(tok==NULL)
@@ -441,22 +400,26 @@ DLL_EXPORT void set_symbol(const char *sym,const char *value)
     {
         free(tok->val);
     }
-    tok->val=malloc(strlen(value)+1);
+    size = strlen(value)+1;
+    tok->val=malloc(size);
     if(tok->val==NULL)
     {
         return;
     }
-    strlcpy(tok->val,value,strlen(value)+1);
+    strlcpy(tok->val,value,size);
     return;
 }
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
+#if defined(ENABLE_SYSTEM_SYMBOLS)
 DLL_EXPORT const char *get_symbol(const char *sym)
 {
-    char *val;
-    SYMBOL_TOKEN   *tok;
-    static char     buf[80];
+char *val;
+static char     buf[MAX_PATH];
 
-#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+SYMBOL_TOKEN   *tok;
+
     if ( CMD(sym,DATE,4) )
     {
         time_t  raw_tt;
@@ -474,19 +437,26 @@ DLL_EXPORT const char *get_symbol(const char *sym)
         return(buf);
     }
     else
-#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
-
+    {
         tok=get_symbol_token(sym,0);
+    }
+    if (tok != NULL)
+    {
+        return(tok->val);
+    }
+    else
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
-    if(tok==NULL)
     {
         val=getenv(sym);
         MSGBUF(buf, "%s", val == NULL? "" : val );
         return(buf);
     }
-    return(tok->val);
-}
 
+}
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
+
+#if defined( ENABLE_SYSTEM_SYMBOLS )
 DLL_EXPORT char *resolve_symbol_string(const char *text)
 {
     char    buf[MAX_PATH*4];                /* Statement buffer          */
@@ -500,9 +470,14 @@ DLL_EXPORT char *resolve_symbol_string(const char *text)
     int     inc_equals = -1;                /* >=0 Ndx of equals         */
     int     lstarted;                       /* Indicate if non-whitespace*/
     char   *inc_envvar;                     /* ->Environment variable    */
-    int     fDParens    = TRUE;             /* Is it $() or ${} ?        */
 
+    char    symt = 0;                       /* Character work area       */
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
     if( strstr( text, "$(" ) == NULL && strstr( text, "${" ) == NULL )
+#else
+    if( strstr( text, "${" ) == NULL )
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
     {
         /* Malloc anyway - the caller will free() */
         return( strdup( text ) );
@@ -537,7 +512,7 @@ DLL_EXPORT char *resolve_symbol_string(const char *text)
                 if (inc_lbrace >= 0)
                 {
                     /* End of variable spec? */
-                    if ( ( fDParens && c == ')' )  || ( !fDParens && c == '}' ) )
+                    if ( c == symt )
                     {
                         /* Terminate it */
                         buf[stmtlen] = '\0';
@@ -610,13 +585,19 @@ DLL_EXPORT char *resolve_symbol_string(const char *text)
                 else // (inc_lbrace < 0)
                 {
                     /* Remember start of variable name */
-                    if (c == '(' || c == '{' )
-                    {
-                        if ( c == '(' )
-                            fDParens = TRUE;
-                        else
-                            fDParens = FALSE;
 
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+                    if ( c == '(' )
+                    {
+                        symt = ')' ;
+                        inc_lbrace = stmtlen + 1;
+                    }
+                    else
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
+
+                    if ( c == '{' )
+                    {
+                        symt = '}' ;
                         inc_lbrace = stmtlen + 1;
                     }
                     else
@@ -646,7 +627,9 @@ DLL_EXPORT char *resolve_symbol_string(const char *text)
 
     return (strdup(buf));
 }
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
 
+#if defined(ENABLE_BUILTIN_SYMBOLS)
 /* (called by defsym panel command) */
 DLL_EXPORT void list_all_symbols(void)
 {
@@ -660,8 +643,9 @@ DLL_EXPORT void list_all_symbols(void)
     }
     return;
 }
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
-#endif /* #if defined(OPTION_CONFIG_SYMBOLS) */
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
 
 /* Subtract 'beg_timeval' from 'end_timeval' yielding 'dif_timeval' */
 /* Return code: success == 0, error == -1 (difference was negative) */
@@ -817,57 +801,173 @@ DLL_EXPORT int socket_is_socket( int sfd )
     struct stat st;
     return ( fstat( sfd, &st ) == 0 && S_ISSOCK( st.st_mode ) );
 }
-/* Set the SO_KEEPALIVE option and timeout values for a
-   socket connection to detect when client disconnects */
-void socket_keepalive( int sfd, int idle_time, int probe_interval,
-        int probe_count )
-{
-    int rc, optval = 1;
-    struct protoent * tcpproto = getprotobyname("TCP");
-    int l_tcp;
 
+/* Set the SO_KEEPALIVE option and timeout values for a
+   socket connection to detect when client disconnects.
+   Returns 0==success, +1==warning, -1==failure
+   (*) Warning failure means function only partially
+       succeeded (not all requested values were set)
+*/
+int set_socket_keepalive( int sfd,
+                          int idle_time,
+                          int probe_interval,
+                          int probe_count )
+{
+#if !defined( HAVE_BASIC_KEEPALIVE )
+
+    UNREFERENCED( sfd );
+    UNREFERENCED( idle_time );
+    UNREFERENCED( probe_interval );
+    UNREFERENCED( probe_count );
+    errno = EOPNOTSUPP;
+    return -1;
+
+#else // basic, partial or full: must attempt setting keepalive
+
+    int idle, intv, cnt;
+    int rc, l_tcp, optval, succeeded = 0, tried = 0;
+    struct protoent * tcpproto;
+
+    /* Retrieve TCP protocol value (mostly for FreeBSD portability) */
+    tcpproto = getprotobyname("TCP");
     if (!tcpproto)
     {
-       WRMSG(HHC02219, "E", "getprotobyname(\"TCP\")", strerror(errno));
-       fprintf(stderr, "Could not resolve protocol 'TCP'\n");
-       return;
+        WRMSG( HHC02219, "E", "getprotobyname(\"TCP\")", strerror( HSO_errno ));
+        return -1;
     }
-
     l_tcp = tcpproto->p_proto;
 
-    rc = setsockopt(sfd, l_tcp, SO_KEEPALIVE, &optval, sizeof(optval));
-    if (rc) WRMSG(HHC02219, "E", "setsockopt(SO_KEEPALIVE)", strerror(errno));
+    optval = 1;
+  #if defined( HAVE_DECL_SO_KEEPALIVE ) && HAVE_DECL_SO_KEEPALIVE
+    tried++;
+    rc = setsockopt(sfd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+    if (rc)
+    {
+        WRMSG( HHC02219, "E", "setsockopt(SO_KEEPALIVE)", strerror( HSO_errno ));
+        return -1;
+    }
+    else
+        succeeded++;
+  #endif
 
-  #if defined(TCP_KEEPALIVE)
     optval = idle_time;
-    rc = setsockopt(sfd, IPPROTO_TCP, TCP_KEEPALIVE, &optval, sizeof(optval));
-    if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPALIVE)", strerror(errno));
-  #elif defined(TCP_KEEPIDLE)
+  #if defined( HAVE_DECL_TCP_KEEPALIVE ) && HAVE_DECL_TCP_KEEPALIVE
+    tried++;
+    rc = setsockopt(sfd, l_tcp, TCP_KEEPALIVE, &optval, sizeof(optval));
+    if (rc)
+        WRMSG( HHC02219, "E", "setsockopt(TCP_KEEPALIVE)", strerror( HSO_errno ));
+    else
+    {
+        succeeded++;
+        idle = idle_time;
+    }
+  #endif
+
+    /* Only try setting individual keepalive values if full or partial
+       keepalive is supported. Otherwise if we have only basic keepalive
+       then don't bother even trying
+    */
+#if defined( HAVE_FULL_KEEPALIVE ) || defined( HAVE_PARTIAL_KEEPALIVE )
+
     optval = idle_time;
+  #if defined( HAVE_DECL_TCP_KEEPIDLE ) && HAVE_DECL_TCP_KEEPIDLE
+    tried++;
     rc = setsockopt(sfd, l_tcp, TCP_KEEPIDLE, &optval, sizeof(optval));
-    if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPIDLE)", strerror(errno));
-  #else
-    UNREFERENCED(idle_time);
+    if (rc)
+        WRMSG( HHC02219, "E", "setsockopt(TCP_KEEPIDLE)", strerror( HSO_errno ));
+    else
+    {
+        succeeded++;
+        idle = idle_time;
+    }
   #endif
 
-  #if defined(TCP_KEEPINTVL)
     optval = probe_interval;
+  #if defined( HAVE_DECL_TCP_KEEPINTVL ) && HAVE_DECL_TCP_KEEPINTVL
+    tried++;
     rc = setsockopt(sfd, l_tcp, TCP_KEEPINTVL, &optval, sizeof(optval));
-    if (rc) WRMSG(HHC02219, "E", "setsockopt(TCP_KEEPALIVE)", strerror(errno));
-  #else
-    UNREFERENCED(probe_interval);
+    if (rc)
+        WRMSG( HHC02219, "E", "setsockopt(TCP_KEEPINTVL)", strerror( HSO_errno ));
+    else
+    {
+        succeeded++;
+        intv = probe_interval;
+    }
   #endif
 
-  #if defined(TCP_KEEPCNT)
     optval = probe_count;
+  #if defined( HAVE_DECL_TCP_KEEPCNT ) && HAVE_DECL_TCP_KEEPCNT
+    tried++;
     rc = setsockopt(sfd, l_tcp, TCP_KEEPCNT, &optval, sizeof(optval));
-    if (rc) WRMSG(HHC02219, "E", "setsockopt(TCPKEEPCNT)", strerror(errno));
-  #else
-    UNREFERENCED(probe_count);
+    if (rc)
+        WRMSG( HHC02219, "E", "setsockopt(TCP_KEEPCNT)", strerror( HSO_errno ));
+    else
+    {
+        succeeded++;
+        cnt  = probe_count;
+    }
   #endif
+
+#endif // defined( HAVE_FULL_KEEPALIVE ) || defined( HAVE_PARTIAL_KEEPALIVE )
+
+    /* Retrieve values in use, ignoring any error */
+    get_socket_keepalive( sfd, &idle, &intv, & cnt );
+
+    /* Determine return code: did everything succeed and,
+       more importantly, were all of our values accepted?
+       Did the values we tried setting (if any) "stick"?
+    */
+    if (succeeded >= tried)
+        rc = (idle != idle_time || intv != probe_interval || cnt != probe_count) ? +1 : 0;
+    else
+        rc = (succeeded <= 0 ? -1 : +1);
+
+    return rc;
+
+#endif // (KEEPALIVE)
 }
 
+/* Function to retrieve keepalive values. 0==success, -1=failure */
+int get_socket_keepalive( int sfd, int* idle_time, int* probe_interval,
+                          int* probe_count )
+{
+#if defined( HAVE_FULL_KEEPALIVE ) || defined( HAVE_PARTIAL_KEEPALIVE )
+    struct protoent*  tcpproto;
+    int        optval, l_tcp;
+    socklen_t  optlen = sizeof( optval );
 
+    /* Retrieve TCP protocol value (mostly for FreeBSD portability) */
+    tcpproto = getprotobyname("TCP");
+    if (!tcpproto)
+    {
+        WRMSG( HHC02219, "E", "getprotobyname(\"TCP\")", strerror( HSO_errno ));
+        return -1;
+    }
+    l_tcp = tcpproto->p_proto;
+#else
+    UNREFERENCED( sfd );
+#endif // HAVE_FULL_KEEPALIVE || HAVE_PARTIAL_KEEPALIVE
+
+    /* Default values */
+    *idle_time      = sysblk.kaidle;
+    *probe_interval = sysblk.kaintv;
+    *probe_count    = sysblk.kacnt;
+
+#if defined( HAVE_FULL_KEEPALIVE ) || defined( HAVE_PARTIAL_KEEPALIVE )
+    /* Retrieve the actual values from the system */
+  #if defined( HAVE_DECL_TCP_KEEPIDLE ) && HAVE_DECL_TCP_KEEPIDLE
+    if (getsockopt( sfd, l_tcp, TCP_KEEPIDLE,  &optval, &optlen ) >= 0) *idle_time      = optval;
+  #endif
+  #if defined( HAVE_DECL_TCP_KEEPINTVL ) && HAVE_DECL_TCP_KEEPINTVL
+    if (getsockopt( sfd, l_tcp, TCP_KEEPINTVL, &optval, &optlen ) >= 0) *probe_interval = optval;
+  #endif
+  #if defined( HAVE_DECL_TCP_KEEPCNT ) && HAVE_DECL_TCP_KEEPCNT
+    if (getsockopt( sfd, l_tcp, TCP_KEEPCNT,   &optval, &optlen ) >= 0) *probe_count    = optval;
+  #endif
+#endif // HAVE_FULL_KEEPALIVE || HAVE_PARTIAL_KEEPALIVE
+
+    return 0;
+}
 
 // Hercules low-level file open...
 DLL_EXPORT  int hopen( const char* path, int oflag, ... )
@@ -880,6 +980,19 @@ DLL_EXPORT  int hopen( const char* path, int oflag, ... )
         pmode = va_arg( vargs, int );
     }
     return open( path, oflag, pmode );
+}
+
+/* Determine whether process is running "elevated" or not */
+/* (returns 1==true running elevated, 0==false otherwise) */
+int is_elevated()
+{
+    // TODO: figure out how to do this on on non-Windows platforms!
+
+    // PROGRAMMING NOTE: until this function is properly coded,
+    // there is no practical default value that we can return.
+    // No matter what we return it will almost surely be wrong.
+
+    return 0;   // (see above TODO and PROGRAMMING NOTE)
 }
 
 #endif // !defined(_MSVC_)
@@ -907,7 +1020,9 @@ DLL_EXPORT char * hgets(char *b,size_t c,int s)
     while(ix<c)
     {
         b[ix]=hgetc(s);
-        if(b[ix]==EOF)
+//      if(b[ix]==EOF)         /* GCC Warning: always false     @PJJ */
+//                             /* due to -Wtype-limits;         @PJJ */
+        if ((int)b[ix] == EOF) /* Corrected.                    @PJJ */
         {
             return NULL;
         }
@@ -1091,17 +1206,26 @@ DLL_EXPORT int drop_all_caps(void)
 }
 #endif /* defined(HAVE_SYS_CAPABILITY_H) && defined(HAVE_SYS_PRCTL_H) && defined(OPTION_CAPABILITIES) */
 
-#if defined( _MSVC_ )
 /*-------------------------------------------------------------------*/
 /* Trim path information from __FILE__ macro value                   */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT const char* trimloc( const char* loc )
 {
     /*
-    ** Under certain unknown circumstances MSVC sometimes
-    ** sets the __FILE__ macro to a full path filename
-    ** rather than just the filename only. The following
-    ** compensates for this condition.
+    ** MSVC with the /FC flag and GCC always set the __FILE__ macro 
+    ** to a full path filename.  Without /FC, MSVC sometimes provides
+    ** the full path and sometimes provides just the file name.  The
+    ** following strips any path that may or may not be present in the
+    ** passed parameter.
+    **
+    ** This routine is used by logmsg to set the debug message prexfix,
+    ** and by hthreads and pttrace to remove the path name from the
+    ** lock location, which is "__FILE__(__LINE__)".
+    **
+    ** basename() cannot be used because it is not portable to Windows.
+    **
+    ** As this is primarily debug code, there is not much point in 
+    ** seeking opportunities for optimization and in-lining this code.
     */
     char* p = strrchr( loc, '\\' );
     if (!p) p = strrchr( loc, '/' );
@@ -1109,7 +1233,6 @@ DLL_EXPORT const char* trimloc( const char* loc )
         loc = p+1;
     return loc;
 }
-#endif /* defined( _MSVC_ ) */
 
 /*********************************************************************/
 /* Format TIMEVAL to printable value: "YYYY-MM-DD HH:MM:SS.uuuuuu",  */
@@ -1195,7 +1318,144 @@ DLL_EXPORT char *fmt_memsize_rounded( const U64 memsize, char* buf, const size_t
         for (; i < sizeof(suffix) && !(mem & 0x03FF); mem >>= 10, ++i);
     }
 
-    MSGBUF( fmt_mem, "%5"I64_FMT"u%c", mem, suffix[i]);
+    MSGBUF( fmt_mem, "%5"PRIu64"%c", mem, suffix[i]);
     strlcpy( buf, fmt_mem, bufsz );
     return buf;
+}
+
+/*-------------------------------------------------------------------*/
+/*                Standard Utility Initialization                    */
+/*-------------------------------------------------------------------*/
+/* Performs standard utility initialization as follows: determines   */
+/* the program name (i.e. just the name without the .ext) from the   */
+/* passed argv[0] or default name value, displays the program name,  */
+/* description, version, copyright and build date values, tells the  */
+/* debugger what name to assign to the main thread (Windows only),   */
+/* initializes the global 'extgui' flag, initializes SYSBLK "detach" */
+/* and "join" create_thread attributes (the remainder of SYSBLK is   */
+/* set to low values), initializes the translation codepage to the   */
+/* system default, and lastly, intitializes the HOSTINFO structure.  */
+/* (but it doesn't necessarily do all that in that order of course)  */
+/*                                                                   */
+/* The program name (without .ext) is optionally returned in *pgm    */
+/* which must be freed by the caller when it is no longer needed.    */
+/* Pass NULL for 'pgm' if you don't care to know your own name.      */
+/*                                                                   */
+/* The return value is the new argc value which may not be the same  */
+/* as the value that was passed due to external gui initialization.  */
+/*-------------------------------------------------------------------*/
+
+int initialize_utility( int argc, char* argv[],
+                        char*  defpgm,
+                        char*  desc,
+                        char** pgm )
+{
+    char*  exename;                     /* Executable name with .ext */
+    char*  nameonly;                    /* Exename without any .ext  */
+    char*  strtok_str;                  /* Work (strtok_r context)   */
+    char   namedesc[256];               /* Message build work area   */
+
+    setvbuf( stderr, NULL, _IONBF, 0 );
+    setvbuf( stdout, NULL, _IONBF, 0 );
+
+#if defined(EXTERNALGUI)
+
+    /* If the last argument is "EXTERNALGUI" it means we're running
+       under the control of an external GUI. Utilities need to know
+       this so they can react differently than in command-line mode. */
+    if (argc >= 1 && strncmp( argv[argc-1], "EXTERNALGUI", 11 ) == 0)
+    {
+        extgui = 1;   /* Tell utility to send progress msgs to GUI */
+
+        /* Remove the "EXTERNALGUI" argument from the command-line */
+        argv[argc-1] = NULL;
+        argc--;
+    }
+#endif // defined(EXTERNALGUI)
+
+    if (argc < 1)
+        exename = strdup( defpgm );
+    else
+    {
+        if (strlen( argv[0] ) == 0)
+            exename = strdup( defpgm );
+        else
+        {
+            char path[ MAX_PATH ];
+#if defined( _MSVC_ )
+            GetModuleFileName( NULL, path, MAX_PATH );
+#else
+            strlcpy( path, argv[0], sizeof( path ) );
+#endif
+            exename = strdup( basename( path ));
+        }
+    }
+
+    /* Initialize a bunch of other stuff... */
+
+    SET_THREAD_NAME( exename );
+
+    memset( &sysblk, 0, sizeof( SYSBLK ));
+
+    initialize_detach_attr( DETACHED );
+    initialize_join_attr( JOINABLE );
+
+    set_codepage( NULL );
+    init_hostinfo( &hostinfo );
+
+    strtok_str = NULL;
+    if (!(nameonly = strtok_r( exename, ".", &strtok_str )))
+        nameonly = exename;
+
+    /* PROGRAMMING NOTE: we cannot free "exename" until we're
+       done using "nameonly" since nameonly now points to it! */
+
+    if (pgm)
+        *pgm = strdup( nameonly );
+
+    /* Format the program identification message */
+    MSGBUF( namedesc, MSG_C( HHC02499, "I", nameonly, desc ) );
+
+    /* Now it's safe to discard exename */
+    free( exename );
+
+    /* Display version, copyright, and build date */
+    display_version( stdout, 0, namedesc+10 );
+
+    return argc;
+}
+
+/*********************************************************************/
+/* Dump an area of storage.  This is not for emulated core storage.  */
+/*********************************************************************/
+
+DLL_EXPORT
+void
+dumpStorageHow( void * what, size_t length, char * msg, int reverse)
+{
+   unsigned char * s = what;
+   static const char i2a[16] = "0123456789abcdef";
+   char dumpbuf[96];
+   int offs = 0;
+
+   logmsg("%s:\n", msg);
+   if (reverse) s += length - 1;
+   while (0 < length)
+   {
+      char * t = dumpbuf;
+      int i;
+
+      for (i = 0; 0 < length && 32 > i; i++)
+      {
+         if (!(3 & i) && i) *t++ = ' ';
+         *t++ = i2a[*s >> 4];
+         *t++ = i2a[0xf & *s];
+         if (reverse) s--;
+         else s++;
+         length--;
+      }
+      *t = 0;
+      logmsg("%06x  %s\n", offs, dumpbuf);
+      offs += 32;
+   }
 }

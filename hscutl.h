@@ -4,6 +4,9 @@
 /*   Released under "The Q Public License Version 1"                 */
 /*   (http://www.hercules-390.org/herclic.html) as modifications to  */
 /*   Hercules.                                                       */
+/*   Modifications to HSCUTL.H Copyright 2017 by Stephen Orso,       */
+/*     and distributed under the terms of the Q Public License       */
+/*     Version 1                                                     */
 
 /*********************************************************************/
 /* HSCUTL.H   --   Implementation of functions used in hercules that */
@@ -35,6 +38,16 @@
 #endif  /* _HUTIL_DLL_ */
 #else
 #define HU2_DLL_IMPORT DLL_EXPORT
+#endif
+
+#ifndef _HEXDUMPE_C_
+#ifndef _HUTIL_DLL_
+#define HEXDMP_DLL_IMPORT DLL_IMPORT
+#else   /* _HUTIL_DLL_ */
+#define HEXDMP_DLL_IMPORT extern
+#endif  /* _HUTIL_DLL_ */
+#else
+#define HEXDMP_DLL_IMPORT DLL_EXPORT
 #endif
 
 /*********************************************************************
@@ -79,9 +92,21 @@
   int socket_is_socket( int sfd );
 
   /* Set the SO_KEEPALIVE option and timeout values for a
-     socket connection to detect when client disconnects */
-  void socket_keepalive( int sfd, int idle_time, int probe_interval,
-                         int probe_count );
+     socket connection to detect when client disconnects.
+     Returns 0==success, +1==warning, -1==failure
+     (*) Warning failure means function only partially
+         succeeded (not all requested values were set)
+  */
+  int set_socket_keepalive( int sfd, int idle_time, int probe_interval,
+                            int probe_count );
+
+  /* Function to retrieve keepalive values. 0==success, -1=failure */
+  int get_socket_keepalive( int sfd, int* idle_time, int* probe_interval,
+                            int* probe_count );
+
+  /* Determine whether process is running "elevated" or not */
+  /* (returns 1==true running elevated, 0==false otherwise) */
+  int is_elevated();
 
 #endif // !defined(_MSVC_)
 
@@ -92,13 +117,17 @@
   HUT_DLL_IMPORT int  strerror_r(int, char *, size_t);
 #endif
 
-#if defined(OPTION_CONFIG_SYMBOLS)
-  HUT_DLL_IMPORT void set_symbol(const char *,const char *);
-  HUT_DLL_IMPORT void del_symbol(const char *);
+#if defined(ENABLE_SYSTEM_SYMBOLS)
   HUT_DLL_IMPORT const char *get_symbol(const char *);
   HUT_DLL_IMPORT char *resolve_symbol_string(const char *);
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+  HUT_DLL_IMPORT void set_symbol(const char *,const char *);
+  HUT_DLL_IMPORT void del_symbol(const char *);
   HUT_DLL_IMPORT void list_all_symbols(void);
-#endif
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
+
+#endif /* #if defined(ENABLE_SYSTEM_SYMBOLS) */
 
 #ifdef _MSVC_
 
@@ -148,6 +177,7 @@
  * will be copied.  Always NUL terminates (unless siz == 0).
  * Returns strlen(src); if retval >= siz, truncation occurred.
  */
+/*  ** NOTE **  'siz' is size of DESTINATION buffer, NOT src!  */
 /*  ** NOTE **  returns 'size_t' and NOT 'char*' like strncpy! */
 HUT_DLL_IMPORT size_t
 strlcpy(char *dst, const char *src, size_t siz);
@@ -169,6 +199,8 @@ strlcpy(char *dst, const char *src, size_t siz);
  * Returns strlen(src) + MIN(siz, strlen(initial dst)).
  * If retval >= siz, truncation occurred.
  */
+/*  ** NOTE **  'siz' is size of DESTINATION buffer (disregarding
+                any existing data!), NOT size of src argument! */
 /*  ** NOTE **  returns 'size_t' and NOT 'char*' like strncat! */
 HUT_DLL_IMPORT size_t
 strlcat(char *dst, const char *src, size_t siz);
@@ -192,7 +224,7 @@ HUT_DLL_IMPORT int timed_wait_condition_relative_usecs
 );
 
 /* Read/write to socket functions */
-HUT_DLL_IMPORT int hprintf(int s,char *fmt,...);
+HUT_DLL_IMPORT int hprintf(int s,char *fmt,...) ATTR_PRINTF(2,3);
 HUT_DLL_IMPORT int hwrite(int s,const char *,size_t);
 HUT_DLL_IMPORT int hgetc(int s);
 HUT_DLL_IMPORT char *hgets(char *b,size_t c,int s);
@@ -226,13 +258,11 @@ HUT_DLL_IMPORT  void   hpcfree  ( BYTE type, void*  ptr  );
 /* Hercules low-level file open */
 HUT_DLL_IMPORT  int hopen( const char* path, int oflag, ... );
 
-/* Trim path information from __FILE__ macro */
-#if defined( _MSVC_ )
+/* Trim path information from strings that include the               */
+/* __FILE__ predefined macro                                         */
+
 HUT_DLL_IMPORT const char* trimloc( const char* loc );
 #define  TRIMLOC(_loc)     trimloc( _loc )
-#else
-#define  TRIMLOC(_loc)            ( _loc )
-#endif
 
 /*********************************************************************/
 /* Format TIMEVAL to printable value: "YYYY-MM-DD HH:MM:SS.uuuuuu",  */
@@ -251,5 +281,24 @@ HUT_DLL_IMPORT char* FormatTIMEVAL( const TIMEVAL* pTV, char* buf, int bufsz );
 /* fmt_memsize_rounded:   128K,  64M,  8G,  etc...                   */
 /*-------------------------------------------------------------------*/
 HUT_DLL_IMPORT char *fmt_memsize_rounded( const U64 memsize, char* buf, const size_t bufsz );
+
+/*-------------------------------------------------------------------*/
+/* Standard Utility Initialization                                   */
+/*-------------------------------------------------------------------*/
+HUT_DLL_IMPORT int initialize_utility( int argc, char* argv[],
+                                       char*  defpgm,
+                                       char*  desc,
+                                       char** pgm );
+
+/*********************************************************************/
+/* Dump  storage, usually variables on the stack, but anything goes. */
+/* 32 bytes to the line, no translation.                             */
+/*********************************************************************/
+
+HUT_DLL_IMPORT
+void
+dumpStorageHow( void * what, size_t length, char * msg, int reverse);
+#define dumpStorage( what, length, msg) dumpStorageHow( what, length, msg, 0 )
+#define dumpStorageReversed( what, length, msg) dumpStorageHow( what, length, msg, 1 )
 
 #endif /* __HSCUTL_H__ */

@@ -11,8 +11,13 @@
 
 #include "hstdinc.h"
 
+#ifndef _CMDTAB_C_
 #define _CMDTAB_C_
+#endif
+
+#ifndef _HENGINE_DLL_
 #define _HENGINE_DLL_
+#endif
 
 #include "hercules.h"
 #include "history.h"
@@ -223,52 +228,9 @@ char*  argv[MAX_ARGS];
 }
 
 /*-------------------------------------------------------------------*/
-/* Helper macros to ensure serialized command processing             */
-/*-------------------------------------------------------------------*/
-#if defined(OPTION_CMDSER)
- #define HERC_CMD_ENTRY()                                            \
- do {                                                                \
-     /* Wait for current command to complete before starting         \
-        the next one, UNLESS this is the same thread calling         \
-        (to allow commands to call other commands if needed) */      \
-     obtain_lock( &sysblk.cmdlock );                                 \
-     {                                                               \
-         TID tid = thread_id();                                      \
-         while (sysblk.cmdtid && !equal_threads(tid,sysblk.cmdtid))  \
-             wait_condition( &sysblk.cmdcond, &sysblk.cmdlock );     \
-         sysblk.cmdtid = tid;                                        \
-         sysblk.cmdcnt++;                                            \
-     }                                                               \
-     release_lock( &sysblk.cmdlock );                                \
- } while (0)
-#else
- #define HERC_CMD_ENTRY()
-#endif
-
-#if defined(OPTION_CMDSER)
- #define HERC_CMD_EXIT()                                             \
- do {                                                                \
-     /* Indicate the current command has now completed processing.   \
-        This allows the next waiting command to begin processing. */ \
-     obtain_lock( &sysblk.cmdlock );                                 \
-     {                                                               \
-         sysblk.cmdcnt--;                                            \
-         if (!sysblk.cmdcnt)                                         \
-         {                                                           \
-             sysblk.cmdtid = 0;                                      \
-             broadcast_condition( &sysblk.cmdcond );                 \
-         }                                                           \
-     }                                                               \
-     release_lock( &sysblk.cmdlock );                                \
- } while (0)
-#else
- #define HERC_CMD_EXIT()
-#endif
-
-/*-------------------------------------------------------------------*/
 /* Route Hercules command to proper command handling function        */
 /*-------------------------------------------------------------------*/
-int CallHercCmd ( CMDFUNC_ARGS_PROTO )
+DLL_EXPORT int CallHercCmd ( CMDFUNC_ARGS_PROTO )
 {
 CMDTAB* pCmdTab;
 size_t  cmdlen, matchlen;
@@ -277,8 +239,6 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
     /* Let 'cscript' command run immediately in any context */
     if (argc >= 1 && strcasecmp( argv[0], "cscript" ) == 0)
         return cscript_cmd( CMDFUNC_ARGS );
-
-    HERC_CMD_ENTRY();
 
     /* [ENTER] key by itself: either start the CPU or ignore
        it altogether when instruction stepping is not active. */
@@ -294,8 +254,6 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
             rc = start_cmd( 0, NULL, NULL );
         else
             rc = 0;         /* ignore [ENTER] */
-
-        HERC_CMD_EXIT();
         return rc;
     }
 
@@ -307,10 +265,7 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
     /* Only if it rejects it, will we then try processing it ourselves. */
     if(system_command)
         if((rc = system_command( CMDFUNC_ARGS )) != HERRINVCMD)
-        {
-            HERC_CMD_EXIT();
             return rc;
-        }
 #endif /* defined( OPTION_DYNAMIC_LOAD ) */
 
     /* Check for comment command. We need to test for this separately
@@ -333,7 +288,6 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
            as simply counting them for example), so we should ALWAYS call
            our comment_cmd function here instead of just returning. */
         rc = comment_cmd( CMDFUNC_ARGS );
-        HERC_CMD_EXIT();
         return rc;
     }
 
@@ -429,7 +383,6 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
             rc = OnOffCommand( CMDFUNC_ARGS );
     }
 
-    HERC_CMD_EXIT();
     return rc;
 }
 /* end CallHercCmd */
@@ -437,7 +390,7 @@ int     rc = HERRINVCMD;             /* Default to invalid command   */
 /*-------------------------------------------------------------------*/
 /* Hercules command line processor                                   */
 /*-------------------------------------------------------------------*/
-int HercCmdLine (char* pszCmdLine)
+static int DoCallHercCmdLine (char* pszCmdLine, BYTE internal)
 {
     int      argc;
     char*    argv[ MAX_ARGS ];
@@ -459,9 +412,11 @@ int HercCmdLine (char* pszCmdLine)
 
 #if defined( _FEATURE_SYSTEM_CONSOLE )
     /* See if maybe it's a command that the guest understands. */
-    if ( sysblk.scpimply && can_send_command() )
+    if ( !internal && sysblk.scpimply && can_send_command() )
         rc = scp_command( cmdline, FALSE, sysblk.scpecho ? TRUE : FALSE );
     else
+#else
+        UNREFERENCED( internal );
 #endif
         /* Error: unknown/unsupported command */
         WRMSG( HHC01600, "E", argv[0] );
@@ -480,7 +435,15 @@ HercCmdExit:
 
     return rc;
 }
-/* end HercCmdLine */
+DLL_EXPORT int InternalHercCmd (char* pszCmdLine)
+{
+    return DoCallHercCmdLine( pszCmdLine, 1 );
+}
+DLL_EXPORT int HercCmdLine (char* pszCmdLine)
+{
+    return DoCallHercCmdLine( pszCmdLine, 0 );
+}
+/* end DoCallHercCmdLine */
 
 /*-------------------------------------------------------------------*/
 /* HelpMessage - print help text for message hhcnnnnna               */
@@ -621,7 +584,7 @@ int HelpCommand( CMDFUNC_ARGS_PROTO )
             WRMSG( HHC01603, "I", "" );
             if (didlong)
             {
-                // " (*)  More help available."
+                // " (*)  Enter \"help <command>\" for more info."
                 WRMSG( HHC01610, "I" );
                 WRMSG( HHC01603, "I", "" );
             }
@@ -713,12 +676,7 @@ int HelpCommand( CMDFUNC_ARGS_PROTO )
 /*-------------------------------------------------------------------*/
 static void EchoHercCmdLine( const char* cmd )
 {
-#if defined( OPTION_CMDTGT )
-    if (CMDTGT_HERC != sysblk.cmdtgt)
-        WRMSG( HHC00013, "I", cmd );    // "Herc command: '%s'"
-    else
-#endif /* defined( OPTION_CMDTGT ) */
-        WRMSG( HHC01603, "I", cmd );    // "%s"
+    WRMSG( HHC01603, "I", cmd );    // "%s"
 }
 
 void* FindSCRCTL( TID tid );// (external helper function; see script.c)
@@ -793,98 +751,40 @@ void *panel_command (void *cmdline)
     if (0 == cmd[0])
         hercecho = 0;               /* (silence please) */
 
-#if defined( OPTION_CMDTGT )
-    /* Check for herc, scp or pscp command... */
-
-    /* Please note: 'cmdtgt' is a hercules command, but will be
-       passed to the scp if scp target is set! This means that
-       once the scp target has been set, to change the target
-       back to herc, you must use: "herc cmdtgt herc". This is
-       because the 'herc' command is ALWAYS a Hercules command
-       (regardless of command target mode), whereas the 'cmdtgt'
-       is passed to the scp whenever scp target mode is set.
-       Thus you must explicitly request 'cmdtgt' be processed
-       by Hercules and not the scp, by using the 'herc' prefix.
-    */
-    if (0
-        || !strncasecmp( cmd, "herc ", 5 )   /* Hercules     */
-        || !strncasecmp( cmd, "scp ",  4 )   /* Guest O/S    */
-        || !strncasecmp( cmd, "pscp ", 5 )   /* Priority SCP */
-    )
+#if defined( _FEATURE_SYSTEM_CONSOLE )
+    if(cmd[0] == '.' || cmd[0] == '!')
     {
-        if (hercecho)
+    int priomsg = cmd[0] == '!'  ? TRUE : FALSE;
+    int scpecho = sysblk.scpecho ? TRUE : FALSE;
+        if (!cmd[1]) {      /* (empty command given?) */
+            cmd[1] = ' ';   /* (must send something!) */
+            cmd[2] = 0;
+        }
+        rc = scp_command( cmd+1, priomsg, scpecho );
+    }
+    else
+#endif /* defined( _FEATURE_SYSTEM_CONSOLE ) */
+    {
+#if defined( ENABLE_SYSTEM_SYMBOLS )
+        /* Perform variable substitution */
+        char *cl;
+#if defined( ENABLE_BUILTIN_SYMBOLS )
+        set_symbol( "CUU",  "$(CUU)"  );
+        set_symbol( "CCUU", "$(CCUU)" );
+        set_symbol( "DEVN", "$(DEVN)" );
+#endif /* ENABLE_BUILTIN_SYMBOLS */
+        cl = resolve_symbol_string( cmd );
+        if (cl)
+        {
+            strlcpy( cmd, cl, sizeof( cmd ));
+            free( cl );
+        }
+#endif /* ENABLE_SYSTEM_SYMBOLS */
+
+        if (hercecho && *cmd)
             EchoHercCmdLine( cmd );
         rc = HercCmdLine( cmd );
-        return (void*)rc;
     }
-
-    /* Send the command to the currently active command target */
-    switch (sysblk.cmdtgt)
-    {
-        case CMDTGT_HERC:           /* Hercules */
-        {
-            /* (stay compatible) */
-#endif /* defined( OPTION_CMDTGT ) */
-
-#if defined( _FEATURE_SYSTEM_CONSOLE )
-            if(cmd[0] == '.' || cmd[0] == '!')
-            {
-            int priomsg = cmd[0] == '!'  ? TRUE : FALSE;
-            int scpecho = sysblk.scpecho ? TRUE : FALSE;
-                if (!cmd[1]) {      /* (empty command given?) */
-                    cmd[1] = ' ';   /* (must send something!) */
-                    cmd[2] = 0;
-                }
-                rc = scp_command( cmd+1, priomsg, scpecho );
-            }
-            else
-#endif /* defined( _FEATURE_SYSTEM_CONSOLE ) */
-            {
-                if (hercecho && *cmd)
-                    EchoHercCmdLine( cmd );
-#if defined( OPTION_CONFIG_SYMBOLS )
-                /* Perform variable substitution */
-                /* First, set some 'dynamic' symbols
-                   to their own values */
-                set_symbol( "CUU",  "$(CUU)"  );
-                set_symbol( "CCUU", "$(CCUU)" );
-                set_symbol( "DEVN", "$(DEVN)" );
-                {
-                char *cl = resolve_symbol_string( cmd );
-                rc = HercCmdLine( cl );
-                free( cl );
-                }
-#else /* !defined( OPTION_CONFIG_SYMBOLS ) */
-                rc = HercCmdLine( cmd );
-#endif /* defined( OPTION_CONFIG_SYMBOLS ) */
-            }
-#if defined( OPTION_CMDTGT )
-            break;
-        }
-        case CMDTGT_SCP:        /* Guest O/S */
-        {
-        int priomsg = FALSE;    /* normal scp command     */
-        int scpecho = TRUE;     /* (always echo to hmc)   */
-            if (!cmd[0]) {      /* (empty command given?) */
-                cmd[0] = ' ';   /* (MUST send something!) */
-                cmd[1] = 0;
-            }
-            rc = scp_command( cmd, priomsg, scpecho );
-            break;
-        }
-        case CMDTGT_PSCP:       /* Priority SCP */
-        {
-        int priomsg = TRUE;     /* Priority scp command   */
-        int scpecho = TRUE;     /* (always echo to hmc)   */
-            if (!cmd[0]) {      /* (empty command given?) */
-                cmd[0] = ' ';   /* (MUST send something!) */
-                cmd[1] = 0;
-            }
-            rc = scp_command( cmd, priomsg, scpecho );
-            break;
-        }
-    }
-#endif /* defined( OPTION_CMDTGT ) */
 
     return (void*)((uintptr_t)rc);
 }

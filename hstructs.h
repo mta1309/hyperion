@@ -16,6 +16,7 @@
 
 #include "hercules.h"
 #include "opcode.h"
+#include "telnet.h"         // Need telnet_t
 
 /*-------------------------------------------------------------------*/
 /* Typedefs for CPU bitmap fields                                    */
@@ -27,10 +28,10 @@
 
 #if MAX_CPU_ENGINES <= 32
     typedef U32                 CPU_BITMAP;
-    #define F_CPU_BITMAP        "%8.8"I32_FMT"X"
+    #define F_CPU_BITMAP        "%8.8"PRIX32
 #elif MAX_CPU_ENGINES <= 64
     typedef U64                 CPU_BITMAP;
-    #define F_CPU_BITMAP        "%16.16"I64_FMT"X"
+    #define F_CPU_BITMAP        "%16.16"PRIX64
 #elif MAX_CPU_ENGINES <= 128
  #if SIZEOF_SIZE_T == 4
    #error MAX_CPU_ENGINES > 64 only supported on 64 bit platforms
@@ -39,13 +40,13 @@
  #if defined(_MSVC_)
     WARNING( "MAX_CPU_ENGINES in Windows is 64" )
     typedef U64                 CPU_BITMAP;
-    #define F_CPU_BITMAP        "%16.16"I64_FMT"X"
+    #define F_CPU_BITMAP        "%16.16"PRIX64
     #undef  MAX_CPU_ENGINES
     #define MAX_CPU_ENGINES     64
  #else
     typedef __uint128_t         CPU_BITMAP;
- // ZZ FIXME: No printf format support for __int128 yet, so we will incorrectly display...
-    #define F_CPU_BITMAP        "%16.16"I64_FMT"X"
+ // ZZ FIXME: No printf format support for __uint128_t yet, so we will incorrectly display...
+    #define F_CPU_BITMAP        "%16.16"PRIX64
  #endif
 
 #else
@@ -168,9 +169,7 @@ struct REGS {                           /* Processor registers       */
         S64     tod_epoch;              /* TOD epoch for this CPU    */
         TOD     clkc;                   /* 0-7=Clock comparator epoch,
                                            8-63=Comparator bits 0-55 */
-        TOD     cpu_timer;              /* CPU timer                 */
-        TOD     cpu_timer_epoch;        /* CPU timer epoch           */
-        U32     cpu_timer_mode;         /* CPU timer source mode     */
+        S64     cpu_timer;              /* CPU timer                 */
         U32     todpr;                  /* TOD programmable register */
 
         S64     int_timer;              /* S/370 Interval timer      */
@@ -191,8 +190,9 @@ struct REGS {                           /* Processor registers       */
         U64     siototal;               /* Total SIO/SSCH count      */
                                         /* --- 64-byte cache line -- */
         int     cpupct;                 /* Percent CPU busy          */
-        U64     waittod;                /* Time of day last wait (us)*/
-        U64     waittime;               /* Wait time (us) in interval*/
+        U64     waittod;                /* Time of day last wait     */
+        U64     waittime;               /* Wait time in interval     */
+        U64     waittime_accumulated;   /* Wait time accumulated     */
 
         CACHE_ALIGN                     /* --- 64-byte cache line -- */
         DAT     dat;                    /* Fields for DAT use        */
@@ -240,7 +240,11 @@ struct REGS {                           /* Processor registers       */
         BYTE   *storkeys;               /* -> Main storage key array */
         RADR    mainlim;                /* Central Storage limit or  */
                                         /* guest storage limit (SIE) */
-        PSA_3XX *psa;                   /* -> PSA for this CPU       */
+        union
+        {
+            PSA_3XX *psa;         /* -> PSA for this CPU 370 and ESA */
+            PSA_900 *zpsa;     /* -> PSA for this CPU when in z arch */
+        };
 
      /*
       * The fields hostregs and guestregs have been move outside the
@@ -518,6 +522,8 @@ struct SYSBLK {
         LOCK    cpulock[MAX_CPU_ENGINES];  /* CPU lock               */
         TOD     cpucreateTOD[MAX_CPU_ENGINES];  /* CPU creation time */
         TID     cputid[MAX_CPU_ENGINES];   /* CPU thread identifiers */
+        clockid_t                              /* CPU clock     @PJJ */
+                cpuclockid[MAX_CPU_ENGINES];   /* identifiers   @PJJ */
         BYTE    ptyp[MAX_CPU_ENGINES];  /* SCCB ptyp for each engine */
         LOCK    todlock;                /* TOD clock update lock     */
         TID     todtid;                 /* Thread-id for TOD update  */
@@ -577,10 +583,10 @@ struct SYSBLK {
 #define  JOINABLE  &sysblk.joinattr     /* (helper macro)            */
         TID     cnsltid;                /* Thread-id for console     */
         TID     socktid;                /* Thread-id for sockdev     */
-                                        /* 3270 Console Keep-Alive:  */
-        int     kaidle;                 /* Keepalive idle seconds    */
-        int     kaintv;                 /* Keepalive probe interval  */
-        int     kacnt;                  /* Keepalive probe count     */
+                                        /* 3270 Console keepalive:   */
+        int     kaidle;                 /* keepalive idle seconds    */
+        int     kaintv;                 /* keepalive probe interval  */
+        int     kacnt;                  /* keepalive probe count     */
         LOCK    cnslpipe_lock;          /* signaled flag access lock */
         int     cnslpipe_flag;          /* 1 == already signaled     */
         int     cnslwpipe;              /* fd for sending signal     */
@@ -594,11 +600,9 @@ struct SYSBLK {
         int     mbm;                    /* Measurement block mode    */
         int     mbd;                    /* Device connect time mode  */
         LOCK    scrlock;                /* Script processing lock    */
-#if defined(OPTION_CMDSER)
-        LOCK    cmdlock;                /* Command processing lock   */
-        COND    cmdcond;                /* Command processing cond   */
-        int     cmdcnt;                 /* Command processing count  */
-#endif /*defined(OPTION_CMDSER)*/
+        COND    scrcond;                /* Test script condition     */
+        int     scrtest;                /* 1 == test mode active     */
+        double  scrfactor;              /* Testing timeout factor    */
         TID     cmdtid;                 /* Active command thread     */
         char   *cmdsep;                 /* Single Char cmd Sep       */
         BYTE    sysgroup;               /* Panel Command grouping    */
@@ -734,7 +738,9 @@ struct SYSBLK {
                                         /*   legacy devices          */
                 haveiplparm:1,          /* IPL PARM a la VM          */
                 logoptnotime:1,         /* 1 = don't timestamp log   */
-                showdvol1:2;            /* Show dasd VOL1 in devlist */
+                showdvol1:2,            /* Show dasd VOL1 in devlist */
+                nolrasoe:1;             /* 1 = No trace LRA Special  */
+                                        /*     Operation Exceptions  */
 #define SHOWDVOL1_NO            0       /*   Do not show vol1 at all */
 #define SHOWDVOL1_YES           1       /*   Show vol1 AND filename  */
 #define SHOWDVOL1_ONLY          2       /*   Show vol1 NOT filename  */
@@ -752,6 +758,8 @@ struct SYSBLK {
             u_int level:16;
             u_int debug:1;
             u_int available:1;
+	        u_int enabletrap:1;
+            u_int freetrap:1;
         } ecpsvm;                       /* ECPS:VM structure         */
 //
 #endif
@@ -840,9 +848,9 @@ struct SYSBLK {
 #endif
 
         char    *cnslport;              /* console port string       */
-        char    *logofile;              /* Fancy 3270 logo box       */
-        char    **herclogo;             /* 3270 Logo data            */
-        size_t  logolines;              /* Number of lines in logo   */
+        char    **herclogo;             /* Constructed logo screen   */
+        char    *logofile;              /* File name of logo file    */
+        size_t  logolines;              /* Logo file number of lines */
 #if defined(OPTION_MIPS_COUNTING)
         /* Merged Counters for all CPUs                              */
         U64     instcount;              /* Instruction counter       */
@@ -850,58 +858,24 @@ struct SYSBLK {
         U32     siosrate;               /* IOs per second            */
 #endif /*defined(OPTION_MIPS_COUNTING)*/
 
-#ifdef OPTION_CMDTGT
-        int     cmdtgt;                 /* Command Processing Target */
-#define         CMDTGT_HERC     0       /*   Hercules                */
-#define         CMDTGT_SCP      1       /*   Guest O/S               */
-#define         CMDTGT_PSCP     2       /*   Priority SCP            */
-#endif // OPTION_CMDTGT
-
         int     regs_copy_len;          /* Length to copy for REGS   */
 
         REGS    dummyregs;              /* Regs for unconfigured CPU */
 
-#ifdef OPTION_MSGHLD
-        int     keep_timeout_secs;      /* Message hold time         */
-#endif
-#ifdef OPTION_MSGLCK
-        int     msggrp;                 /* msg group writing active  */
-        LOCK    msglock;                /* lock for writemsg         */
-#endif
-        unsigned int msglvl;                 /* Message level             */
-#define MLVL_COMM    0x00000001
-#define MLVL_UR      0x00000002
-#define MLVL_DASD    0x00000004
-#define MLVL_TAPE    0x00000008
-#define MLVL_GRAF    0x00000010
-#define MLVL_CTCA    0x00000020
-#define MLVL_SCSI    0x00008000
-#define MLVL_CHANNEL 0x00010000
-#define MLVL_THREADS 0x00020000
-#define MLVL_NORMAL  0x20000000
-#define MLVL_VERBOSE 0x40000000
-#define MLVL_DEBUG   0x80000000             /* bits */
-#define MLVL_DEVICES 0x0000ffff
-#define MLVL_NONE    0x00000000
-#define MLVL_ANY     0xffffffff
-#if defined(_DEBUG) || defined(DEBUG)
-  #define  DEFAULT_MLVL     MLVL_ANY
-#else
-  #define  DEFAULT_MLVL     MLVL_DEVICES
-#endif
-        int     emsg;                   /* error message display ctrl*/
-#define EMSG_ON     0x01
-#define EMSG_TEXT   0x02
-#define EMSG_TS     0x04
-#define EMSG_GUEST  0x08
-#define EMSG_INFO   0x10
-#define EMSG_WARN   0x20
-#define EMSG_ERROR  0x40
-#define EMSG_SEVERE 0x80
+        unsigned int msglvl;            /* Message level             */
 
+#define MLVL_VERBOSE 0x80000000         /* Show cfg file messages    */
+#define MLVL_DEBUG   0x40000000         /* Prefix w/filename(line#)  */
+#define MLVL_EMSGLOC 0x20000000         /* Show location of err msgs */
+
+#if defined(_DEBUG) || defined(DEBUG)
+  #define  DEFAULT_MLVL     (MLVL_VERBOSE | MLVL_DEBUG)
+#else
+  #define  DEFAULT_MLVL     (MLVL_VERBOSE)
+#endif
         LOCK    mntlock;                /* tape mount lock          */
 
-#if       defined( OPTION_SHUTDOWN_CONFIRMATION )
+#if defined( OPTION_SHUTDOWN_CONFIRMATION )
 #define QUITTIME_PERIOD     10
         int     quitmout;               /* Current timeout value     */
         time_t  shutquittime;           /* Quit requested time       */
@@ -1004,6 +978,41 @@ struct CHPBLK {
 
 
 /*-------------------------------------------------------------------*/
+/* Telnet Control Block                                              */
+/*-------------------------------------------------------------------*/
+#define TTYPE_LEN TELNET_MAX_TTYPE_LEN  /* (just a shorter name)     */
+struct TELNET {
+
+        char    ttype[TTYPE_LEN+1];     /* Client terminal type      */
+        char    tgroup[16];             /* Terminal group name       */
+        char    clientid[32];           /* Client Id string          */
+        int     csock;                  /* Client socket             */
+
+        telnet_t  *ctl;                 /* Ptr to libtelnet control  */
+        DEVBLK    *dev;                 /* Device Block ptr or NULL  */
+        U16        devnum;              /* Requested device number,  */
+                                        /* or FFFF=any device number */
+        BYTE       devclass;            /* 'D' = 3270 Display,       */
+                                        /* 'K' = Keyboard console,   */
+                                        /* 'P' = 3287 Printer        */
+        BYTE       model;               /* 3270 model (2,3,4,5,X)    */
+
+                                        /* ----- Boolean flags ----- */
+        BYTE    do_tn3270;              /* TN3270 mode enabled       */
+        BYTE    do_bin;                 /* Binary mode enabled       */
+        BYTE    do_eor;                 /* End-of-record enabled     */
+        BYTE    got_eor;                /* End-of-record received    */
+        BYTE    got_break;              /* Break type code received  */
+        BYTE    extatr;                 /* 3270 extended attributes  */
+        BYTE    neg_done;               /* Negotiations complete     */
+        BYTE    neg_fail;               /* Negotiations failure      */
+        BYTE    send_err;               /* Socket send() failure     */
+        BYTE    overflow;               /* Too much data accumulated */
+        BYTE    overrun;                /* Unexpected extra data     */
+};
+
+
+/*-------------------------------------------------------------------*/
 /* Device configuration block                                        */
 /*-------------------------------------------------------------------*/
 struct DEVBLK {                         /* Device configuration block*/
@@ -1035,6 +1044,9 @@ struct DEVBLK {                         /* Device configuration block*/
 
         int     argc;                   /* Init number arguments     */
         char    **argv;                 /* Init arguments            */
+        int     numconfdev;             /* The number of devices
+                                           specified on config stmt
+                                           or attach command         */
 
         /*  Storage accessible by device                             */
 
@@ -1042,7 +1054,9 @@ struct DEVBLK {                         /* Device configuration block*/
         BYTE   *storkeys;               /* -> Main storage key array */
         RADR    mainlim;                /* Central Storage limit or  */
                                         /* guest storage limit (SIE) */
-        char    filename[PATH_MAX+1];   /* filename (plus poss "|")  */
+        char    filename[PATH_MAX+1];   /* filename (poss. prefixed
+                                           with "|") or cmd prefix
+                                           str if integrated console */
 
         /*  device i/o fields...                                     */
 
@@ -1118,6 +1132,8 @@ struct DEVBLK {                         /* Device configuration block*/
             BYTE *data;
         }       iobuf;
 
+        DEVRCD  *rcd;                   /* Read Configuration Data   */
+
         /*  emulated architecture fields...   (MUST be aligned!)     */
 
         int     reserved1;              /* ---(ensure alignment)---- */
@@ -1139,12 +1155,13 @@ struct DEVBLK {                         /* Device configuration block*/
         BYTE    reserved2[4];           /* (pad/align/unused/avail)  */
         U16     fla[8];                 /* Full Link Address Array   */
         BYTE    chptype[8];             /* Channel Path Type         */
-        COND    resumecond;             /* Resume condition          */
-        COND    iocond;                 /* I/O active condition      */
-        int     iowaiters;              /* Number of I/O waiters     */
-        int     ioactive;               /* System Id active on device*/
-#define DEV_SYS_NONE    0               /* No active system on device*/
-#define DEV_SYS_LOCAL   0xffff          /* Local system active on dev*/
+#if defined( OPTION_SHARED_DEVICES )
+        COND    shiocond;               /* shared I/O active cond    */
+        int     shiowaiters;            /* Num shared I/O waiters    */
+        int     shioactive;             /* Sys Id active on shrd dev */
+#define DEV_SYS_NONE    0               /* No active sys on shrd dev */
+#define DEV_SYS_LOCAL   0xffff          /* Local sys act on shrd dev */
+#endif // defined( OPTION_SHARED_DEVICES )
         BYTE    drvpwd[11];             /* Password for drive        */
         BYTE    sensemm[5];             /* Manuf. & model for sense  */
 
@@ -1157,7 +1174,9 @@ struct DEVBLK {                         /* Device configuration block*/
 #ifdef OPTION_SYNCIO
                 syncio:2,               /* 1=Synchronous I/Os allowed*/
 #endif // OPTION_SYNCIO
-                shared:1,               /* 1=Device is shareable     */
+#if defined( OPTION_SHARED_DEVICES )
+                shareable:1,            /* 1=Device is shareable     */
+#endif // defined( OPTION_SHARED_DEVICES )
                 console:1,              /* 1=Console device          */
                 connected:1,            /* 1=Console client connected*/
                 readpending:2,          /* 1=Console read pending    */
@@ -1170,8 +1189,10 @@ struct DEVBLK {                         /* Device configuration block*/
                 oslinux:1,              /* 1=Linux                   */
                 ccwtrace:1,             /* 1=CCW trace               */
                 ccwstep:1,              /* 1=CCW single step         */
-                cdwmerge:1;             /* 1=Channel will merge data
+                cdwmerge:1,             /* 1=Channel will merge data
                                              chained write CCWs      */
+                debug:1,                /* 1=generic debug flag      */
+                reinit:1;               /* 1=devinit, not attach     */
 
         unsigned int                    /* Device state - serialized
                                             by dev->lock             */
@@ -1246,10 +1267,15 @@ struct DEVBLK {                         /* Device configuration block*/
         struct in_addr ipaddr;          /* Client IP address         */
         in_addr_t  acc_ipaddr;          /* Allowable clients IP addr */
         in_addr_t  acc_ipmask;          /* Allowable clients IP mask */
+
+        TELNET  *tn;                    /* Telnet Control Block Ptr  */
+
         U32     rlen3270;               /* Length of data in buffer  */
         int     pos3270;                /* Current screen position   */
         int     keybdrem;               /* Number of bytes remaining
                                            in keyboard read buffer   */
+        COND    kbcond;                 /* Wait for keyb condition   */
+        int     kbwaiters;              /* Number of keyb waiters    */
         u_int   eab3270:1;              /* 1=Extended attributes     */
         u_int   ewa3270:1;              /* 1=Last erase was EWA      */
         u_int   prompt1052:1;           /* 1=Prompt for linemode i/p */
@@ -1284,6 +1310,27 @@ struct DEVBLK {                         /* Device configuration block*/
         u_int   ctcxmode:1;             /* 1=Extended, 0=Basic mode  */
         BYTE    ctctype;                /* CTC_xxx device type       */
         BYTE    netdevname[IFNAMSIZ];   /* network device name       */
+
+        /*  Device dependent fields for ctcadpt : Enhanced CTC  @PJJ */
+
+        U16     ctcePktSeq;             /* CTCE Packet Sequence @PJJ */
+                                        /*      # in debug msgs @PJJ */
+        int     ctceSndSml;             /* CTCE Send Small size @PJJ */
+        BYTE    ctcexState;             /* CTCE State   x-side  @PJJ */
+        BYTE    ctcexCmd;               /* CTCE Command x-side  @PJJ */
+        BYTE    ctceyState;             /* CTCE State   y-side  @PJJ */
+        BYTE    ctceyCmd;               /* CTCE Command y-side  @PJJ */
+        BYTE    ctceyCmdSCB;            /* CTCE Cmd SCB source  @PJJ */
+        BYTE    ctce_UnitStat;          /* CTCE final UnitStat  @PJJ */
+        int     ctcefd;                 /* CTCE RecvThread File @PJJ */
+                                        /*      Desc / socket # @PJJ */
+        LOCK    ctceEventLock;          /* CTCE Condition LOCK  @PJJ */
+        COND    ctceEvent;              /* CTCE Recvd Condition @PJJ */
+        int     ctce_lport;             /* CTCE Local  port #   @PJJ */
+        int     ctce_rport;             /* CTCE Remote port #   @PJJ */
+        struct in_addr ctce_ipaddr;     /* CTCE Dest IP addr    @PJJ */
+        u_int   ctce_contention_loser:1;/* CTCE cmd collision   @PJJ */
+        u_int   ctce_ccw_flags_cc:1;    /* CTCE ccw in progres  @PJJ */
 
         /*  Device dependent fields for printer                      */
 
@@ -1398,6 +1445,7 @@ struct DEVBLK {                         /* Device configuration block*/
         u_int   stape_close_rewinds:1;  /* 1=Rewind at close         */
         u_int   stape_blkid_32:1;       /* 1=block-ids are 32 bits   */
         u_int   stape_no_erg:1;         /* 1=ignore Erase Gap CCWs   */
+        u_int   stape_online:1;         /* 1=GMT_ONLINE is mounted   */
         /* Access to SCSI fields controlled via sysblk.stape_lock    */
         COND      stape_sstat_cond;     /* Tape-status updated COND  */
         STSTATRQ  stape_statrq;         /* Status request structure  */
@@ -1774,6 +1822,7 @@ struct CCKDBLK {                        /* Global cckd dasd block    */
                          sfmerge:1,     /* 1=sf-* merge              */
                          sfforce:1;     /* 1=sf-* force              */
         int              sflevel;       /* sfk xxxx level            */
+        int              batchml;       /* message level for batch ops  */
 
         BYTE             comps;         /* Supported compressions    */
         BYTE             comp;          /* Override compression      */
@@ -1781,7 +1830,8 @@ struct CCKDBLK {                        /* Global cckd dasd block    */
 
         LOCK             gclock;        /* Garbage collector lock    */
         COND             gccond;        /* Garbage collector cond    */
-        int              gcs;           /* Number garbage collectors */
+        int              gcs;           /* Number garbage collector threads started */
+        int              gca;           /* Number garbage collector threads active */
         int              gcmax;         /* Max garbage collectors    */
         int              gcwait;        /* Wait time in seconds      */
         int              gcparm;        /* Adjustment parm           */
@@ -1790,13 +1840,15 @@ struct CCKDBLK {                        /* Global cckd dasd block    */
         COND             wrcond;        /* I/O condition             */
         int              wrpending;     /* Number writes pending     */
         int              wrwaiting;     /* Number writers waiting    */
-        int              wrs;           /* Number writer threads     */
+        int              wrs;           /* Number writer threads started  */
+        int              wra;           /* Number writer threads active  */
         int              wrmax;         /* Max writer threads        */
         int              wrprio;        /* Writer thread priority    */
 
         LOCK             ralock;        /* Readahead lock            */
         COND             racond;        /* Readahead condition       */
-        int              ras;           /* Number readahead threads  */
+        int              ras;           /* Number readahead threads started */
+        int              raa;           /* Number readadead threads active */
         int              ramax;         /* Max readahead threads     */
         int              rawaiting;     /* Number threads waiting    */
         int              ranbr;         /* Readahead queue size      */
@@ -1851,7 +1903,7 @@ struct CCKDDASD_EXT {                   /* Ext for compressed ckd    */
         DEVBLK          *devnext;       /* cckd device queue         */
         unsigned int     ckddasd:1,     /* 1=CKD dasd                */
                          fbadasd:1,     /* 1=FBA dasd                */
-                         ioactive:1,    /* 1=Channel program active  */
+                         cckdioact:1,   /* 1=Channel program active  */
                          bufused:1,     /* 1=newbuf was used         */
                          updated:1,     /* 1=Update occurred         */
                          merging:1,     /* 1=File merge in progress  */
@@ -1862,10 +1914,10 @@ struct CCKDDASD_EXT {                   /* Ext for compressed ckd    */
                          sfforce:1;     /* 1=sf-xxxx force           */
         int              sflevel;       /* sfk xxxx level            */
         LOCK             filelock;      /* File lock                 */
-        LOCK             iolock;        /* I/O lock                  */
-        COND             iocond;        /* I/O condition             */
+        LOCK             cckdiolock;    /* I/O lock                  */
+        COND             cckdiocond;    /* I/O condition             */
         S64              maxsize;       /* Maximum file size         */
-        int              iowaiters;     /* Number I/O waiters        */
+        int              cckdwaiters;   /* Number I/O waiters        */
         int              wrpending;     /* Number writes pending     */
         int              ras;           /* Number readaheads active  */
         int              sfn;           /* Number active shadow files*/

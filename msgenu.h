@@ -12,265 +12,160 @@
 /* the various components of the Hercules mainframe emulator.        */
 /*-------------------------------------------------------------------*/
 
-/*-------------------------------------------------------------------
-Message principles:
+#ifndef _MSGENU_H_
+#define _MSGENU_H_
+
+#include "printfmt.h"       /* Hercules printf/sscanf format strings */
+
+/*
 -----------------------------------------------------------------------
-HHCnnnnns Message text
+                        Message principles
+-----------------------------------------------------------------------
+
+HHCnnnnns message-text...
+
+  HHC     'HHC' is the standard prefix for all Hercules messages.
+  nnnnn   Five numeric digit code that unifies the Hercules message.
+  s       The capital letter that denotes the severity.
+  ' '     One space character between the message prefix and Text.
 
 -----------------------------------------------------------------------
-Prefix principles
+                        Severity principles
 -----------------------------------------------------------------------
-HHC:   'HHC' is the standard prefix for all Hercules messages.
-nnnnn: Five numeric digit code that unifies the Hercules message.
-s:     The capital letter that denotes the severity.
-' ':   One space character between the message prefix and Text.
+
+  S   Severe error. Hercules cannot continue.
+  E   Error. Hercules continues.
+  W   Warning message.
+  I   Informatonal message.
+  A   Action. Hercules needs input.
+  D   Debugging message.
 
 -----------------------------------------------------------------------
-Severity principles
+                         Text principles
 -----------------------------------------------------------------------
-S: Severe error, this could terminate Hercules.
-E: Error, hercules continues.
-W: Warning message.
-I: Informatonal message.
-A: Action, Hercules needs input.
-D: Debug message.
 
------------------------------------------------------------------------
-Text principles
------------------------------------------------------------------------
 Text:
-1. The text is written in lower characters and starts with a
-   capital and does not end with a '.', '!' or something else.
-2. Added strings are rounded with apostrophes to delimiter it from
-   the text and to see the start and endpoint of the string.
+
+  1. The text is written in lower characters and starts with a
+     capital and does not end with a '.', '!' or something else.
+
+  2. Added strings are rounded with apostrophes to distinguish it
+     from the text and to see the start and endpoint of the string.
 
 Examples:
-"HHC01234I This is a correct message"
-"HHC12345E This is wrong!"
-"HHC23456E THIS IS ALSO WRONG"
-"HHC34567E Do not end with a dot or something else!"
+
+  HHC01234I This is a correct message
+  HHC12345E This is wrong!
+  HHC23456E THIS IS ALSO WRONG
+  HHC34567E Do not end with a dot or something else.
 
 -----------------------------------------------------------------------
-Message format principles:
+                    Message format principles
 -----------------------------------------------------------------------
-Device:     "%1d:%04X", lcssnum, devnum
-Processor:  "%s%02X", PTYPSTR(procnum), procnum
-32bit reg:  "%08X", r32
-64bit reg:  "%016X", r64 (in 64bit mode)
-64bit reg:  "--------%08X", r32 (under SIE in 32 bit)
-64bit psw:  "%016X", psw64
-64bit psw:  "%016X ----------------", psw32 (under SIE in 32 bit)
-128bit psw: "%016X %016X", psw64h, psw64l
-Regs:       "GR%02d CR%02d AR%02d FP%02d", grnum, crnum, arnum, fpnum
-Strings:    "%s", ""
+
+  Device:     "%1d:%04X", lcssnum, devnum
+  Processor:  "%s%02X", PTYPSTR(procnum), procnum
+  32bit reg:  "%08X", r32
+  64bit reg:  "%016X", r64 (in 64bit mode)
+  64bit reg:  "--------%08X", r32 (under SIE in 32 bit)
+  64bit psw:  "%016X", psw64
+  64bit psw:  "%016X ----------------", psw32 (under SIE in 32 bit)
+  128bit psw: "%016X %016X", psw64h, psw64l
+  Regs:       "GR%02d CR%02d AR%02d FP%02d", grnum, crnum, arnum, fpnum
+  Strings:    "%s", ""
+
 -----------------------------------------------------------------------
-#define _DEBUG/DEBUG and the MLVL(DEBUG) flag (i.e. MLVL_DEBUG)
------------------------------------------------------------------------
-If DEBUG is defined, either by #define or configure '--enable-debug'
-then sysblk.msglvl has the MLVL_DEBUG flag enabled by default causing
-the writemsg function to prefix all messages with the sourcefile and
-lineno where it issued from ("cpu.c 123 HABC1234I This is a message").
-Otherwise normal message formatting occurs. This default behavior can
-always be manually overridden at any time via the "msglevel" command.
----------------------------------------------------------------------*/
+*/
 
-/* Use these macro's */
-/* PROGRAMMING NOTE: the "##" preceding "__VA_ARGS__" is required for compat-
-                     ibility with gcc/MSVC compilers and must not be removed */
+/*-------------------------------------------------------------------*/
+/*                      PRIMARY MESAGE MACROS                        */
+/*-------------------------------------------------------------------*/
+/*
+** PROGRAMMING NOTE: the "##" preceding "__VA_ARGS__" is required
+** for compatibility with gcc/MSVC compilers and mustn't be removed.
+*/
+#define  WRMSG(     id, s, ... )   fwritemsg( stdout, __FILE__, __LINE__, __FUNCTION__, #id s " " id "\n", ## __VA_ARGS__ )
+#define FWRMSG(  f, id, s, ... )   fwritemsg( f,      __FILE__, __LINE__, __FUNCTION__, #id s " " id "\n", ## __VA_ARGS__ )
+#define  LOGMSG(        s, ... )   fwritemsg( stdout, __FILE__, __LINE__, __FUNCTION__,     s          "", ## __VA_ARGS__ )
+#define FLOGMSG( f,     s, ... )   fwritemsg( f,      __FILE__, __LINE__, __FUNCTION__,     s          "", ## __VA_ARGS__ )
 
-#define MSGBUF( _buf, ... )           snprintf(_buf, sizeof(_buf), ## __VA_ARGS__ )
-#define MSG(   id, s, ... )           #id s" " id "\n", ## __VA_ARGS__
-#define MSG_C( id, s, ... )           #id s" " id  "",  ## __VA_ARGS__
-#define HMSG(  id         )           #id "x " id
+/*-------------------------------------------------------------------*/
+/*                     Message helper macros                         */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/* Use MSGBUF in situations where you would normally use snprintf:   */
+/*                                                                   */
+/*    #define HHC99999 "Table entry %d: %s"                          */
+/*                                                                   */
+/*    char buf[128];                                                 */
+/*                                                                   */
+/*    if (tab.type == str)                                           */
+/*        MSGBUF( buf, "type = str, val = %s", tab.strval );         */
+/*    else                                                           */
+/*        MSGBUF( buf, "type = int, val = %d", tab.intval );         */
+/*    WRMSG( HHC99999, "D", i, buf );                                */
+/*                                                                   */
+/*                                                                   */
+/*             Writing multiple messages as a group                  */
+/*            --------------------------------------                 */
+/*                                                                   */
+/* To write multiple messages as a group, format your messages into  */
+/* a work buffer using the MSGBUF and MSG/MSG_C macros. The first    */
+/* message formatted should be formatted WITHOUT a message number,   */
+/* but all other messages following it SHOULD. The last message      */
+/* should NOT end with a newline (i.e. use the 'MSG_C' macro).       */
+/*                                                                   */
+/* Then simply issue your message using the WRMSG macro specifying   */
+/* the message number for the first message. The format should be    */
+/* defined with as many "%s" as you have mesages. This will prefix   */
+/* the first message with the desired message number and terminate   */
+/* the last message with a newline, and then write the entire group  */
+/* in one fell swoop.                                                */
+/*                                                                   */
+/* NOTE:  Use  the  MSGBUF  macro *only* when the buffer is declared */
+/* locally as an array of characters.  *Never* use it with a pointer */
+/* passed  to  a function; sizeof(_buf) will be 4 or 8, depending on */
+/* the  size  of  a  pointer.  GCC will warn you, but the warning is */
+/* rather obscure and chances are you'll ignore it.                  */
+/*                                                                   */
+/* For example:                                                      */
+/*                                                                   */
+/*    #define HHC00001 "%s%s%s%s" // message group                   */
+/*    #define HHC00002 "Message 2: var1: %d, var2: %s"               */
+/*    #define HHC00003 "Message 3: var1: %d, var2: %s"               */
+/*    #define HHC00009 "Last message: var1: %d, var2: %s"            */
+/*                                                                   */
+/*    char msg1[80], msg2[80], msg3[80, msg4[80];                    */
+/*    MSGBUF( msg1, "Message 1: var1: %d, var2: %s", 12, "34" );     */
+/*    MSGBUF( msg2, MSG( HHC00002, "I", 12, "34" ));                 */
+/*    MSGBUF( msg3, MSG( HHC00003, "I", 12, "34" ));                 */
+/*    MSGBUF( msg4, MSG_C( HHC00009, "I", 12, "34" ));               */
+/*    WRMSG( HHC00001, "I", msg1, msg2, msg3, msg4 );                */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
 
-
-/* DO NOT REMOVE - This code is used to verify various printf type functions have the
- * correct arguments and data types
- */
-#if defined(DEBUG_MSGS) || ( !defined(_MSVC_) && ( defined(_DEBUG) || defined(DEBUG) ) )
-#define WRMSG(id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", "%s", _buf ); \
-         free(_buf); \
-    } \
-    while(0)
-
-#define WRMSG_C(id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", "%s", _buf ); \
-         free(_buf); \
-    } while(0)
-
-#define WRCMSG(color, id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), color, "%s", _buf ); \
-         free(_buf); \
-    } while(0)
-
-#define WRCMSG_C(color, id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), color, "%s", _buf ); \
-         free(_buf); \
-    } while(0)
-
-/* grouped messages */
-#define WRGMSG(id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), "", "%s", _buf ); \
-         free(_buf); \
-    } \
-    while(0)
-
-#define WRGMSG_C(id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), "", "%s", _buf ); \
-         free(_buf); \
-    } while(0)
-
-#define WRGCMSG(color, id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), color, "%s", _buf ); \
-         free(_buf); \
-    } while(0)
-
-#define WRGCMSG_C(color, id, s, ...) \
-    do { \
-         char *_msgbuf = (char *)malloc((size_t)32768); \
-         char *_buf; \
-         int _rc = 0; \
-         ASSERT( _msgbuf != NULL); \
-         _rc =  snprintf( _msgbuf, 32767, #id s " " id "\n", ## __VA_ARGS__); \
-         ASSERT( _rc != -1 ); \
-         _buf = strdup( _msgbuf ); \
-         free(_msgbuf); \
-         ASSERT( _buf != NULL ); \
-         writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), color, "%s", _buf ); \
-         free(_buf); \
-    } while(0)
+#define MSGBUF( _buf, ... )     snprintf(_buf, sizeof(_buf), ## __VA_ARGS__ )
+#define MSG( id, s, ... )       #id s " "  id "\n", ## __VA_ARGS__
+#define MSG_C( id, s, ... )     #id s " "  id  "",  ## __VA_ARGS__
+#define HMSG( id )              #id   "x " id "\n"
+#if defined( EXTERNALGUI )
+  #define EXTGUIMSG( ... )      do { if (extgui) fprintf( stderr, ## __VA_ARGS__ ); } while (0)
 #else
-#if !defined(OPTION_MSGCLR) && !defined(OPTION_MSGHLD)
-#define WRMSG(id, s, ...)            logmsg( _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRMSG_C(id, s, ...)          logmsg( _(#id s " " id ""), ## __VA_ARGS__)
-#define WRCMSG(color, id, s, ...)    logmsg( _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRCMSG_C(color, id, s, ...)  logmsg( _(#id s " " id ""), ## __VA_ARGS__)
-#define WRGMSG(id, s, ...)           logmsg( _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRGMSG_C(id, s, ...)         logmsg( _(#id s " " id ""), ## __VA_ARGS__)
-#define WRGCMSG(color, id, s, ...)   logmsg( _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRGCMSG_C(color, id, s, ...) logmsg( _(#id s " " id ""), ## __VA_ARGS__)
-#else /*!defined(OPTION_MSGCLR) && !defined(OPTION_MSGHLD)*/
-#define WRMSG(id, s, ...)            writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRMSG_C(id, s, ...)          writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), "", _(#id s " " id ""), ## __VA_ARGS__)
-#define WRCMSG(color, id, s, ...)    writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), color, _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRCMSG_C(color, id, s, ...)  writemsg(__FILE__, __LINE__, __FUNCTION__, 0, MLVL(ANY), color, _(#id s " " id ""), ## __VA_ARGS__)
-
-/* grouped messages */
-#define WRGMSG(id, s, ...)           writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), "", _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRGMSG_C(id, s, ...)         writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), "", _(#id s " " id ""), ## __VA_ARGS__)
-#define WRGCMSG(color, id, s, ...)   writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), color, _(#id s " " id "\n"), ## __VA_ARGS__)
-#define WRGCMSG_C(color, id, s, ...) writemsg(__FILE__, __LINE__, __FUNCTION__, 1, MLVL(ANY), color, _(#id s " " id ""), ## __VA_ARGS__)
-#endif
-#endif /*!defined(OPTION_MSGCLR) && !defined(OPTION_MSGHLD)*/
-
-#ifdef OPTION_MSGLCK
-#define WRGMSG_ON \
-do { \
-  int have_lock = 0, try_lock = 10; \
-  while(!have_lock) \
-  { \
-    obtain_lock(&sysblk.msglock); \
-    if(!sysblk.msggrp) \
-        have_lock = sysblk.msggrp = 1; \
-    release_lock(&sysblk.msglock); \
-    if(have_lock) \
-        break; \
-    if(--try_lock) \
-      usleep(100); \
-    else \
-    { \
-      /* WRMSG(HHC00016, "E"); */ \
-      fprintf(stdout, MSG(HHC00016, "E")); \
-      break; \
-    } \
-  } \
-} while (0)
-#define WRGMSG_OFF                   do { sysblk.msggrp = 0; } while (0)
-#else
-#define WRGMSG_OFF
-#define WRGMSG_ON
+  #define EXTGUIMSG( ... )
 #endif
 
+/*-------------------------------------------------------------------*/
+/*                       HERCULES MESSAGES                           */
+/*-------------------------------------------------------------------*/
 
 /* Hercules messages */
-#define HHC00001 "%s"
+#define HHC00001 "%s%s"
 #define HHC00002 "SCLP console not receiving %s"
 #define HHC00003 "Empty SCP command issued"
 #define HHC00004 "Control program identification: type %s, name %s, sysplex %s, level %"I64_FMT"X"
 #define HHC00005 "The configuration has been placed into a system check-stop state because of an incompatible service call"
 #define HHC00006 "SCLP console interface %s"
-#define HHC00007 "Previous message from function %s() at %s[%d]"
+#define HHC00007 "Previous message from function '%s' at %s(%d)"
 #define HHC00008 "%s%s"
 #define HHC00009 "RRR...RING...GGG!\a"
 #define HHC00010 "Enter input for console %1d:%04X"
@@ -288,10 +183,17 @@ do { \
        "HHC00017I     %s\n" \
        "HHC00017I Action:\n" \
        "HHC00017I     %s"
+#define HHC00018 "Hercules is %srunning in elevated mode"
+#define HHC00019 "Hercules IS running in test mode"
 
-// reserve 20-39 for file related
+// reserve 20-39 for option related
+#define HHC00020 "Test timeout factor %s outside of valid range 1.0 to %3.1f"
+#define HHC00021 "Test timeout factor = %3.1f"
+//efine HHC00022 (available)
+#define HHC00023 "Invalid/unsupported option: %s"
+#define HHC00024 "Unrecognized option: %s"
 
-// reserve 43-58 for option related
+// range 00040 - 00068 available
 
 #define HHC00069 "There %s %d CPU%s still active; confirmation required"
 // HHC0007xx, HHC0008xx and HHC0009xx reserved for hao.c. (to recognize own messages)
@@ -320,6 +222,7 @@ do { \
 #define HHC00087 "The defined Hercules Automatic Operator rule(s) are:"
 #define HHC00088 "Index %02d: target %s -> command %s"
 #define HHC00089 "The are no HAO rules defined"
+
 // reserve 90-99 for hao.c
 
 #define HHC00100 "Thread id "TIDPAT", prio %2d, name %s started"
@@ -327,6 +230,11 @@ do { \
 #define HHC00102 "Error in function create_thread(): %s"
 #define HHC00103 "Thread id "TIDPAT" name %s, priority change: old %2d, new %2d"
 #define HHC00105 "Thread id "TIDPAT" name %s is still active"
+#define HHC00106 "Error in function create_thread() for %s %d of %d: %s"
+#define HHC00107 "Starting thread %s, active=%d, started=%d, max=%d"
+#define HHC00108 "Ending thread "TIDPAT" %s, pri=%d, started=%d, max=%d exceeded"
+#define HHC00109 "Thread CPU Time is available; _POSIX_THREAD_CPUTIME=%d"  	
+#define HHC00110 "Thread CPU Time is not available."
 // reserve 102-129 thread related
 #define HHC00130 "PGMPRDOS LICENSED specified and a licenced program product operating system is running"
 #define HHC00131 "A licensed program product operating system detected, all processors have been stopped"
@@ -344,7 +252,7 @@ do { \
 #define HHC00145 "Net device %s: Invalid MAC address %s"
 #define HHC00146 "Net device %s: Invalid gateway address %s"
 #define HHC00147 "Executing %s to configure interface"
-#define HHC00148 "Closing %" I64_FMT "d files"
+#define HHC00148 "Closing %"PRId64" files"
 #define HHC00149 "IFC_IOCtl called for %s on FDs %d %d"
 #define HHC00150 "%s module loaded%s"
 #define HHC00151 "Activated facility: %s"
@@ -355,6 +263,13 @@ do { \
 // 00156 - 00159 unused
 #define HHC00160 "SCP %scommand: %s"
 #define HHC00161 "Function %s failed: [%02d] %s"
+#define HHC00162 "%s: Must be called from within Hercules."
+#define HHC00163 "%s: Cannot obtain %s socket: %s"
+#define HHC00164 "%s: I/O error on read: %s."
+#define HHC00165 "%s: Unknown request: %lX"
+#define HHC00166 "%s: ioctl error doing %s on %s: %d %s"
+#define HHC00167 "%s: Doing %s on %s"
+#define HHC00168 "%s: Hercules disappeared!! .. exiting"
 
 // reserve 002xx for tape device related
 #define HHC00201 "%1d:%04X Tape file %s, type %s: tape closed"
@@ -404,7 +319,7 @@ do { \
 // reserve 003xx for compressed dasd device related
 #define HHC00300 "%1d:%04X CCKD file: error initializing shadow files"
 #define HHC00301 "%1d:%04X CCKD file[%d] %s: error in function %s: %s"
-#define HHC00302 "%1d:%04X CCKD file[%d] %s: error in function %s at offset 0x"I64_FMTX": %s"
+#define HHC00302 "%1d:%04X CCKD file[%d] %s: error in function %s at offset 0x%16.16"PRIX64": %s"
 #define HHC00303 "%1d:%04X CCKD file: error in function %s: %s"
 #define HHC00304 "%1d:%04X CCKD file[%d] %s: get space error, size exceeds %lldM"
 #define HHC00305 "%1d:%04X CCKD file[%d] %s: device header id error"
@@ -438,13 +353,13 @@ do { \
 #define HHC00333 "%1d:%04X           size free  nbr st   reads  writes l2reads    hits switches"
 #define HHC00334 "%1d:%04X                                                  readaheads   misses"
 #define HHC00335 "%1d:%04X --------------------------------------------------------------------"
-#define HHC00336 "%1d:%04X [*] %10.10" I64_FMT "d %3.3" I64_FMT "d" "%%" " %4.4d    %7.7d %7.7d %7.7d %7.7d  %7.7d"
+#define HHC00336 "%1d:%04X [*] %10.10"PRId64" %3.3"PRId64" %% %4.4d    %7.7d %7.7d %7.7d %7.7d  %7.7d"
 #define HHC00337 "%1d:%04X                                                     %7.7d  %7.7d"
 #define HHC00338 "%1d:%04X %s"
-#define HHC00339 "%1d:%04X [0] %10.10" I64_FMT "d %3.3" I64_FMT "d" "%%" " %4.4d %s %7.7d %7.7d %7.7d"
+#define HHC00339 "%1d:%04X [0] %10.10"PRId64" %3.3"PRId64" %% %4.4d %s %7.7d %7.7d %7.7d"
 #define HHC00340 "%1d:%04X %s"
-#define HHC00341 "%1d:%04X [%d] %10.10" I64_FMT "d %3.3" I64_FMT "d" "%%" " %4.4d %s %7.7d %7.7d %7.7d"
-#define HHC00342 "%1d:%04X CCKD file[%d] %s: offset 0x"I64_FMTx" unknown space %2.2x%2.2x%2.2x%2.2x%2.2x"
+#define HHC00341 "%1d:%04X [%d] %10.10"PRId64" %3.3"PRId64" %% %4.4d %s %7.7d %7.7d %7.7d"
+#define HHC00342 "%1d:%04X CCKD file[%d] %s: offset 0x%16.16"PRIx64" unknown space %2.2x%2.2x%2.2x%2.2x%2.2x"
 #define HHC00343 "%1d:%04X CCKD file[%d] %s: uncompress error trk %d: %2.2x%2.2x%2.2x%2.2x%2.2x"
 #define HHC00344 "%1d:%04X CCKD file[%d] %s: compression %s not supported"
 /* HHC00345 cckd help output */
@@ -455,11 +370,12 @@ do { \
 #define HHC00347 "%s"
 #define HHC00348 "CCKD file: invalid value %d for %s"
 #define HHC00349 "CCKD file: invalid cckd keyword: %s"
+#define HHC00350 "CCKD file: invalid numeric value %s"
 
 #define HHC00352 "%1d:%04X CCKD file %s: opened bit is on, use -f"
 #define HHC00353 "%1d:%04X CCKD file %s: check disk errors"
 #define HHC00354 "%1d:%04X CCKD file %s: error in function %s: %s"
-#define HHC00355 "%1d:%04X CCKD file %s: error in function %s at offset 0x"I64_FMTX": %s"
+#define HHC00355 "%1d:%04X CCKD file %s: error in function %s at offset 0x%16.16"PRIX64": %s"
 #define HHC00356 "%1d:%04X CCKD file %s: not a compressed dasd file"
 #define HHC00357 "%1d:%04X CCKD file %s: converting to %s"
 #define HHC00358 "%1d:%04X CCKD file %s: file already compressed"
@@ -469,14 +385,14 @@ do { \
 #define HHC00362 "%1d:%04X CCKD file %s: bad %s %d, expecting %d"
 #define HHC00363 "%1d:%04X CCKD file %s: cdevhdr inconsistencies found, code %4.4X"
 #define HHC00364 "%1d:%04X CCKD file %s: forcing check level %d"
-#define HHC00365 "%1d:%04X CCKD file %s: %s offset 0x"I32_FMTX" len %d is out of bounds"
-#define HHC00366 "%1d:%04X CCKD file %s: %s offset 0x"I32_FMTX" len %d overlaps %s offset 0x"I32_FMTX
+#define HHC00365 "%1d:%04X CCKD file %s: %s offset 0x%8.8"PRIX32" len %d is out of bounds"
+#define HHC00366 "%1d:%04X CCKD file %s: %s offset 0x%8.8"PRIX32" len %d overlaps %s offset 0x%"PRIX32
 #define HHC00367 "%1d:%04X CCKD file %s: %s[%d] l2 inconsistency: len %d, size %d"
 #define HHC00368 "%1d:%04X CCKD file %s: free space errors detected"
-#define HHC00369 "%1d:%04X CCKD file %s: %s[%d] hdr error offset 0x"I64_FMTX": %2.2X%2.2X%2.2X%2.2X%2.2X"
+#define HHC00369 "%1d:%04X CCKD file %s: %s[%d] hdr error offset 0x%16.16"PRIX64": %2.2X%2.2X%2.2X%2.2X%2.2X"
 #define HHC00370 "%1d:%04X CCKD file %s: %s[%d] compressed using %s, not supported"
-#define HHC00371 "%1d:%04X CCKD file %s: %s[%d] offset 0x"I64_FMTX" len %d validation error"
-#define HHC00372 "%1d:%04X CCKD file %s: %s[%d] recovered offset 0x"I64_FMTX" len %d"
+#define HHC00371 "%1d:%04X CCKD file %s: %s[%d] offset 0x%16.16"PRIX64" len %d validation error"
+#define HHC00372 "%1d:%04X CCKD file %s: %s[%d] recovered offset 0x%16.16"PRIX64" len %d"
 #define HHC00373 "%1d:%04X CCKD file %s: %d %s images recovered"
 #define HHC00374 "%1d:%04X CCKD file %s: not enough file space for recovery"
 #define HHC00375 "%1d:%04X CCKD file %s: recovery not completed: %s"
@@ -519,7 +435,7 @@ do { \
 #define HHC00426 "%1d:%04X CKD file %s: read trk %d cache hit, using cache[%d]"
 #define HHC00427 "%1d:%04X CKD file %s: read trk %d no available cache entry, waiting"
 #define HHC00428 "%1d:%04X CKD file %s: read trk %d cache miss, using cache[%d]"
-#define HHC00429 "%1d:%04X CKD file %s: read trk %d reading file %d offset %" I64_FMT "d len %d"
+#define HHC00429 "%1d:%04X CKD file %s: read trk %d reading file %d offset %"PRId64" len %d"
 #define HHC00430 "%1d:%04X CKD file %s: read trk %d trkhdr %02X %02X%02X %02X%02X"
 #define HHC00431 "%1d:%04X CKD file %s: seeking to cyl %d head %d"
 #define HHC00432 "%1d:%04X CKD file %s: error: MT advance: locate record %d file mask %02X"
@@ -555,7 +471,7 @@ do { \
 #define HHC00461 "%1d:%04X CKD file %s: %s count %u is outside range %u-%u"
 #define HHC00462 "%1d:%04X CKD file %s: creating %4.4X volume %s: %u cyls, %u trks/cyl, %u bytes/track"
 #define HHC00463 "%1d:%04X CKD file %s: creating %4.4X volume %s: %u sectors, %u bytes/sector"
-#define HHC00464 "%1d:%04X CKD file %s: file size too large: %"I64_FMT"u [%d]"
+#define HHC00464 "%1d:%04X CKD file %s: file size too large: %"PRIu64" [%d]"
 #define HHC00465 "%1d:%04X CKD file %s: creating %4.4X compressed volume %s: %u sectors, %u bytes/sector"
 #define HHC00466 "Maximum of %u %s in %u 2GB file(s) is supported"
 #define HHC00467 "Maximum %s supported is %u"
@@ -569,7 +485,7 @@ do { \
 #define HHC00504 "%1d:%04X FBA file %s: REAL FBA opened"
 #define HHC00505 "%1d:%04X FBA file %s: invalid device origin block number %s"
 #define HHC00506 "%1d:%04X FBA file %s: invalid device block count %s"
-#define HHC00507 "%1d:%04X FBA file %s: origin %"I64_FMT"d, blks %d"
+#define HHC00507 "%1d:%04X FBA file %s: origin %"PRId64", blks %d"
 #define HHC00508 "%1d:%04X FBA file %s: device type %4.4X not found in dasd table"
 #define HHC00509 "%1d:%04X FBA file %s: define extent data too short: %d bytes"
 #define HHC00510 "%1d:%04X FBA file %s: second define extent in chain"
@@ -581,8 +497,8 @@ do { \
 #define HHC00516 "%1d:%04X FBA file %s: read blkgrp %d cache hit, using cache[%d]"
 #define HHC00517 "%1d:%04X FBA file %s: read blkgrp %d no available cache entry, waiting"
 #define HHC00518 "%1d:%04X FBA file %s: read blkgrp %d cache miss, using cache[%d]"
-#define HHC00519 "%1d:%04X FBA file %s: read blkgrp %d offset %"I64_FMT"d len %d"
-#define HHC00520 "%1d:%04X FBA file %s: positioning to 0x%"I64_FMT"X %"I64_FMT"d"
+#define HHC00519 "%1d:%04X FBA file %s: read blkgrp %d offset %"PRId64" len %d"
+#define HHC00520 "%1d:%04X FBA file %s: positioning to 0x%"PRIX64" %"PRId64
 #define HHC00521 "Maximum of %u %s in a 2GB file"
 
 // reserve 006xx for sce dasd device related messages
@@ -642,13 +558,13 @@ do { \
 
 // reserve 008xx for processor related messages
 #define HHC00800 "Processor %s%02X: loaded wait state PSW %s"
-#define HHC00801 "Processor %s%02X: %s%s %s code %4.4X  ilc %d%s"
+#define HHC00801 "Processor %s%02X: %s%s%s code %4.4X  ilc %d%s"
 #define HHC00802 "Processor %s%02X: PER event: code %4.4X perc %2.2X addr "F_VADR
 #define HHC00803 "Processor %s%02X: program interrupt loop PSW %s"
 #define HHC00804 "Processor %s%02X: I/O interrupt code %1.1X:%4.4X CSW %2.2X%2.2X%2.2X%2.2X %2.2X%2.2X%2.2X%2.2X"
 #define HHC00805 "Processor %s%02X: I/O interrupt code %8.8X parm %8.8X"
 #define HHC00806 "Processor %s%02X: I/O interrupt code %8.8X parm %8.8X id %8.8X"
-#define HHC00807 "Processor %s%02X: machine check code %16.16"I64_FMT"u"
+#define HHC00807 "Processor %s%02X: machine check code %16.16"PRIu64
 #define HHC00808 "Processor %s%02X: store status completed"
 #define HHC00809 "Processor %s%02X: disabled wait state %s"
 #define HHC00810 "Processor %s%02X: ipl failed: %s"
@@ -665,7 +581,7 @@ do { \
 #define HHC00821 "Processor %s%02X: vector facility configured %s"
 #define HHC00822 "Processor %s%02X: machine check due to host error: %s"
 #define HHC00823 "Processor %s%02X: check-stop due to host error: %s"
-#define HHC00824 "Processor %s%02X: machine check code "I64_FMTX""
+#define HHC00824 "Processor %s%02X: machine check code %16.16"PRIX64
 #define HHC00825 "USR2 signal received for undetermined device"
 #define HHC00826 "%1d:%04X: USR2 signal received"
 #define HHC00827 "Processor %s%02X: engine %02X type %1d set: %s"
@@ -684,9 +600,9 @@ do { \
 /* external.c */
 #define HHC00840 "External interrupt: interrupt key"
 #define HHC00841 "External interrupt: clock comparator"
-#define HHC00842 "External interrupt: CPU timer="I64_FMTX""
+#define HHC00842 "External interrupt: CPU timer=%16.16"PRIX64
 #define HHC00843 "External interrupt: interval timer"
-#define HHC00844 "%1d:%04X: processing block I/O interrupt: code %4.4X parm "I64_FMTX" status %2.2X subcode %2.2X"
+#define HHC00844 "%1d:%04X: processing block I/O interrupt: code %4.4X parm %16.16"PRIX64" status %2.2X subcode %2.2X"
 #define HHC00845 "External interrupt: block I/O %s"
 #define HHC00846 "External interrupt: service signal %8.8X"
 
@@ -707,10 +623,10 @@ do { \
 #define HHC00864 "Processor %s%02X: lock %sheld"
 #define HHC00865 "Processor %s%02X: connected to channelset %s"
 #define HHC00866 "Processor %s%02X: state %s"
-#define HHC00867 "Processor %s%02X: instcount %" I64_FMT "d"
-#define HHC00868 "Processor %s%02X: siocount %" I64_FMT "d"
+#define HHC00867 "Processor %s%02X: instcount %"PRId64
+#define HHC00868 "Processor %s%02X: siocount %"PRId64
 #define HHC00869 "Processor %s%02X: psw %s"
-#define HHC00870 "config mask "F_CPU_BITMAP" started mask "F_CPU_BITMAP" waiting mask "F_CPU_BITMAP""
+#define HHC00870 "config mask "F_CPU_BITMAP" started mask "F_CPU_BITMAP" waiting mask "F_CPU_BITMAP
 #define HHC00871 "syncbc mask "F_CPU_BITMAP" %s"
 #define HHC00872 "signaling facility %sbusy"
 #define HHC00873 "TOD lock %sheld"
@@ -726,9 +642,9 @@ do { \
 #define HHC00883 "Channel Report queue: (NULL)"
 #define HHC00884 "Channel Report queue: (empty)"
 #define HHC00885 "Channel Report queue:"
-#define HHC00886 "CRW 0x%08.8X: %s"
+#define HHC00886 "CRW 0x%8.8X: %s"
 
-#define HHC00890 "Facility(%-20s) %sabled"
+#define HHC00890 "Facility( %-20s ) %sabled"
 #define HHC00891 "Facility name not found"
 #define HHC00892 "Facility name not specified"
 #define HHC00893 "Facility(%s) does not exist"
@@ -739,26 +655,25 @@ do { \
 #define HHC00899 "Facility(%s) not supported for archmode %s"
 
 // reserve 009xx for ctc related messages
-/*ctc_ctci.c*/
-#define HHC00900 "%1d:%04X CTC: error in function %s: %s"
-#define HHC00901 "%1d:%04X %s: interface %s, type %s opened"
+/* ctcadpt.c, ctc_ctci.c, ctc_lcs.c, ctc_ptp.c, qeth.c */
+#define HHC00900 "%1d:%04X %s: Error in function %s: %s"
+#define HHC00901 "%1d:%04X %s: Interface %s type %s opened"
 #define HHC00902 "%1d:%04X %s: ioctl %s failed for device %s: %s"
-#define HHC00904 "%1d:%04X CTC: halt or clear recognized"
-#define HHC00905 "%1d:%04X CTC: received %d bytes size frame"
+#define HHC00904 "%1d:%04X %s: Halt or clear recognized"
 #define HHC00906 "%1d:%04X CTC: write CCW count %u is invalid"
 #define HHC00907 "%1d:%04X CTC: interface command: %s %8.8X"
 #define HHC00908 "%1d:%04X CTC: incomplete write buffer segment header at offset %4.4X"
 #define HHC00909 "%1d:%04X CTC: invalid write buffer segment length %u at offset %4.4X"
-#define HHC00910 "%1d:%04X CTC: sending packet to device %s"
-#define HHC00911 "%1d:%04X CTC: error writing to device %s: %s"
-#define HHC00912 "%1d:%04X CTC: error reading from device %s: %s"
-#define HHC00913 "%1d:%04X CTC: received %d bytes size packet from device %s"
+#define HHC00910 "%1d:%04X %s: Send%s packet of size %d bytes to device %s"
+#define HHC00911 "%1d:%04X %s: Error writing to device %s: %d %s"
+#define HHC00912 "%1d:%04X %s: Error reading from device %s: %d %s"
+#define HHC00913 "%1d:%04X %s: Receive%s packet of size %d bytes from device %s"
 #define HHC00914 "%1d:%04X CTC: packet frame too big, dropped"
-#define HHC00915 "%1d:%04X CTC: incorrect number of parameters"
-#define HHC00916 "%1d:%04X CTC: option %s value %s invalid"
-#define HHC00917 "%1d:%04X CTC: default value %s is used for option %s"
-#define HHC00918 "%1d:%04X CTC: option %c unknown or specified incorrectly"
-#define HHC00919 "%1d:%04X CTC: option %c must be specified"
+#define HHC00915 "%1d:%04X %s: Incorrect number of parameters"
+#define HHC00916 "%1d:%04X %s: Option %s value %s invalid"
+// #define HHC00917 "%1d:%04X CTC: default value %s is used for option %s"
+#define HHC00918 "%1d:%04X %s: Option %s unknown or specified incorrectly"
+// #define HHC00919 "%1d:%04X CTC: option %s must be specified"
 
 /* ctc_lcs.c */
 #define HHC00920 "%1d:%04X CTC: lcs device %04X not in configuration"
@@ -768,7 +683,7 @@ do { \
 #define HHC00934 "%1d:%04X CTC: sending packet to file %s"
 #define HHC00936 "%1d:%04X CTC: error writing to file %s: %s"
 #define HHC00937 "%1d:%04X CTC: lcs write: unsupported frame type 0x%2.2X"
-#define HHC00938 "%1d:%04X CTC: lcs triggering event"
+#define HHC00938 "%1d:%04X CTC: lcs triggering device event"
 #define HHC00939 "%1d:%04X CTC: lcs startup: frame buffer size 0x%4.4X %s compiled size 0x%4.4X: ignored"
 #define HHC00940 "CTC: error in function %s: %s"
 #define HHC00941 "CTC: ioctl %s failed for device %s: %s"
@@ -795,8 +710,14 @@ do { \
 #define HHC00962 "CTC: error in file %s: reading line %d: %s"
 #define HHC00963 "CTC: error in file %s: line %d is too long"
 #define HHC00964 "CTC: packet trace: %s %s %s"
+#define HHC00965 "CTC: lcs device port %2.2X: STILL trying to enqueue frame to device %4.4X %s"
+#define HHC00966 "%1d:%04X CTC: lcs triggering port %2.2X event"
+#define HHC00967 "CTC: lcs device port %2.2X: read thread: waiting for start event"
+#define HHC00968 "CTC: lcs device port %2.2X: read thread: port started"
+#define HHC00969 "CTC: lcs device port %2.2X: read thread: port stopped"
 
 /*ctcadpt.c */
+// Note: CTCE messages are in the 050xx range
 #define HHC00970 "%1d:%04X CTC: unrecognized emulation type %s"
 #define HHC00971 "%1d:%04X CTC: connect to %s:%s failed, starting server"
 #define HHC00972 "%1d:%04X CTC: connected to %s:%s"
@@ -804,36 +725,21 @@ do { \
 #define HHC00974 "%1d:%04X CTC: incorrect client or config error: config file %s connecting client %s"
 #define HHC00975 "%1d:%04X CTC: invalid %s length: %d < %d"
 #define HHC00976 "%1d:%04X CTC: EOF on read, CTC network down"
+#define HHC00977 "%1d:%04X CTC: lcs command packet ignored (bInitiator == 0x01)"
+#define HHC00978 "CTC: lcs device port %2.2X: STILL trying to enqueue REPLY frame to device %4.4X %s"
+#define HHC00979 "%s: %s: %s %s %s"
 
-/* ndis_lcs.c */
-#define HHC00980 "%1d:%04X NDIS Error: IPv4 address and --mac are mutually exclusive with --oat"
-#define HHC00981 "%1d:%04X NDIS open failed"
-#define HHC00982 "Error %s: [%04X]:%s"
-#define HHC00988 "NDIS RB Statistics for Port %d\n" \
-       "          \n" \
-       "          Ringbuffer size    = %d bytes\n" \
-       "          Numbers of slots   = %d\n" \
-       "          \n" \
-       "          Packet Read Count  = %d\n" \
-       "                 Write Count = %d\n" \
-       "          \n" \
-       "          Bytes Read         = %d\n" \
-       "                Written      = %d\n" \
-       "          \nLast Error: %s"
-#define HHC00989 "NDIS Statistics for Port %d\n" \
-       "          \n" \
-       "          Reads:  Cnt    %12" I64_FMT "d\n" \
-       "                  Busy   %12" I64_FMT "d\n" \
-       "                  Wait   %12" I64_FMT "d\n" \
-       "                  Errors %12" I64_FMT "d\n" \
-       "          \n" \
-       "          Writes: Cnt    %12" I64_FMT "d\n" \
-       "                  Busy   %12" I64_FMT "d\n" \
-       "                  Wait   %12" I64_FMT "d\n" \
-       "                  Errors %12" I64_FMT "d"
+/* ctc_ctci.c, ctc_lcs.c, ctc_ptp.c qeth.c */
+#define HHC00980 "%1d:%04X %s: Data of size %d bytes displayed, data of size %d bytes not displayed"
+#define HHC00981 "%1d:%04X %s: Accept data of size %d bytes from guest"
+#define HHC00982 "%1d:%04X %s: Present data of size %d bytes to guest"
+#define HHC00983 "%1d:%04X %s: port %2.2X: Send frame of size %d bytes (with %s packet) to device %s"
+#define HHC00984 "%1d:%04X %s: port %2.2X: Receive frame of size %d bytes (with %s packet) from device %s"
+#define HHC00985 "%1d:%04X %s: Send frame of size %d bytes (with %s packet) to device %s"
+#define HHC00986 "%1d:%04X %s: Receive frame of size %d bytes (with %s packet) from device %s"
 
 // reserve 010xx for communication adapter specific component messages
-/* comm3705.c and commadpt.c console.c */
+/* comm3705.c, commadpt.c, console.c, con1052c.c */
 #define HHC01000 "%1d:%04X COMM: error in function %s: %s"
 #define HHC01001 "%1d:%04X COMM: connect out to %s:%d failed during initial status: %s"
 #define HHC01002 "%1d:%04X COMM: cannot obtain socket for incoming calls: %s"
@@ -919,8 +825,21 @@ do { \
 #define HHC01082 "%1d:%04X COMM: cthread - inbound socket data"
 #define HHC01083 "%1d:%04X COMM: cthread - socket write available"
 #define HHC01084 "%1d:%04X COMM: set mode %s"
+#define HHC01085 "%1d:%04X COMM: default command prefixes exhausted"
+#define HHC01086 "%1d:%04X COMM: device %1d:%04X already using prefix %s"
+//efine HHC01087 (available)
+//efine HHC01088 (available)
+//efine HHC01089 (available)
 #define HHC01090 "%1d:%04X COMM: client %s devtype %4.4X: connection reset"
 #define HHC01091 "%1d:%04X COMM: %s has an invalid GROUP name length or format; must be a valid luname or poolname"
+#define HHC01092 "%1d:%04X COMM: Not all TCP keepalive settings honored"
+#define HHC01093 "%1d:%04X COMM: Keepalive: (%d,%d,%d)"
+#define HHC01094 "%1d:%04X COMM: This build of Hercules does not support TCP keepalive"
+#define HHC01095 "%1d:%04X COMM: This build of Hercules has only basic TCP keepalive support"
+#define HHC01096 "%1d:%04X COMM: This build of Hercules has only partial TCP keepalive support"
+//efine HHC01097 (available)
+//efine HHC01098 (available)
+//efine HHC01099 (available)
 
 // reserve 011xx for printer specific component messages
 #define HHC01100 "%1d:%04X Printer: client %s, ip %s disconnected from device %s"
@@ -948,9 +867,9 @@ do { \
 // reserve 013xx for channel related messages
 /* channel.c */
 #define HHC01300 "%1d:%04X CHAN: halt subchannel: cc=%d"
-#define HHC01301 "%1d:%04X CHAN: midaw %2.2X %4.4"I16_FMT"X %16.16"I64_FMT"X: %s"
-#define HHC01302 "%1d:%04X CHAN: idaw %8.8"I32_FMT"X, len %3.3"I16_FMT"X: %s"
-#define HHC01303 "%1d:%04X CHAN: idaw %16.16"I64_FMT"X, len %4.4"I16_FMT"X: %s"
+#define HHC01301 "%1d:%04X CHAN: midaw %2.2X %4.4"PRIX16" %16.16"PRIX64": %s"
+#define HHC01302 "%1d:%04X CHAN: idaw %8.8"PRIX32", len %3.3"PRIX16": %s"
+#define HHC01303 "%1d:%04X CHAN: idaw %16.16"PRIX64", len %4.4"PRIX16": %s"
 #define HHC01304 "%1d:%04X CHAN: attention signaled"
 #define HHC01305 "%1d:%04X CHAN: attention"
 #define HHC01306 "%1d:%04X CHAN: initial status interrupt"
@@ -975,6 +894,7 @@ do { \
 #define HHC01333 "%1d:%04X CHAN: resume subchannel: cc=%d"
 #define HHC01334 "%1d:%04X CHAN: asynchronous I/O ccw addr %8.8x"
 #define HHC01335 "%1d:%04X CHAN: synchronous  I/O ccw addr %8.8x"
+#define HHC01336 "%1d:%04X CHAN: startio cc=2 (busy=%d startpending=%d)"
 
 /* hchan.c */
 #define HHC01350 "%1d:%04X CHAN: missing generic channel method"
@@ -984,14 +904,14 @@ do { \
 
 // reserve 014xx for initialization and shutdown
 /* impl.c */
-#define HHC01400 "Ctrl-break intercepted: interrupt key pressed simulated"
-#define HHC01401 "Ctrl-c intercepted"
-#define HHC01402 "%s event received: shutdown %sstarting..."
-#define HHC01403 "%s event received, shutdown previously requested..."
+#define HHC01400 "CTRL_BREAK_EVENT received: %s"
+#define HHC01401 "CTRL_C_EVENT received: %s"
+#define HHC01402 "CTRL_CLOSE_EVENT received: %s"
+#define HHC01403 "%s received: %s"
 #define HHC01404 "Cannot create the Automatic Operator thread"
 #define HHC01405 "Script file %s not found"
 #define HHC01406 "Startup parm -l: maximum loadable modules %d exceeded; remainder not loaded"
-#define HHC01407 "Usage: %s [-f config-filename] [-d] [-b logo-filename] [-s sym=val]%s [> logfile]"
+#define HHC01407 "Usage: %s [-f config-filename] [-r rcfile-name] [-d] [-b logo-filename]%s [-t [factor]]%s [> logfile]"
 #define HHC01408 "Hercules terminating, see previous messages for reason"
 #define HHC01409 "Load of dyngui.dll failed, hercules terminated"
 #define HHC01410 "Cannot register %s handler: %s"
@@ -999,10 +919,10 @@ do { \
 #define HHC01412 "Hercules terminated"
 
 /* version.c */
-#define HHC01413 "%s version %s"
+#define HHC01413 "%s version %s (%u.%u.%u.%u)"
 #define HHC01414 "%s"
-#define HHC01415 "Built on %s at %s"
-#define HHC01416 "Build information:"
+#define HHC01415 "Build date: %s at %s"
+//efine HHC01416 (available)
 #define HHC01417 "%s"
 
 #define HHC01418 "Symbol expansion will result in buffer overflow; ignored"
@@ -1069,6 +989,7 @@ do { \
 #define HHC01471 "Incorrect device address range %04X < %04X"
 #define HHC01472 "%1d:%04X is on wrong channel, 1st device defined on channel %02X"
 #define HHC01473 "Some or all devices in %04X-%04X duplicate already defined devices"
+#define HHC02198 "Device %04X type %04X subchannel %d:%04X attached"
 
 /* codepage.c c */
 #define HHC01474 "Using %s codepage conversion table %s"
@@ -1130,6 +1051,8 @@ do { \
 #define HHC01533 "HDL:  devtype(s) =%s"
 #define HHC01534 "HDL:  instruction = %s, opcode = %4.4X%s"
 #define HHC01535 "HDL: dependency %s version %s size %d"
+#define HHC01536 "HDL: Env. variable %s, value=\"%s\", is not a directory"
+#define HHC01537 "HDL: Unable to determine loadable module directory, using \".\""
 
 /* dyngui.c */
 #define HHC01540 "HDL: query buffer overflow for device %1d:%04X"
@@ -1150,17 +1073,17 @@ do { \
 #define HHC01607 "No help available yet for message %s"
 #define HHC01608 "PF KEY SUBSTitution results would exceed command line maximum size of %d; truncation occurred"
 #define HHC01609 "No help available for mask %s"
-#define HHC01610 " (*)  More help available."
+#define HHC01610 " (*)  Enter \"help <command>\" for more info."
 
 /* ecpsvm.c */
 // reserve 017xx for ecps:vm support
 #define HHC01700 "Abend condition detected in DISP2 instruction"
-#define HHC01701 "| %-9s | %8d | %8d |  %3d%% |"
-#define HHC01702 "+-----------+----------+----------+-------+"
+#define HHC01701 "| %-9s | %10"PRIu64" | %10"PRIu64" |  %3"PRIu64"%% |"
+#define HHC01702 "+-----------+------------+------------+-------+"
 #define HHC01703 "* : Unsupported, - : Disabled, %% - Debug"
-#define HHC01704 "%d entry/entries not shown and never invoked"
-#define HHC01705 "%d call(s), was/where made to unsupported functions"
-#define HHC01706 "| %-9s | %-8s | %-8s | %-5s |"
+#define HHC01704 "%"PRIu64" entries not shown and never invoked"
+#define HHC01705 "%"PRIu64" call(s) were made to unsupported functions"
+#define HHC01706 "| %-9s | %10s | %10s | %-5s |"
 #define HHC01707 "ECPS:VM %s feature %s%s%s"
 #define HHC01708 "All ECPS:VM %s features %s%s"
 #define HHC01709 "ECPS:VM global debug %s"
@@ -1178,6 +1101,8 @@ do { \
 #define HHC01721 "Unknown ECPS:VM subcommand %s"
 #define HHC01722 "ECPS:VM Command processor complete"
 #define HHC01723 "Invalid ECPS:VM level value : %s. Default of 20 used"
+#define HHC01724 "ECPS:VM Operating with CP FREE/FRET trap in effect"
+#define HHC01725 "ECPS:VM Code version %.02f"
 
 // reserve 018xx for http server
 #define HHC01800 "HTTP server: error in function %s: %s"
@@ -1204,33 +1129,33 @@ do { \
 #define HHC01902 "Waiting 1 second for cpu's to stop"
 
 /* vmd250.c */
-#define HHC01905 "%04X triggered block I/O interrupt: code %4.4X parm "I64_FMTX" status %2.2X subcode %2.2X"
-#define HHC01906 "%04X d250_init32 s %i o %"I64_FMT"i b %"I64_FMT"i e %"I64_FMT"i"
+#define HHC01905 "%04X triggered block I/O interrupt: code %4.4X parm %16.16"PRIX64" status %2.2X subcode %2.2X"
+#define HHC01906 "%04X d250_init32 s %i o %"PRIi64" b %"PRIi64" e %"PRIi64
 #define HHC01907 "%04X d250_init BLKTAB: type %4.4X arch %i 512 %i 1024 %i 2048 %i 4096 %i"
 #define HHC01908 "Error in function %s: %s"
 #define HHC01909 "%04X d250_preserve pending sense preserved"
 #define HHC01920 "%04X d250_restore pending sense restored"
 #define HHC01921 "%04X d250_remove block I/O environment removed"
-#define HHC01922 "%04X d250_read %d-byte block (rel. to 0): %"I64_FMT"d"
+#define HHC01922 "%04X d250_read %d-byte block (rel. to 0): %"PRId64
 #define HHC01923 "%04X d250_read FBA unit status %2.2X residual %d"
 #define HHC01924 "%04X async biopl %8.8X entries %d key %2.2X intp %8.8X"
 #define HHC01925 "%04X d250_iorq32 sync bioel %8.8X entries %d key %2.2X"
 #define HHC01926 "%04X d250_iorq32 psc %d succeeded %d failed %d"
 #define HHC01927 "d250_list32 error: psc %i"
 #define HHC01928 "%04X d250_list32 bios %i addr "F_RADR" I/O key %2.2X"
-#define HHC01929 "%04X d250_list32 xcode %4.4X bioe32 %8.8"I64_FMT"X-%8.8"I64_FMT"X fetch key %2.2X"
-#define HHC01930 "%04X d250_list32 bioe %8.8"I64_FMT"X oper %2.2X block %i buffer %8.8"I64_FMT"X"
-#define HHC01931 "%04X d250_list32 xcode %4.4X rdbuf %8.8"I64_FMT"X-%8.8"I64_FMT"X fetch key %2.2X"
-#define HHC01932 "%04X d250_list32 xcode %4.4X wrbuf %8.8"I64_FMT"X-%8.8"I64_FMT"X store key %2.2X"
-#define HHC01933 "%04X d250_list32 xcode %4.4X status %8.8"I64_FMT"X-%8.8"I64_FMT"X  store key %2.2X"
-#define HHC01934 "%04X d250_list32 bioe %8.8"I64_FMT"X status %2.2X"
-#define HHC01935 "%04X async bioel "I64_FMTX" entries %"I64_FMT"d key %2.2X intp "I64_FMTX""
-#define HHC01936 "%04X d250_iorq64 sync bioel "I64_FMTX" entries %"I64_FMT"d key %2.2X"
+#define HHC01929 "%04X d250_list32 xcode %4.4X bioe32 %8.8"PRIX64"-%8.8"PRIX64" fetch key %2.2X"
+#define HHC01930 "%04X d250_list32 bioe %8.8"PRIX64" oper %2.2X block %i buffer %8.8"PRIX64
+#define HHC01931 "%04X d250_list32 xcode %4.4X rdbuf %8.8"PRIX64"-%8.8"PRIX64" fetch key %2.2X"
+#define HHC01932 "%04X d250_list32 xcode %4.4X wrbuf %8.8"PRIX64"-%8.8"PRIX64" store key %2.2X"
+#define HHC01933 "%04X d250_list32 xcode %4.4X status %8.8"PRIX64"-%8.8"PRIX64"  store key %2.2X"
+#define HHC01934 "%04X d250_list32 bioe %8.8"PRIX64" status %2.2X"
+#define HHC01935 "%04X async bioel %16.16"PRIX64" entries %"PRId64" key %2.2X intp %16.16"PRIX64
+#define HHC01936 "%04X d250_iorq64 sync bioel %16.16"PRIX64" entries %"PRId64" key %2.2X"
 #define HHC01937 "%04X d250_iorq64 psc %d succeeded %d failed %d"
 #define HHC01938 "d250_list64 error: psc %i"
-#define HHC01939 "%04X d250_list64 bioes %"I64_FMT"i addr "F_RADR" I/O key %2.2X"
+#define HHC01939 "%04X d250_list64 bioes %"PRIi64" addr "F_RADR" I/O key %2.2X"
 #define HHC01940 "%04X d250_list64 xcode %4.4X bioe64 "F_RADR"-"F_RADR" fetch key %2.2X"
-#define HHC01941 "%04X d250_list64 bioe "F_RADR" oper %2.2X block %"I64_FMT"i buffer "F_RADR""
+#define HHC01941 "%04X d250_list64 bioe "F_RADR" oper %2.2X block %"PRIi64" buffer "F_RADR
 #define HHC01942 "%04X d250_list64 xcode %4.4X readbuf "F_RADR"-"F_RADR" fetch key %2.2X"
 #define HHC01943 "%04X d250_list64 xcode %4.4X writebuf "F_RADR"-"F_RADR" store key %2.2X"
 #define HHC01944 "%04X d250_list64 xcode %4.4X status "F_RADR"-"F_RADR" store key %2.2X"
@@ -1279,9 +1204,10 @@ do { \
 #define HHC02106 "Logger: log switched off"
 
 #define HHC02197 "Symbol name %s is reserved"
-#define HHC02198 "Device attached"
+//         02198 (moved to config.c)
 #define HHC02199 "Symbol %-12s %s"
-// reserve 022xx for command processing */
+
+// reserve 02200 - 02369 for command processing; script.c
 #define HHC02200 "%1d:%04X device not found"
 #define HHC02201 "Device number missing"
 #define HHC02202 "Missing argument(s). Type 'help %s' for assistance."
@@ -1310,7 +1236,7 @@ do { \
 #define HHC02225 "HTTP server already active"
 #define HHC02226 "Held messages cleared"
 #define HHC02227 "Shell commands are disabled"
-#define HHC02228 "Key %s pressed"
+#define HHC02228 "%s key pressed"
 #define HHC02229 "Instruction %s %s %s"
 #define HHC02230 "%1d:%04X attention request raised"
 #define HHC02231 "%1d:%04X busy or interrupt pending"
@@ -1321,8 +1247,8 @@ do { \
 #define HHC02236 "IPL rejected: All CPU's must be stopped"
 #define HHC02237 "Not all devices shown (max %d)"
 #define HHC02238 "Device numbers can only be redefined within the same Logical Channel SubSystem"
-#define HHC02239 "%1d:%04X synchronous: %12" I64_FMT "d asynchronous: %12" I64_FMT "d"
-#define HHC02240 "Total synchronous: %13" I64_FMT "d asynchronous: %12" I64_FMT "d  %3" I64_FMT "d%%"
+#define HHC02239 "%1d:%04X synchronous: %12"PRId64" asynchronous: %12"PRId64
+#define HHC02240 "Total synchronous: %13"PRId64" asynchronous: %12"PRId64"  %3"PRId64"%%"
 #define HHC02241 "Max device threads: %d, current: %d, most: %d, waiting: %d, max exceeded: %d"
 #define HHC02242 "Max device threads: %d, current: %d, most: %d, waiting: %d, total I/Os queued: %d"
 #define HHC02243 "%1d:%04X reinit rejected; drive not empty"
@@ -1336,60 +1262,60 @@ do { \
 #define HHC02251 "Address exceeds main storage size"
 #define HHC02252 "Sorry, too many instructions"
 #define HHC02253 "All CPU's must be stopped to change architecture"
-#define HHC02254 " i: %12" I64_FMT "d"
-#define HHC02255 "%3d: %12" I64_FMT "d"
+#define HHC02254 " i: %12"PRId64
+#define HHC02255 "%3d: %12"PRId64
 #define HHC02256 "Command %s is deprecated, use %s instead"
 #define HHC02257 "%s%7d"
 #define HHC02258 "Only 1 %s may be invoked from the panel at any time"
 #define HHC02259 "Script %d aborted: %s"
 #define HHC02260 "Script %d: begin processing file %s"
-#define HHC02261 "Script %d: file statement only; %s ignored"
+#define HHC02261 "Script %d: syntax error; statement ignored: %s"
 #define HHC02262 "Script %d: processing paused for %d milliseconds..."
 #define HHC02263 "Script %d: processing resumed..."
 #define HHC02264 "Script %d: file %s processing ended"
 #define HHC02265 "Script %d: file %s aborted due to previous conditions"
 #define HHC02266 "Confirm command by entering %s again within %d seconds"
-#define HHC02267 "%s"
-#define HHC02268 "%s"
-#define HHC02269 "%s"
-#define HHC02270 "%s"
-#define HHC02271 "%s"
-#define HHC02272 "%s"
+#define HHC02267 "%s" // (trace instr: Real address is not valid)
+#define HHC02268 "%s" // (ds - display subchannel command)
+#define HHC02269 "%s" // General purpose registers
+#define HHC02270 "%s" // Floating point registers
+#define HHC02271 "%s" // Control registers
+#define HHC02272 "%s" // Access registers
 #define HHC02273 "Index %2d: %s"
-#define HHC02274 "%s"
+#define HHC02274 "%s" // 'clocks' command
 #define HHC02275 "SCSI auto-mount: %s"
-#define HHC02276 "Floating point control register: %08"I32_FMT"X"
+#define HHC02276 "Floating point control register: %08"PRIX32
 #define HHC02277 "Prefix register: %s"
 #define HHC02278 "Program status word: %s"
-#define HHC02279 "%s"
-#define HHC02280 "%s"
-#define HHC02281 "%s"
-#define HHC02282 "%s"
-#define HHC02283 "%s"
-#define HHC02284 "%s"
+#define HHC02279 "%s" // devlist command
+#define HHC02280 "%s" // qd command
+#define HHC02281 "%s" // pgmtrace_cmd
+#define HHC02282 "%s" // aea_cmd
+#define HHC02283 "%s" // aia_cmd
+#define HHC02284 "%s" // tlb_cmd
 #define HHC02285 "Counted %5u %s events"
 #define HHC02286 "Average instructions / SIE invocation: %5u"
 #define HHC02287 "No SIE performance data"
 #define HHC02288 "Commands are sent to %s"
-#define HHC02289 "%s"
-#define HHC02290 "%s"
-#define HHC02291 "%s"
-#define HHC02292 "%s"
-#define HHC02293 "%s"
-#define HHC02294 "%s"
+#define HHC02289 "%s" // disasm_stor
+#define HHC02290 "%s" // 'abs', 'r' and 'v' commands, and 'dump_abs_page' function
+#define HHC02291 "%s" // 'abs', 'r' and 'v' commands, and 'dump_abs_page' function
+#define HHC02292 "%s" // icount_cmd
+#define HHC02293 "%s" // history.c: command history
+#define HHC02294 "%s" // cachestats_cmd
 #define HHC02295 "CP group capping rate is %d MIPS"
 #define HHC02296 "Capping rate for each non-CP CPU is %d MIPS"
 #define HHC02297 "MIP capping is not enabled"
 #define HHC02298 "%1d:%04X drive is empty"
 #define HHC02299 "Invalid command usage. Type 'help %s' for assistance."
-#define HHC02300 "sm=%2.2X pk=%d cmwp=%X as=%s cc=%d pm=%X am=%s ia=%"I64_FMT"X"
+#define HHC02300 "sm=%2.2X pk=%d cmwp=%X as=%s cc=%d pm=%X am=%s ia=%"PRIX64
 #define HHC02301 "%s: Unexpected read length at record %d; expected %d-byte record"
 #define HHC02302 "%s: Record %d is unknown record type %s; skipped"
 #define HHC02303 "%s: GOFF object found at record %d; aborting"
 #define HHC02304 "%s: Record %d is unknown record type; skipped"
 #define HHC02305 "%s: Record %d is unknown record type; aborting"
 #define HHC02306 "%s: Address %s not on quadword boundary"
-#define HHC02307 "%s: Record %d relocation value %6.6"I64_FMT"X address exceeds main storage size"
+#define HHC02307 "%s: Record %d relocation value %6.6"PRIX64" address exceeds main storage size"
 #define HHC02308 "%s: Warning messages issued, review before executing"
 #define HHC02309 "%s: Record %d is unsupported record type %s; skipped"
 #define HHC02310 "Panel command %s is not supported in this build; see option %s"
@@ -1402,6 +1328,35 @@ do { \
 #define HHC02317 "%s bytes %s so far..."
 #define HHC02318 "Config file[%d] %s: processing paused for %d milliseconds..."
 #define HHC02319 "Config file[%d] %s: processing resumed..."
+#define HHC02320 "Not all TCP keepalive settings honored"
+#define HHC02321 "This build of Hercules does not support TCP keepalive"
+#define HHC02322 "This build of Hercules has only basic TCP keepalive support"
+#define HHC02323 "This build of Hercules has only partial TCP keepalive support"
+#define HHC02324 "%s"     // (instruction tracing)
+#define HHC02325 "%s%s"   // (instruction tracing: instr fetch error)
+#define HHC02326 "%s"     // (instruction tracing: storage line)
+#define HHC02327 "%c:"F_RADR"  Storage address is not valid"
+#define HHC02328 "%c:"F_RADR"  Addressing exception"
+#define HHC02329 "%c:"F_VADR"  Translation exception %4.4hX  %s"
+#define HHC02330 "Script %d: test: [re]start failed"
+#define HHC02331 "Script %d: test: aborted"
+#define HHC02332 "Script %d: test: timeout"
+#define HHC02333 "Script %d: test: running..."
+#define HHC02334 "Script %d: test: test ended"
+#define HHC02335 "Script %d: test: invalid timeout; set to def: %s"
+#define HHC02336 "Script %d: test: test starting"
+#define HHC02337 "runtest is only valid as a scripting command"
+#define HHC02338 "Script %d: test: actual duration: %"PRId32".%06"PRId32" seconds"
+#define HHC02339 "Script %d: test: duration limit: %"PRId32".%06"PRId32" seconds"
+/* #define HHC02340                                                  */
+#define HHC02341 "Script %d: test: unknown runtest keyword: %s"
+#define HHC02342 "%s file '%s' not found:  %s"
+#define HHC02343 "Terminating due to %d argument errors"
+#define HHC02344 "%s device %1d:%04X group has registered MAC address %s"
+#define HHC02345 "%s device %1d:%04X group has registered IP address %s"
+#define HHC02346 "%s device %1d:%04X group has no registered MAC or IP addresses"
+
+// range 02350 - 02369 available
 
 #define HHC02370 "%1d:%04X CU or LCU %s conflicts with existing CUNUM %04X SSID %04X CU/LCU %s"
 #define HHC02371 "%1d:%04X Adding device exceeds CU and/or LCU device limits"
@@ -1422,13 +1377,49 @@ do { \
 //dasdcat.c
 #define HHC02400 "Directory block byte count is invalid"
 #define HHC02401 "Non-PDS-members not yet supported"
-#define HHC02402 "Unknown option %s value %s"
+#define HHC02402 "Unknown 'member:flags' formatting option %s"
 #define HHC02403 "Failed opening %s"
 #define HHC02404 "Can't make 80 column card images from block length %d"
-#define HHC02405 "Usage: %s [-i dasd_image [sf=shadow-file-name] dsname...]...\n" \
-       "          dsname can (currently must) be pdsname/spec\n" \
-       "          spec is memname[:flags], * (all) or ? (list)\n" \
-       "          flags can include (c)ard images, (a)scii"
+#define HHC02405 "Usage:\n"                                                         \
+       "HHC02405I\n"                                                                \
+       "HHC02405I       %s [-i dasd_image [sf=shadowfile] spec...]...\n"            \
+       "HHC02405I\n"                                                                \
+       "HHC02405I Where:\n"                                                         \
+       "HHC02405I\n"                                                                \
+       "HHC02405I       -i             indicates next arg is input file\n"          \
+       "HHC02405I       dasd_image     input dasd image file\n"                     \
+       "HHC02405I       shadowfile     optional dasd image shadow file\n"           \
+       "HHC02405I       spec           pdsname/memname[:flags]\n"                   \
+       "HHC02405I\n"                                                                \
+       "HHC02405I       pdsname        the name of the partitioned dataset\n"       \
+       "HHC02405I       memname        either a specific member name or one\n"      \
+       "HHC02405I                      of the following special characters:\n"      \
+       "HHC02405I\n"                                                                \
+       "HHC02405I                         '?'    just list all of the names\n"      \
+       "HHC02405I                                of pdsname's members\n"            \
+       "HHC02405I\n"                                                                \
+       "HHC02405I                         '*'    selects all pdsname members\n"     \
+       "HHC02405I\n"                                                                \
+       "HHC02405I       flags          indicates how to format selected members:\n" \
+       "HHC02405I\n"                                                                \
+       "HHC02405I                         'c'    as 72 or 80 column card images\n"  \
+       "HHC02405I                         's'    indicates 'c' shoud be 80 cols\n"  \
+       "HHC02405I                         'a'    as plain unformatted ASCII\n"      \
+       "HHC02405I                         '?'    member CCCCHHR/size info only\n"   \
+       "HHC02405I\n"                                                                \
+       "HHC02405I More than one flag may be specified. The 's' option is ignored\n" \
+       "HHC02405I unless the 'c' option is also specified. Both imply 'a' ASCII.\n" \
+       "HHC02405I\n"                                                                \
+       "HHC02405I If no flags are given the member is written in binary exactly\n"  \
+       "HHC02405I as-is. Use caution when no formatting flags are given since\n"    \
+       "HHC02405I many terminal programs do not react too well when pure binary\n"  \
+       "HHC02405I data is written to the screen. When selecting a single member\n"  \
+       "HHC02405I without any formatting options it is highly recommended that\n"   \
+       "HHC02405I you redirect output to another file (e.g. dasdcat ... > file).\n" \
+       "HHC02405I\n"                                                                \
+       "HHC02405I Return code is 0 if successful or 1 if any errors."
+#define HHC02406 "Member '%s' not found in dataset '%s' on volume '%s'"
+#define HHC02407 "%s/%s/%-8s %8s bytes from %4.4"PRIX32"%2.2"PRIX32"%2.2"PRIX32" to %4.4"PRIX32"%2.2"PRIX32"%2.2"PRIX32
 //dasdconv.c
 #define HHC02410 "Usage: %s [options] infile outfile\n" \
        "          infile:  name of input HDR-30 CKD image file ('-' means stdin)\n" \
@@ -1437,11 +1428,11 @@ do { \
        "            -r     replace existing output file\n" \
        "            -q     suppress progress messages%s"
 
-#define HHC02411 "Usage: %s [-v] [-f] [-level] [-ro] file1 [file2 ...]\n" \
+#define HHC02411 "Usage: %s [-f] [-level] [-ro] file1 [file2 ...]\n" \
        "          options:\n" \
-       "            -v      display version and exit\n" \
        "\n" \
        "            -f      force check even if OPENED bit is on\n" \
+       "            -ro     open file readonly, no repairs\n" \
        "\n" \
        "        level is a digit 0 - 4:\n" \
        "            -0  --  minimal checking (hdr, chdr, l1tab, l2tabs)\n" \
@@ -1449,8 +1440,8 @@ do { \
        "            -2  --  extra   checking (hdr, chdr, l1tab, l2tabs, free spaces, trkhdrs)\n" \
        "            -3  --  maximal checking (hdr, chdr, l1tab, l2tabs, free spaces, trkimgs)\n" \
        "            -4  --  recover everything without using meta-data\n" \
-       "\n" \
-       "            -ro     open file readonly, no repairs"
+       "\n"
+
 #define HHC02412 "Error in function %s: %s"
 #define HHC02413 "Dasdconv is compiled without compress support and input is compressed"
 #define HHC02414 "Input file is already in CKD format, use dasdcopy"
@@ -1474,7 +1465,6 @@ do { \
        "            ifile  input ckd dasd file\n" \
        "            ofile  output compressed ckd dasd file\n" \
        "          options:\n" \
-       "            -v     display program version and quit\n" \
        "            -h     display this help and quit\n" \
        "            -q     quiet mode, don't display status\n" \
        "            -r     replace the output file if it exists\n" \
@@ -1490,7 +1480,6 @@ do { \
        "                   (optional)\n" \
        "            ofile  output ckd dasd file\n" \
        "          options:\n" \
-       "            -v     display program version and quit\n" \
        "            -h     display this help and quit\n" \
        "            -q     quiet mode, don't display status\n" \
        "            -r     replace the output file if it exists\n" \
@@ -1502,7 +1491,6 @@ do { \
        "            ifile  input fba dasd file\n" \
        "            ofile  output compressed fba dasd file\n" \
        "          options:\n" \
-       "            -v     display program version and quit\n" \
        "            -h     display this help and quit\n" \
        "            -q     quiet mode, don't display status\n" \
        "            -r     replace the output file if it exists\n" \
@@ -1517,7 +1505,6 @@ do { \
        "                   (optional)\n" \
        "            ofile  output fba dasd file\n" \
        "          options:\n" \
-       "            -v     display program version and quit\n" \
        "            -h     display this help and quit\n" \
        "            -q     quiet mode, don't display status\n" \
        "            -r     replace the output file if it exists\n" \
@@ -1529,7 +1516,6 @@ do { \
        "            sfile  input shadow file [optional]\n" \
        "            ofile  output dasd file\n" \
        "          options:\n" \
-       "            -v     display program version and quit\n" \
        "            -h     display this help and quit\n" \
        "            -q     quiet mode, don't display status\n" \
        "            -r     replace the output file if it exists\n" \
@@ -1550,7 +1536,6 @@ do { \
 #define HHC02448 "Usage: dasdinit [-options] filename devtype[-model] [volser] [size]\n" \
        "          Builds an empty dasd image file\n" \
        "          options:\n" \
-       "            -v     display version info and help\n" \
        "%s" \
        "%s" \
        "            -0     build compressed dasd image file with no compression\n" \
@@ -1618,9 +1603,7 @@ do { \
 #define HHC02492 "Option %s specified"
 #define HHC02493 "Filename %s specified for %s"
 #define HHC02494 "Requested number of extents %d exceeds maximum %d; utility ends"
-#define HHC02495 "Usage: %s [-v] [-f] [-n] file1 [file2 ...]\n" \
-       "\n" \
-       "          -v      display version and exit\n" \
+#define HHC02495 "Usage: %s [-f] [-n] file1 [file2 ...]\n" \
        "\n" \
        "          -f      force check even if OPENED bit is on\n" \
        "\n" \
@@ -1644,7 +1627,16 @@ do { \
        "          outfile  name of DASD image file to be created\n" \
        "\n" \
        "          n        msglevel 'n' is a digit 0 - 5 re: output verbosity"
-
+#define HHC02497 "Usage: %s [-f] [-level] file1 [file2 ... ]\n" \
+       "\n" \
+       "          -f      force check even if OPENED bit is on\n" \
+       "\n" \
+       "        chkdsk level is a digit 0 - 3:\n" \
+       "          -0  --  minimal checking\n" \
+       "          -1  --  normal  checking\n" \
+       "          -2  --  intermediate checking\n" \
+       "          -3  --  maximal checking\n" \
+       "         default  0"
 
 #define HHC02499 "Hercules utility %s - %s;"
 
@@ -1748,7 +1740,6 @@ do { \
 // reserve 026xx for utilites
 #define HHC02600 "Usage: %s [options] file-name\n" \
        "\n" \
-       "          -v      display version and exit\n" \
        "          -d      display DEVHDR and exit\n" \
        "          -c      display CDEVHDR and exit\n" \
        "          -1      display L1TAB (numeric one)\n" \
@@ -1774,7 +1765,7 @@ do { \
 
 #define HHC02700 "SCSI tapes are not supported with this build"
 #define HHC02701 "Abnormal termination"
-#define HHC02702 "Tape %s: Status %8.8lX%s%s%s%s%s%s%s%s%s%s%s"
+#define HHC02702 "Tape %s: %smt_gstat 0x%8.8"PRIX32" %s"
 #define HHC02703 "Tape %s: Error reading status: rc=%d, errno=%d: %s"
 #define HHC02704 "End of tape"
 #define HHC02705 "Tape %s: Error reading tape: errno=%d: %s"
@@ -1796,10 +1787,10 @@ do { \
 #define HHC02721 "File No. %u: Blocks=%u, Bytes=%"I64_FMT"d, Block size min=%u, max=%u, avg=%u"
 #define HHC02722 "Tape Label: %s"
 #define HHC02723 "File No. %u: Block %u"
-#define HHC02724 "Successful completion\n" \
-       "          Bytes read:    %"I64_FMT"d (%3.1f MB), Blocks=%u, avg=%u\n" \
-       "          Bytes written: %"I64_FMT"d (%3.1f MB)"
-#define HHC02725 "Usage: %s infilename outfilename"
+#define HHC02724 "Successful completion"
+#define HHC02725 "Usage: %s infilename outfilename [nnn] [outfilename [nnn]] ...\n\n" \
+                 "nnn specifies how many tapemark-separated files to copy to the\n" \
+                 "specified outfilename. If nnn is not given 32767 is used instead."
 #define HHC02726 "Usage: %s filename"
 #define HHC02727 "Usage: %s [-f n] infilename outfilename"
 #define HHC02728 "Usage: %s [options] hetfile outfile fileno [recfm lrecl blksize]\n" \
@@ -1833,6 +1824,9 @@ do { \
        "                -s   strict AWSTAPE specification (chunksize=4096,no compression)\n" \
        "                -v   verbose (debug) information\n" \
        "                -z   use ZLIB compression\n"
+#define HHC02731 "          (tapemark)"
+#define HHC02732 "Bytes read:    %"PRId64" (%3.1f MB), Blocks=%u, avg=%u"
+#define HHC02733 "Bytes written: %"PRId64" (%3.1f MB)"
 
 #define HHC02738 "%s"
 #define HHC02739 "Usage: %s [options] infile outtmplt\n" \
@@ -1841,7 +1835,6 @@ do { \
        "                -j  Join file pieces\n" \
        "                -s  Split file into pieces\n" \
        "                -h  display usage summary"
-
 #define HHC02740 "File %s: writing output file"
 #define HHC02741 "File %s: Error, incomplete %s header"
 #define HHC02742 "File %s: Error, incomplete final data block: expected %d bytes, read %d"
@@ -1857,7 +1850,23 @@ do { \
 #define HHC02755 "HET: Setting option %s to %s"
 #define HHC02756 "HET: HETLIB reported error %s files; %s"
 #define HHC02757 "HET: %s"
+#define HHC02758 \
+    "Usage: %s [options] filename\n\n" \
+    "Options:\n" \
+    "  -a  print all label and file information (default: on)\n" \
+    "  -bn print 'n' bytes per file; -b implies -s\n" \
+    "  -d  print only dataset information (default: off)\n" \
+    "  -f  print only file information (default: off)\n" \
+    "  -h  display usage summary\n" \
+    "  -l  print only label information (default: off)\n" \
+    "  -s  print dump of each data file (SLANAL format) (default: off)\n" \
+    "  -t  print TAPEMAP-compatible format output (default: off)\n"
+#define HHC02759 \
+    "Usage: %s filename\n"
+#define HHC02760 "%s"
+#define HHC02761 "DCB Attributes used:  RECFM=%-4.4s  LRECL=%-5.5d  BLKSIZE=%d"
 
+// mt_cmd
 #define HHC02800 "%1d:%04X %s complete"
 #define HHC02801 "%1d:%04X %s failed; %s"
 #define HHC02802 "%1d:%04X Current file number %d"
@@ -1866,15 +1875,48 @@ do { \
 #define HHC02805 "%1d:%04X Volser = %s"
 #define HHC02806 "%1d:%04X Unlabeled tape"
 
+// range 029nn - 02949 console.c
+#define HHC02900 "%s COMM: Send() failed: %s"
+#define HHC02901 "%s COMM: Refusing client demand to %s %s"
+#define HHC02902 "%s COMM: Client refused to %s %s"
+#define HHC02903 "%s COMM: Libtelnet error"
+#define HHC02904 "%s COMM: Libtelnet FATAL error"
+#define HHC02905 "%s COMM: Libtelnet negotiation error"
+#define HHC02906 "%s COMM: Unsupported libtelnet event '%s'"
+#define HHC02907 "%s COMM: Libtelnet %s: %s in %s() at %s(%d): %s"
+#define HHC02908 "%s COMM: Connection closed during negotiations"
+#define HHC02909 "%s COMM: Recv() error during negotiations: %s"
+#define HHC02910 "%s COMM: Unsupported terminal type: %s"
+#define HHC02911 "%s COMM: Discarding premature data"
+#define HHC02912 "%s COMM: Buffer overflow"
+#define HHC02913 "%s COMM: Buffer overrun"
+#define HHC02914 "%s COMM: %s negotiations complete; ttype = '%s'"
+#define HHC02915 "%s COMM: Connection received"
+//efine HHC02916 - HHC02949 (available)
+
+// range 02950 - 02999 available
+// range 03000 - 03099 available
+// range 03100 - 03199 available
+// range 03200 - 03299 available
+// range 03300 - 03399 available
+// range 03400 - 03499 available
+// range 03500 - 03599 available
+// range 03600 - 03699 available
+// range 03700 - 03799 available
+
+// reserve 038xx for qeth related messages
+#define HHC03801 "%1d:%04X %s: %s: Register guest MAC address %s"
+#define HHC03802 "%1d:%04X %s: %s: Cannot register guest MAC address %s"
+#define HHC03803 "%1d:%04X %s: %s: Unregister guest MAC address %s"
+#define HHC03804 "%1d:%04X %s: %s: Cannot unregister guest MAC address %s"
+#define HHC03805 "%1d:%04X %s: %s: Register guest IP address %s"
+#define HHC03806 "%1d:%04X %s: %s: Cannot register guest IP address %s"
+#define HHC03807 "%1d:%04X %s: %s: Unregister guest IP address %s"
+#define HHC03808 "%1d:%04X %s: %s: Cannot unregister guest IP address %s"
+
 // reserve 039xx for ptp related messages
 #define HHC03901 "%1d:%04X PTP: Guest and driver IP addresses are the same"
 #define HHC03902 "%1d:%04X PTP: Inet6 not supported"
-#define HHC03903 "%1d:%04X PTP: Data of size %d bytes displayed, data of size %d bytes not displayed"
-#define HHC03904 "%1d:%04X PTP: Receive %s packet of size %d bytes from device %s"
-#define HHC03905 "%1d:%04X PTP: Present data of size %d bytes to guest"
-#define HHC03906 "%1d:%04X PTP: Accept data of size %d bytes from guest"
-#define HHC03907 "%1d:%04X PTP: Send %s packet of size %d bytes to device %s"
-#define HHC03909 "PTP: data trace: %s %s %s"
 #define HHC03910 "%1d:%04X PTP: Hercules has maximum read length of size %d bytes and actual MTU of size %d bytes"
 #define HHC03911 "%1d:%04X PTP: Guest has maximum read length of size %d bytes and actual MTU of size %d bytes"
 #define HHC03912 "%1d:%04X PTP: Guest has the driver IP address %s"
@@ -1897,14 +1939,7 @@ do { \
 #define HHC03952 "%1d:%04X PTP: MAC: %s"
 #define HHC03953 "%1d:%04X PTP: IPv4: Drive %s/%s (%s): Guest %s"
 #define HHC03954 "%1d:%04X PTP: IPv6: Drive %s/%s %s/%s: Guest %s"
-#define HHC03960 "%1d:%04X %s: error in function %s: %s"
-#define HHC03964 "%1d:%04X %s: halt or clear recognized"
 #define HHC03965 "%id:%04X %s: Preconfigured interface %s does not exist or is not accessible by Hercules"
-#define HHC03971 "%1d:%04X %s: error writing to device %s: %d %s"
-#define HHC03972 "%1d:%04X %s: error reading from device %s: %d %s"
-#define HHC03975 "%1d:%04X %s: incorrect number of parameters"
-#define HHC03976 "%1d:%04X %s: option %s value %s invalid"
-#define HHC03978 "%1d:%04X %s: option %s unknown or specified incorrectly"
 #define HHC03981 "%1d:%04X %s: %s: %s %s  %s"
 #define HHC03982 "%s: %s %s  %s"
 #define HHC03983 "%1d:%04X %s: %s"
@@ -1916,45 +1951,97 @@ do { \
 #define HHC03994 "%1d:%04X %s: Status %02X"
 #define HHC03995 "%1d:%04X %s: %s:\n%s"
 #define HHC03996 "%1d:%04X %s: %s: %s"
-#define HHC03997 "%1d:%04X %s: %s: %susing %s %s"
+#define HHC03997 "%1d:%04X %s: Interface %s %susing %s %s"
 #define HHC03998 "%1d:%04X %s: %s inconsistent with %s"
 
-
 // reserve 04xxx for host os specific component messages
+
 // reserve 041xx for windows specific component messages (w32xxxx.c)
 #define HHC04100 "%s version %s initiated"
-#define HHC04101 "%s Statistics:\n" \
-       "          \n" \
-       "          Size of Kernel Hold Buffer:      %5luK\n" \
-       "          Size of DLL I/O Buffer:          %5luK\n" \
-       "          Maximum DLL I/O Bytes Received:  %5luK\n" \
-       "          \n" \
-       "          %12" I64_FMT "d  Total Write Calls\n" \
-       "          %12" I64_FMT "d  Total Write I/Os\n" \
-       "          %12" I64_FMT "d  Packets To All Zeroes MAC Written\n" \
-       "          %12" I64_FMT "d  Total Packets Written\n" \
-       "          %12" I64_FMT "d  Total Bytes Written\n" \
-       "          \n" \
-       "          %12" I64_FMT "d  Total Read Calls\n" \
-       "          %12" I64_FMT "d  Total Read I/Os\n" \
-       "          %12" I64_FMT "d  Internally Handled ARP Packets\n" \
-       "          %12" I64_FMT "d  Packets From Ourself\n" \
-       "          %12" I64_FMT "d  Total Ignored Packets\n" \
-       "          %12" I64_FMT "d  Packets To All Zeroes MAC Read\n" \
-       "          %12" I64_FMT "d  Total Packets Read\n" \
-       "          %12" I64_FMT "d  Total Bytes Read\n\n"
+#define HHC04101 "%s Statistics:"
 #define HHC04102 "One of the GetProcAddress calls failed"
-#define HHC04109 "%s"
-#define HHC04110 "Maximum device threads (devtmax) of %d exceeded by %d"
-#define HHC04111 "%1d:%04X Function %s failed: [%02d] %s"
+#define HHC04103 "  %s%5luK"
+#define HHC04104 "  %12"PRId64"  %s"
+//efine HHC04105 (available)
+//efine HHC04106 (available)
+//efine HHC04107 (available)
+//efine HHC04108 (available)
+//efine HHC04109 (available)
+//efine HHC04110 (available)
+//efine HHC04111 (available)
 #define HHC04112 "Cannot provide minimum emulated TOD clock resolution"
+
+// range 04200 - 04299 available
+// range 04300 - 04399 available
+// range 04400 - 04499 available
+// range 04500 - 04599 available
+// range 04600 - 04699 available
+// range 04700 - 04799 available
+// range 04800 - 04899 available
+// range 04900 - 04999 available
+
+// reserve 050xx for CTCE related messages
+#define HHC05050 "%1d:%04X CTCE: Error creating socket: %s"
+#define HHC05051 "%1d:%04X CTCE: TCP_NODELAY error for socket (port %d): %s"
+#define HHC05052 "%1d:%04X CTCE: Error binding to socket (port %d): %s"
+#define HHC05053 "%1d:%04X CTCE: Connect error :%d -> %s:%d, retry is possible"
+#define HHC05054 "%1d:%04X CTCE: Started outbound connection :%d -> %s:%d"
+#define HHC05055 "%1d:%04X CTCE: Incorrect number of parameters"
+#define HHC05056 "%1d:%04X CTCE: Invalid port number: %s"
+#define HHC05057 "%1d:%04X CTCE: Local port number not even: %s"
+#define HHC05058 "%1d:%04X CTCE: Invalid IP address %s"
+#define HHC05059 "%1d:%04X CTCE: Invalid port number: %s"
+#define HHC05060 "%1d:%04X CTCE: Remote port number not even: %s"
+#define HHC05061 "%1d:%04X CTCE: Invalid MTU size %s, allowed range is %d to 65536"
+#define HHC05062 "%1d:%04X CTCE: Invalid Small MTU size %s ignored"
+#define HHC05063 "%1d:%04X CTCE: Awaiting inbound connection :%d <- %s:%d"
+#define HHC05064 "%1d:%04X CTCE: Error creating socket: %s"
+#define HHC05065 "%1d:%04X CTCE: Error binding to socket (port=%d): %s"
+#define HHC05066 "%1d:%04X CTCE: Error on call to listen (port=%d): %s"
+#define HHC05067 "%1d:%04X CTCE: Inconsistent config=%s+%d, connecting client=%s"
+#define HHC05068 "%1d:%04X CTCE: TCP_NODELAY error for socket (port %d): %s"
+#define HHC05069 "%1d:%04X CTCE: create_thread error: %s"
+#define HHC05070 "%1d:%04X CTCE: Accepted inbound connection :%d <- %s (bufsize=%d,%d)"
+#define HHC05071 "%1d:%04X CTCE: SEND status incorrectly encoded !"
+#define HHC05072 "%1d:%04X CTCE: Not all sockets connected: send=%d, receive=%d"
+#define HHC05073 "%1d:%04X CTCE: bufsize parameter %d is too small; increase at least to %d"
+#define HHC05074 "%1d:%04X CTCE: Error writing to %s: %s"
+#define HHC05075 "%1d:%04X CTCE: Halt or Clear Recognized"
+#define HHC05076 "%1d:%04X CTCE: Connection closed; %"PRIu64" MB received in %"PRIu64" packets from %s"
+#define HHC05077 "%1d:%04X CTCE: Error reading from %s: %s"
+#define HHC05078 "%1d:%04X CTCE: -| %s%s%s%s x=%s y=%s cmd=%s"
+#define HHC05079 "%1d:%04X CTCE: %s %.6s #%04X cmd=%s=%02X xy=%.2s%s%.2s l=%04X k=%08X %s%s%s%s%s%s"
+#define HHC05080 "%1d:%04X CTCE: Socket select() with %d usec timeout error : %s"
+
+// range 05100 - 05199 available
+// range 05200 - 05299 available
+// range 05300 - 05399 available
+// range 05400 - 05499 available
+// range 05500 - 05599 available
+// range 05600 - 05699 available
+// range 05700 - 05799 available
+// range 05800 - 05899 available
+// range 05900 - 05999 available
+
+// range 06000 - 06999 available
+// range 07000 - 07999 available
+// range 08000 - 08999 available
+// range 09000 - 09999 available
+
+// range 10000 - 10999 available
+// range 11000 - 11999 available
+// range 12000 - 12999 available
+// range 13000 - 13999 available
+// range 14000 - 14999 available
+// range 15000 - 15999 available
+// range 16000 - 16999 available
 
 // reserve 17000-17499 messages command processing
 #define HHC17000 "Missing or invalid argument(s)"
 #define HHC17001 "%s server listening %s"
 #define HHC17002 "%s server inactive"
 #define HHC17003 "%-8s storage is %s (%ssize); storage is %slocked"
-#define HHC17004 "CPUID  = "I64_FMTX""
+#define HHC17004 "CPUID  = %16.16"PRIX64
 #define HHC17005 "CPC SI = %4.4X.%s.%s.%s.%16.16X"
 #define HHC17006 "LPARNAME[%2.2X] = %s"
 #define HHC17007 "NumCPU = %2.2d, NumVEC = %2.2d, ReservedCPU = %2.2d, MaxCPU = %2.2d"
@@ -1965,6 +2052,7 @@ do { \
 #define HHC17012 "MSGLEVEL = %s"
 #define HHC17013 "Process ID = %d"
 #define HHC17014 "Specified value is invalid or outside of range %d to %d"
+#define HHC17015 "%s support not included in this engine build"
 
 #define HHC17100 "Timeout value for 'quit' and 'ssd' is %d seconds"
 #define HHC17199 "%.4s %s"
@@ -1998,6 +2086,17 @@ do { \
 #define HHC17534 "REXX(%s) Error Registering %s RC(%d)"
 #define HHC17535 "REXX(%s) Error Deregistering %s RC(%d)"
 
+// range 18000 - 18999 available
+// range 19000 - 19999 available
+
+// range 20000 - 29999 available
+// range 30000 - 39999 available
+// range 40000 - 49999 available
+// range 50000 - 59999 available
+// range 60000 - 69999 available
+// range 70000 - 79999 available
+// range 80000 - 89999 available
+
 // reserve 90000 messages for debugging
 #define HHC90000 "DBG: %s"
 #define HHC90001 " *** Assertion Failed! *** %s(%d); function: %s()"
@@ -2005,7 +2104,7 @@ do { \
 /* hthreads.c, pttrace.c */
 #define HHC90010 "Pttrace: trace is busy"
 #define HHC90011 "Pttrace: invalid argument %s"
-#define HHC90012 "Pttrace: %s%s%s%s%s%s%s%s%s%s%s %s %s to %d %d"
+#define HHC90012 "Pttrace: %s %s %s %s to=%d %d"
 #define HHC90013 "'%s(%s)' failed: rc=%d: %s; tid="TIDPAT", loc=%s"
 #define HHC90014 "lock %s was obtained by thread "TIDPAT" at %s"
 #define HHC90015 "Thread "TIDPAT" abandoned lock %s obtained on %s at %s"
@@ -2013,6 +2112,9 @@ do { \
 #define HHC90017 "Lock=%s, tid="TIDPAT", tod=%s, loc=%s"
 #define HHC90018 "Total locks defined: %d"
 #define HHC90019 "No locks found for thread "TIDPAT"."
+#define HHC90020 "'%s' failed at loc=%s: rc=%d: %s"
+#define HHC90021 "%-18s %s "TIDPAT" %-18s "PTR_FMTx" "PTR_FMTx" %s"
+
 
 /* from crypto/dyncrypt.c when compiled with debug on */
 #define HHC90100 "%s"
@@ -2032,7 +2134,8 @@ do { \
 /* from crypto.c when compiled with debug on */
 #define HHC90190 "%s"
 
-/* from scsitape.c trace */
+/* from scsitape.c */
+// (same as HHC00205 but 9xxxx debugging range)
 #define HHC90205 "%1d:%04X Tape file %s, type %s: error in function %s: %s"
 
 /* from cmpsc.c when compiled with debug on */
@@ -2103,14 +2206,58 @@ do { \
 #define HHC90364 "   zp    : %s"
 #define HHC90365 "dead_end : %02X %02X %s"
 
-/* tapeccws tapedev */
-#define HHC93480 "%1d:%04X TDSPSTAT[%02X] msg1[%-8s] msg2[%-8s] msg[%-8s] mnt[%s] unmnt[%s] TDSPFLAG[%02X]"
-/* tape general     */
-#define HHC93590 "DBG: TAPE: %s"
+/* cckddiag.c */
+#define HHC90400 "MAKBUF() malloc %s buffer of %d bytes at %p"
+#define HHC90401 "READPOS seeking %d (0x%8.8X)"
+#define HHC90402 "READPOS reading buf addr %p length %d (0x%X)"
+#define HHC90403 "SHOWTRK Compressed track header and data"
+#define HHC90404 "SHOWTRK Decompressed track header and data"
+#define HHC90405 "OFFTIFY hex string '%s' = 0x%16.16"PRIX64", dec %"PRId64"."
+#define HHC90406 "OFFTIFY dec string '%s' = 0x%16.16"PRIX64", dec %"PRId64"."
+#define HHC90407 "%s device has %d heads/cylinder"
 
-/* ctc/lcs/ndis */
-#define HHC90900 "DBG: CTC: %s device port %2.2X: %s"
-#define HHC90901 "DBG: CTC: %s: %s"
+// range 90500 - 90549 console.c DEBUGGING messages
+#define HHC90500 "%s COMM: Sending %d bytes"
+#define HHC90501 "%s COMM: Received %d bytes"
+#define HHC90502 "%s COMM: recv_3270_data: %d bytes received"
+//efine HHC90503            (available)
+#define HHC90504 "%s COMM: Disconnected"
+#define HHC90505 "%s COMM: Received connection from %s"
+#define HHC90506 "%s COMM: Device attention %s; rc=%d"
+#define HHC90507 "%s COMM: recv() failed: %s"
+#define HHC90508 "COMM: pselect() failed: %s"
+#define HHC90509 "COMM: accept() failed: %s"
+#define HHC90510 "%s COMM: setsockopt() failed: %s"
+#define HHC90511 "%s COMM: Negotiating %-14s %s"
+#define HHC90512 "%s COMM: Received IAC %s"
+//efine HHC90513            (available)
+//efine HHC90514            (available)
+//efine HHC90515            (available)
+//efine HHC90516 - HHC90549 (available)
 
-//      HHC90999  see dbgtrace.h
+// range 90550 - 90599 generalx.c - Processing Damage messages
+#define HHC90550 "Machine check : Instruction Processing Damage - incorrect implemenation of R[x]SBG instruction %2.2x"
+// range 90600 - 90699 available
+// range 90700 - 90799 available
+// range 90800 - 90899 available
 
+// range 90900 - 90998 available
+//               90999 dbgtrace.h
+
+// range 91000 - 91999 available
+
+// range 92000 - 92701 available
+/* from scsitape.c */
+// (same as HHC02702 but 9xxxx debugging range)
+#define HHC92702 "Tape %s: %smt_gstat 0x%8.8"PRIX32" %s"
+// range 92703 - 92999 available
+
+// range 93000 - 93999 available
+// range 94000 - 94999 available
+// range 95000 - 95999 available
+// range 96000 - 96999 available
+// range 97000 - 97999 available
+// range 98000 - 98999 available
+// range 99000 - 99999 available
+
+#endif // _MSGENU_H_

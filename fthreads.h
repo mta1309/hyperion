@@ -52,7 +52,8 @@
 ////////////////////////////////////////////////////////////////////////////////////
 // (need struct timespec for fthread_cond_timedwait)
 
-#if !defined(TIMESPEC_IN_SYS_TYPES_H) && !defined(TIMESPEC_IN_TIME_H)
+#if !defined(TIMESPEC_IN_SYS_TYPES_H) && !defined(TIMESPEC_IN_TIME_H) && (_MSC_VER < VS2015)
+  // Avoid double definition for VS2015 as it defines timespec in ...\ucrt\time.h(39)
   // (need to define it ourselves)
   struct timespec
   {
@@ -182,7 +183,7 @@ int  fthread_detach
 DLL_EXPORT
 HANDLE fthread_get_handle
 (
-    fthread_t       pdwThreadID             // Thread ID
+    fthread_t       dwThreadID             // Thread ID
 );
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -221,8 +222,8 @@ fthread_t  fthread_self
 FT_DLL_IMPORT
 int  fthread_equal
 (
-    fthread_t  pdwThreadID_1,
-    fthread_t  pdwThreadID_2
+    fthread_t  dwThreadID_1,
+    fthread_t  dwThreadID_2
 );
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -417,6 +418,30 @@ int fthread_mutexattr_settype
     fthread_mutexattr_t*  pFT_MUTEX_ATTR,
     int                   nMutexType
 );
+
+////////////////////////////////////////////////////////////////////////////////////
+// Thread Scheduling...
+
+#define SCHED_FIFO       0          // First in, first out (FIFO) scheduling policy.
+#define SCHED_RR         1          // Round robin scheduling policy.
+#define SCHED_SPORADIC   2          // Sporadic server scheduling policy.
+#define SCHED_OTHER      3          // Another scheduling policy.
+
+#define FTHREAD_SCHED_POLICY    SCHED_RR    // Our only valid scheduling policy
+#define FTHREAD_MIN_PRI         (+20)       // Same as Hercules
+#define FTHREAD_MAX_PRI         (-20)       // Same as Hercules
+
+struct sched_param                  // Scheduling parameters structure...
+{
+    int  sched_priority;            // Thread priority (see fthreads.c for range)
+};
+typedef struct sched_param sched_param;
+
+FT_DLL_IMPORT  int  fthread_getschedparam ( fthread_t dwThreadID, int* pnPolicy,       struct sched_param* pSCHPARM );
+FT_DLL_IMPORT  int  fthread_setschedparam ( fthread_t dwThreadID, int   nPolicy, const struct sched_param* pSCHPARM );
+FT_DLL_IMPORT  int  fthread_setschedprio  ( fthread_t dwThreadID, int nPriority );
+FT_DLL_IMPORT  int  fthread_get_min_prio  ( int nPolicy );
+FT_DLL_IMPORT  int  fthread_get_max_prio  ( int nPolicy );
 
 ////////////////////////////////////////////////////////////////////////////////////
 

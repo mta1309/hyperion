@@ -47,6 +47,11 @@
 #include "opcode.h"
 #include "inline.h"
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
+
 #if defined(FEATURE_HEXADECIMAL_FLOATING_POINT)
 
 /* Rename all inline functions for multi architectural support *JJ   */
@@ -2456,7 +2461,7 @@ int     i;
 /*-------------------------------------------------------------------*/
 /* Square root of fraction                                           */
 /* This routine uses the Newton-Iteration-Method                     */
-/* The iteration is startet with a table look up                     */
+/* The iteration is started with a table look up                     */
 /*                                                                   */
 /* Input:                                                            */
 /*      a       short fraction expanded to U64                       */
@@ -2735,10 +2740,12 @@ static const unsigned short sqtab[] = {
     /* exit iteration when xi, xj equal or differ by 1 */
     for (;;) {
         xj = (((U32)(a / xi)) + xi) >> 1;
-
-        if ((xj == xi) || (abs(xj - xi) == 1)) {
+        if (0
+            || xj == xi
+            || xj == (xi+1)
+            || xj == (xi-1)
+        )
             break;
-        }
         xi = xj;
     }
 
@@ -3001,7 +3008,7 @@ int     i;
 /* Value:                                                            */
 /*      none                                                         */
 /*-------------------------------------------------------------------*/
-static void ARCH_DEP(mul_lf_to_ef_unnorm)( 
+static void ARCH_DEP(mul_lf_to_ef_unnorm)(
                      LONG_FLOAT *fl, LONG_FLOAT *mul_fl,
                      EXTENDED_FLOAT *result_fl )
 {
@@ -3039,7 +3046,7 @@ U64     wk;
 /* Value:                                                            */
 /*      none                                                         */
 /*-------------------------------------------------------------------*/
-static void ARCH_DEP(add_ef_unnorm)( 
+static void ARCH_DEP(add_ef_unnorm)(
                      EXTENDED_FLOAT *prod_fl, EXTENDED_FLOAT *add_fl,
                      EXTENDED_FLOAT *result_fl )
 {
@@ -3114,7 +3121,7 @@ int  xdigit;                       /* digit lost by addend shifting */
         result_fl->ms_fract = prod_fl->ms_fract;
         result_fl->ls_fract = prod_fl->ls_fract;
 
-        add_U128(result_fl->ms_fract, result_fl->ls_fract, 
+        add_U128(result_fl->ms_fract, result_fl->ls_fract,
                  add_fl->ms_fract, add_fl->ls_fract);
 
         /* Recognize any overflow of left hand digits */
@@ -3129,11 +3136,11 @@ int  xdigit;                       /* digit lost by addend shifting */
     {   /* signs unequal, subtract the larger fraction from the smaller */
         /* result has sign of the larger fraction                       */
 
-        if ( (prod_fl->ms_fract > add_fl->ms_fract)  
-          || ((prod_fl->ms_fract == add_fl->ms_fract) && 
+        if ( (prod_fl->ms_fract > add_fl->ms_fract)
+          || ((prod_fl->ms_fract == add_fl->ms_fract) &&
               (prod_fl->ls_fract >= add_fl->ls_fract)) )
         /* product fraction larger than or equal to addend fraction */
-        
+
         {  /* subtract addend fraction from product fraction */
            /* result has sign of product                     */
 
@@ -3144,7 +3151,7 @@ int  xdigit;                       /* digit lost by addend shifting */
            {   /* If any right shifted addend digits, then we need to    */
                /* borrow from the product fraction to reflect the shifted*/
                /* digits participation in the result                     */
-               sub_U128(result_fl->ms_fract, result_fl->ls_fract, 
+               sub_U128(result_fl->ms_fract, result_fl->ls_fract,
                         (U64)0, (U64)1);
 #if FLOAT_DEBUG
                logmsg (_("Barw Frac: %16.16llX %16.16llX\n"),
@@ -3156,7 +3163,7 @@ int  xdigit;                       /* digit lost by addend shifting */
                ldigits = 1;
            }
 
-           sub_U128(result_fl->ms_fract, result_fl->ls_fract, 
+           sub_U128(result_fl->ms_fract, result_fl->ls_fract,
                     add_fl->ms_fract, add_fl->ls_fract);
 #if FLOAT_DEBUG
            logmsg (_("P-A  Frac: %16.16llX %16.16llX\n"),
@@ -3172,7 +3179,7 @@ int  xdigit;                       /* digit lost by addend shifting */
            result_fl->ms_fract = add_fl->ms_fract;
            result_fl->ls_fract = add_fl->ls_fract;
 
-           sub_U128(result_fl->ms_fract, result_fl->ls_fract, 
+           sub_U128(result_fl->ms_fract, result_fl->ls_fract,
                     prod_fl->ms_fract, prod_fl->ls_fract);
 #if FLOAT_DEBUG
            logmsg (_("A-P  Frac: %16.16llX %16.16llX\n"),
@@ -3190,7 +3197,7 @@ int  xdigit;                       /* digit lost by addend shifting */
     result_fl->expo = prod_fl->expo;
 
     /* Step 3 - If fraction is TRULY zero, sign is set to positive */
-    if ( (!result_fl->ms_fract) && (!result_fl->ls_fract) && 
+    if ( (!result_fl->ms_fract) && (!result_fl->ls_fract) &&
           (!ldigits) && (!rdigits) )
     {
         result_fl->sign = POS;
@@ -5074,7 +5081,7 @@ U64     msj, lsj;
             /* less than zero */
 
             ARCH_DEP(program_interrupt) (regs, PGM_SQUARE_ROOT_EXCEPTION);
-            return; /* Never reached */
+            UNREACHABLE_CODE( return );
         } else {
             /* normalize operand */
             normal_ef(&fl);
@@ -5113,10 +5120,12 @@ U64     msj, lsj;
             /* done iteration when xi, xj equal or differ by 1 */
             for (;;) {
                 xj = (div_U128(mmsa, msa, xi) + xi) >> 1;
-
-                if ((xj == xi) || (abs(xj - xi) == 1)) {
+                if (0
+                    || xj == xi
+                    || xj == (xi+1)
+                    || xj == (xi-1)
+                )
                     break;
-                }
                 xi = xj;
             }
 
@@ -7484,10 +7493,10 @@ EXTENDED_FLOAT fx1;                     /* Intermediate result       */
     /* Get the operands */
     get_lf(&fl2, regs->fpr + FPR2I(r2));
     get_lf(&fl3, regs->fpr + FPR2I(r3));
-    
+
     /* Calculate intermediate result */
     ARCH_DEP(mul_lf_to_ef_unnorm)(&fl2, &fl3, &fx1);
-    
+
     /* Place result in register */
     ARCH_DEP(store_ef_unnorm)(&fx1, regs->fpr + FPR2I(r1));
 
@@ -7548,10 +7557,10 @@ EXTENDED_FLOAT fx1;                     /* Intermediate result       */
     /* Get the operands */
     get_lf(&fl2, regs->fpr + FPR2I(r2));
     get_lf(&fl3, regs->fpr + FPR2I(r3));
-    
+
     /* Calculate intermediate result */
     ARCH_DEP(mul_lf_to_ef_unnorm)(&fl2, &fl3, &fx1);
-    
+
     /* Place high-order part of result in register */
     ARCH_DEP(store_ef_unnorm_hi)(&fx1, regs->fpr + FPR2I(r1));
 

@@ -24,6 +24,7 @@
 			OutputDirectory="./msvc.debug.dllmod.bin"
 			IntermediateDirectory="./msvc.debug.dllmod.obj"
 			ConfigurationType="0"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
@@ -31,7 +32,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat DEBUG makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO"
+				PreprocessorDefinitions="_FEATURE_INTEGRATED_3270_CONSOLE;FEATURE_SERVICE_PROCESSOR;FEATURE_EXTENDED_STORAGE_KEYS;OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -44,14 +45,15 @@
 			OutputDirectory="./msvc.debug.AMD64.bin"
 			IntermediateDirectory="./msvc.debug.AMD64.bin"
 			ConfigurationType="0"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat DEBUG-X64 makefile.msvc 32"
-				ReBuildCommandLine="makefile.bat DEBUG-X64 makefile.msvc 32 -a"
-				CleanCommandLine="makefile.bat DEBUG-X64 makefile.msvc 32 clean"
+				BuildCommandLine="makefile.bat DEBUG-X64 makefile.msvc 64"
+				ReBuildCommandLine="makefile.bat DEBUG-X64 makefile.msvc 64 -a"
+				CleanCommandLine="makefile.bat DEBUG-X64 makefile.msvc 64 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE"
+				PreprocessorDefinitions="_FEATURE_INTEGRATED_3270_CONSOLE;FEATURE_SERVICE_PROCESSOR;FEATURE_EXTENDED_STORAGE_KEYS;OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -64,6 +66,7 @@
 			OutputDirectory="./msvc.dllmod.bin"
 			IntermediateDirectory="./msvc.dllmod.obj"
 			ConfigurationType="0"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
@@ -71,7 +74,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL makefile.msvc 32 -a"
 				CleanCommandLine="makefile.bat RETAIL makefile.msvc 32 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO"
+				PreprocessorDefinitions="_FEATURE_INTEGRATED_3270_CONSOLE;FEATURE_SERVICE_PROCESSOR;FEATURE_EXTENDED_STORAGE_KEYS;OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -84,14 +87,15 @@
 			OutputDirectory="./msvc.AMD64.bin"
 			IntermediateDirectory="./msvc.AMD64.bin"
 			ConfigurationType="0"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat RETAIL-X64 makefile.msvc 32"
-				ReBuildCommandLine="makefile.bat RETAIL-X64 makefile.msvc 32 -a"
-				CleanCommandLine="makefile.bat RETAIL-X64 makefile.msvc 32 clean"
+				BuildCommandLine="makefile.bat RETAIL-X64 makefile.msvc 64"
+				ReBuildCommandLine="makefile.bat RETAIL-X64 makefile.msvc 64 -a"
+				CleanCommandLine="makefile.bat RETAIL-X64 makefile.msvc 64 clean"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE"
+				PreprocessorDefinitions="_FEATURE_INTEGRATED_3270_CONSOLE;FEATURE_SERVICE_PROCESSOR;FEATURE_EXTENDED_STORAGE_KEYS;OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_QUEUED_DIRECT_IO;_FEATURE_SIE;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -101,10 +105,10 @@
 		</Configuration>
 		<Configuration
 			Name="Debug-All|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
@@ -112,7 +116,7 @@
 				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_DEBUG;DEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -123,17 +127,17 @@
 		<Configuration
 			Name="Debug-All|x64"
 			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
+				BuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 64 &quot;$(SolutionDir)&quot;"
+				ReBuildCommandLine="makefile.bat DEBUG-ALL makefile.msvc 64 -a &quot;$(SolutionDir)&quot;"
+				CleanCommandLine="makefile.bat DEBUG-ALL makefile.msvc 64 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_DEBUG;DEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -143,10 +147,10 @@
 		</Configuration>
 		<Configuration
 			Name="Release-All|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
@@ -154,7 +158,7 @@
 				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;NDEBUG;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -165,17 +169,17 @@
 		<Configuration
 			Name="Release-All|x64"
 			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
+				BuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 64 &quot;$(SolutionDir)&quot;"
+				ReBuildCommandLine="makefile.bat RETAIL-ALL makefile.msvc 64 -a &quot;$(SolutionDir)&quot;"
+				CleanCommandLine="makefile.bat RETAIL-ALL makefile.msvc 64 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;NDEBUG;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -185,10 +189,10 @@
 		</Configuration>
 		<Configuration
 			Name="All-All|Win32"
-			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ConfigurationName)"
+			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
@@ -196,7 +200,7 @@
 				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
 				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_MSVC_;CPU=i386;HOST_ARCH=i386;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -207,17 +211,17 @@
 		<Configuration
 			Name="All-All|x64"
 			OutputDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
-			IntermediateDirectory="$(PlatformName)\$(ConfigurationName)"
+			IntermediateDirectory="$(SolutionDir)$(PlatformName)\$(ConfigurationName)"
 			ConfigurationType="0"
-			BuildLogFile="$(SolutionDir)$(ConfigurationName) BuildLog.htm"
+			BuildLogFile="$(SolutionDir)BuildLog-$(PlatformName)-$(ConfigurationName).htm"
 			>
 			<Tool
 				Name="VCNMakeTool"
-				BuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 &quot;$(SolutionDir)&quot;"
-				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 32 -a &quot;$(SolutionDir)&quot;"
-				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 32 clean &quot;$(SolutionDir)&quot;"
+				BuildCommandLine="makefile.bat ALL-ALL makefile.msvc 64 &quot;$(SolutionDir)&quot;"
+				ReBuildCommandLine="makefile.bat ALL-ALL makefile.msvc 64 -a &quot;$(SolutionDir)&quot;"
+				CleanCommandLine="makefile.bat ALL-ALL makefile.msvc 64 clean &quot;$(SolutionDir)&quot;"
 				Output="$(OutDir)"
-				PreprocessorDefinitions="ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX"
+				PreprocessorDefinitions="OPTION_HTTP_SERVER;_DAT_C;FEATURE_PROGRAM_DIRECTED_REIPL;FEATURE_EMULATE_VM;ENABLE_IPV6;OPTION_CMPSC_2012;FEATURE_BINARY_FLOATING_POINT;WIN32;_WIN64;_MSVC_;CPU=AMD64;HOST_ARCH=AMD64;OPTION_DYNAMIC_LOAD;HDL_BUILD_SHARED;OPTION_FTHREADS;EXTERNALGUI;FEATURE_CHANNEL_SUBSYSTEM;FEATURE_CANCEL_IO_FACILITY;FEATURE_ESAME;FEATURE_CONFIGURATION_TOPOLOGY_FACILITY;OPTION_HAO;HAVE_REGINA_REXXSAA_H;OPTION_CMDTGT;_FEATURE_SYSTEM_CONSOLE;FEATURE_CHSC;OPTION_PTTRACE;FEATURE_COMPRESSION;ENABLE_REGINA_REXX;ENABLE_OBJECT_REXX;FEATURE_S370_CHANNEL"
 				IncludeSearchPath="crypto;decNumber;$(ProjectDir)"
 				ForcedIncludes=""
 				AssemblySearchPath=""
@@ -250,10 +254,6 @@
 					</File>
 					<File
 						RelativePath=".\cckddiag.c"
-						>
-					</File>
-					<File
-						RelativePath=".\cckdfix.c"
 						>
 					</File>
 					<File
@@ -429,7 +429,19 @@
 						Name="Header Files"
 						>
 						<File
+							RelativePath=".\decNumber\decBasic.h"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\decCommon.h"
+							>
+						</File>
+						<File
 							RelativePath=".\decNumber\decContext.h"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\decDouble.h"
 							>
 						</File>
 						<File
@@ -460,12 +472,24 @@
 							RelativePath=".\decNumber\decPacked.h"
 							>
 						</File>
+						<File
+							RelativePath=".\decNumber\decQuad.h"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\decSingle.h"
+							>
+						</File>
 					</Filter>
 					<Filter
 						Name="Source Files"
 						>
 						<File
 							RelativePath=".\decNumber\decContext.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\decDouble.c"
 							>
 						</File>
 						<File
@@ -488,10 +512,54 @@
 							RelativePath=".\decNumber\decPacked.c"
 							>
 						</File>
+						<File
+							RelativePath=".\decNumber\decQuad.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\decSingle.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example1.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example2.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example3.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example4.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example5.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example6.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example7.c"
+							>
+						</File>
+						<File
+							RelativePath=".\decNumber\example8.c"
+							>
+						</File>
 					</Filter>
 					<Filter
 						Name="Resource Files"
 						>
+						<File
+							RelativePath=".\decNumber\decNumber.def"
+							>
+						</File>
 						<File
 							RelativePath=".\decNumber\decNumber.rc"
 							>
@@ -504,6 +572,14 @@
 					<Filter
 						Name="Con/Disp/Term"
 						>
+						<File
+							RelativePath=".\telnet.c"
+							>
+						</File>
+						<File
+							RelativePath=".\telnet.h"
+							>
+						</File>
 						<Filter
 							Name="Header Files"
 							>
@@ -692,6 +768,10 @@
 								>
 							</File>
 							<File
+								RelativePath=".\scsiutil.h"
+								>
+							</File>
+							<File
 								RelativePath=".\sllib.h"
 								>
 							</File>
@@ -737,6 +817,10 @@
 							</File>
 							<File
 								RelativePath=".\scsitape.c"
+								>
+							</File>
+							<File
+								RelativePath=".\scsiutil.c"
 								>
 							</File>
 							<File
@@ -809,6 +893,10 @@
 						Name="Source Files"
 						>
 						<File
+							RelativePath=".\_archdep_templ.c"
+							>
+						</File>
+						<File
 							RelativePath=".\archlvl.c"
 							>
 						</File>
@@ -853,7 +941,27 @@
 							>
 						</File>
 						<File
-							RelativePath=".\cmpsc.c"
+							RelativePath=".\cmpsc_2012.c"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscdbg.c"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscdct.c"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscget.c"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscmem.c"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscput.c"
 							>
 						</File>
 						<File
@@ -974,6 +1082,10 @@
 						</File>
 						<File
 							RelativePath=".\hdteq.c"
+							>
+						</File>
+						<File
+							RelativePath=".\hexdumpe.c"
 							>
 						</File>
 						<File
@@ -1157,10 +1269,6 @@
 							>
 						</File>
 						<File
-							RelativePath=".\SoftFloat.c"
-							>
-						</File>
-						<File
 							RelativePath=".\sr.c"
 							>
 						</File>
@@ -1241,6 +1349,34 @@
 							>
 						</File>
 						<File
+							RelativePath=".\cmpsc.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscbit.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscdbg.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscdct.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscget.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscmem.h"
+							>
+						</File>
+						<File
+							RelativePath=".\cmpscput.h"
+							>
+						</File>
+						<File
 							RelativePath=".\codepage.h"
 							>
 						</File>
@@ -1313,6 +1449,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\hatomic.h"
+							>
+						</File>
+						<File
 							RelativePath=".\hbyteswp.h"
 							>
 						</File>
@@ -1350,6 +1490,10 @@
 						</File>
 						<File
 							RelativePath=".\herror.h"
+							>
+						</File>
+						<File
+							RelativePath=".\hexdumpe.h"
 							>
 						</File>
 						<File
@@ -1473,6 +1617,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\printfmt.h"
+							>
+						</File>
+						<File
 							RelativePath=".\pttrace.h"
 							>
 						</File>
@@ -1489,23 +1637,11 @@
 							>
 						</File>
 						<File
-							RelativePath=".\SoftFloat-macros.h"
+							RelativePath=".\softfloat_types.h"
 							>
 						</File>
 						<File
-							RelativePath=".\SoftFloat-milieu.h"
-							>
-						</File>
-						<File
-							RelativePath=".\SoftFloat-specialise.h"
-							>
-						</File>
-						<File
-							RelativePath=".\SoftFloat-types.h"
-							>
-						</File>
-						<File
-							RelativePath=".\SoftFloat.h"
+							RelativePath=".\softfloat.h"
 							>
 						</File>
 						<File
@@ -1539,76 +1675,12 @@
 					</Filter>
 				</Filter>
 				<Filter
-					Name="Original SoftFloat-2b"
-					>
-					<File
-						RelativePath=".\SoftFloat-2b.zip"
-						>
-					</File>
-				</Filter>
-				<Filter
 					Name="altcmpsc"
 					>
-					<Filter
-						Name="Source Files"
+					<File
+						RelativePath=".\cmpsc.c"
 						>
-						<File
-							RelativePath=".\cmpsc_2012.c"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscdbg.c"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscdct.c"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscget.c"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscmem.c"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscput.c"
-							>
-						</File>
-					</Filter>
-					<Filter
-						Name="Header Files"
-						>
-						<File
-							RelativePath=".\cmpsc.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscbit.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscdbg.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscdct.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscget.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscmem.h"
-							>
-						</File>
-						<File
-							RelativePath=".\cmpscput.h"
-							>
-						</File>
-					</Filter>
+					</File>
 				</Filter>
 			</Filter>
 		</Filter>
@@ -1618,11 +1690,47 @@
 			ParseFiles="false"
 			>
 			<File
+				RelativePath=".\.gitattributes"
+				>
+			</File>
+			<File
+				RelativePath=".\.gitignore"
+				>
+			</File>
+			<File
+				RelativePath=".\hercdasd.ico"
+				>
+			</File>
+			<File
+				RelativePath=".\hercdasd.rc"
+				>
+			</File>
+			<File
+				RelativePath=".\hercmisc.ico"
+				>
+			</File>
+			<File
+				RelativePath=".\hercmisc.rc"
+				>
+			</File>
+			<File
+				RelativePath=".\hercprod.rc"
+				>
+			</File>
+			<File
+				RelativePath=".\herctape.ico"
+				>
+			</File>
+			<File
+				RelativePath=".\herctape.rc"
+				>
+			</File>
+			<File
 				RelativePath=".\hercules.ico"
 				>
 			</File>
 			<File
-				RelativePath=".\hercver.rc"
+				RelativePath=".\hercver.rc2"
 				>
 			</File>
 		</Filter>
@@ -1641,7 +1749,19 @@
 					>
 				</File>
 				<File
+					RelativePath=".\COPYRIGHT"
+					>
+				</File>
+				<File
+					RelativePath=".\license_dyn76.txt"
+					>
+				</File>
+				<File
 					RelativePath=".\README.ISSUES"
+					>
+				</File>
+				<File
+					RelativePath=".\README.md"
 					>
 				</File>
 				<File
@@ -1657,6 +1777,14 @@
 					</File>
 					<File
 						RelativePath=".\README.APL360"
+						>
+					</File>
+					<File
+						RelativePath=".\README.BSD"
+						>
+					</File>
+					<File
+						RelativePath=".\README.CMPSC"
 						>
 					</File>
 					<File
@@ -1685,6 +1813,10 @@
 					</File>
 					<File
 						RelativePath=".\README.HERCLOGO"
+						>
+					</File>
+					<File
+						RelativePath=".\README.HQA"
 						>
 					</File>
 					<File
@@ -1720,6 +1852,10 @@
 						>
 					</File>
 					<File
+						RelativePath=".\README.RUNTEST"
+						>
+					</File>
+					<File
 						RelativePath=".\README.RXVT4APL"
 						>
 					</File>
@@ -1732,19 +1868,15 @@
 						>
 					</File>
 					<File
-						RelativePath=".\README.SOFTFLOAT"
-						>
-					</File>
-					<File
 						RelativePath=".\README.SUN"
 						>
 					</File>
 					<File
-						RelativePath=".\README.SVN"
+						RelativePath=".\README.TAPE"
 						>
 					</File>
 					<File
-						RelativePath=".\README.TAPE"
+						RelativePath=".\README.TELNET"
 						>
 					</File>
 					<File
@@ -1830,6 +1962,10 @@
 							RelativePath=".\html\tasks.html"
 							>
 						</File>
+						<File
+							RelativePath=".\html\telnet.html"
+							>
+						</File>
 					</Filter>
 					<Filter
 						Name="msgs"
@@ -1851,6 +1987,10 @@
 							>
 						</File>
 						<File
+							RelativePath=".\html\hercmscu.html"
+							>
+						</File>
+						<File
 							RelativePath=".\html\hercmsda.html"
 							>
 						</File>
@@ -1868,6 +2008,10 @@
 						</File>
 						<File
 							RelativePath=".\html\hercmsdl.html"
+							>
+						</File>
+						<File
+							RelativePath=".\html\hercmsdn.html"
 							>
 						</File>
 						<File
@@ -1979,14 +2123,274 @@
 							>
 						</File>
 					</Filter>
+					<Filter
+						Name="images"
+						>
+						<File
+							RelativePath=".\html\images\back.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\bkued.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\blueu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\dial1.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\dial2.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\dial3.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\dial4.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\favicon.ico"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\greend.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\greenu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\hercpic-rblk-256.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\hercpic-rblk-80.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\interruptd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\interruptu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\loadd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\loadoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\loadonu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\loadu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\manoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\manonu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\note.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\osi-certified-60x50.jpg"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\poweroffd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\poweroffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\poweronoffd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\poweronoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\poweronond.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\powerononu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\redd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\redu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\restartd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\restartu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\startd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\startu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\stopd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\stopu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\stored.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\storeu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\sysoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\sysonu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetputtyconndata.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetputtysession.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetputtyterminal.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetwin10.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetwinntconnect.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\telnetwinnttermpref.png"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\translucentoffd.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\translucentoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\translucentond.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\translucentonu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\waitoffu.gif"
+							>
+						</File>
+						<File
+							RelativePath=".\html\images\waitonu.gif"
+							>
+						</File>
+					</Filter>
+					<Filter
+						Name="include"
+						>
+						<File
+							RelativePath=".\html\include\footer.htmlpart"
+							>
+						</File>
+						<File
+							RelativePath=".\html\include\header.htmlpart"
+							>
+						</File>
+					</Filter>
+				</Filter>
+				<Filter
+					Name="man"
+					>
+					<File
+						RelativePath=".\man\cckd.4"
+						>
+					</File>
+					<File
+						RelativePath=".\man\cckddiag.1"
+						>
+					</File>
+					<File
+						RelativePath=".\man\dasdseq.1"
+						>
+					</File>
+					<File
+						RelativePath=".\man\Makefile.am"
+						>
+					</File>
+					<File
+						RelativePath=".\man\vmfplc2.1"
+						>
+					</File>
 				</Filter>
 			</Filter>
 			<Filter
 				Name="Build"
 				>
+				<File
+					RelativePath=".\BUILDING"
+					>
+				</File>
+				<File
+					RelativePath=".\INSTALL"
+					>
+				</File>
 				<Filter
 					Name="msvc"
 					>
+					<File
+						RelativePath=".\_dynamic_version.cmd"
+						>
+					</File>
 					<File
 						RelativePath=".\dynmake.bat"
 						>
@@ -2020,6 +2424,14 @@
 						</File>
 						<File
 							RelativePath=".\msvc.makefile.includes\CONFIG.msvc"
+							>
+						</File>
+						<File
+							RelativePath=".\msvc.makefile.includes\EXTPKG_DIRS.msvc"
+							>
+						</File>
+						<File
+							RelativePath=".\msvc.makefile.includes\EXTPKG_FLAGS.msvc"
 							>
 						</File>
 						<File
@@ -2095,10 +2507,6 @@
 							>
 						</File>
 						<File
-							RelativePath=".\msvc.makefile.includes\VERSION.msvc"
-							>
-						</File>
-						<File
 							RelativePath=".\msvc.makefile.includes\ZLIB_DIR.msvc"
 							>
 						</File>
@@ -2128,6 +2536,18 @@
 						</File>
 					</Filter>
 					<Filter
+						Name="VS2008"
+						>
+						<File
+							RelativePath=".\Hercules.sln"
+							>
+						</File>
+						<File
+							RelativePath=".\Hercules.vcproj"
+							>
+						</File>
+					</Filter>
+					<Filter
 						Name="VS2010"
 						>
 						<File
@@ -2136,6 +2556,10 @@
 						</File>
 						<File
 							RelativePath=".\Hercules.vcxproj.filters"
+							>
+						</File>
+						<File
+							RelativePath=".\Hercules_VS2010.sln"
 							>
 						</File>
 					</Filter>
@@ -2151,10 +2575,42 @@
 							>
 						</File>
 					</Filter>
+					<Filter
+						Name="VS2015"
+						>
+						<File
+							RelativePath=".\Hercules_VS2015.sln"
+							>
+						</File>
+						<File
+							RelativePath=".\Hercules_VS2015.vcxproj"
+							>
+						</File>
+						<File
+							RelativePath=".\Hercules_VS2015.vcxproj.filters"
+							>
+						</File>
+					</Filter>
 				</Filter>
 				<Filter
 					Name="other"
 					>
+					<File
+						RelativePath=".\_build"
+						>
+					</File>
+					<File
+						RelativePath=".\_build.bat"
+						>
+					</File>
+					<File
+						RelativePath=".\_build.tail"
+						>
+					</File>
+					<File
+						RelativePath=".\_dynamic_version"
+						>
+					</File>
 					<File
 						RelativePath=".\autogen.sh"
 						>
@@ -2175,6 +2631,182 @@
 						RelativePath=".\Makefile.am"
 						>
 					</File>
+					<Filter
+						Name="autoconf"
+						>
+						<File
+							RelativePath=".\autoconf\config.guess"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\config.rpath"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\config.sub"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\depcomp"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\install-sh"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\libtool.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\ltdl.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\ltmain.sh"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\missing"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\mkinstalldirs"
+							>
+						</File>
+						<File
+							RelativePath=".\autoconf\README"
+							>
+						</File>
+					</Filter>
+					<Filter
+						Name="m4"
+						>
+						<File
+							RelativePath=".\m4\ChangeLog"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\codeset.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\gettext.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\glibc2.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\glibc21.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\iconv.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\intdiv0.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\intmax.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\inttypes-pri.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\inttypes.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\inttypes_h.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\isc-posix.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\lcmessage.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\lib-ld.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\lib-link.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\lib-prefix.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\longdouble.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\longlong.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\Makefile.am"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\nls.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\po.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\printf-posix.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\progtest.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\signed.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\size_max.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\stdint_h.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\uintmax_t.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\ulonglong.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\wchar_t.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\wint_t.m4"
+							>
+						</File>
+						<File
+							RelativePath=".\m4\xsize.m4"
+							>
+						</File>
+					</Filter>
 				</Filter>
 			</Filter>
 			<Filter
@@ -2198,6 +2830,10 @@
 				</File>
 				<File
 					RelativePath=".\util\CMPSC.txt"
+					>
+				</File>
+				<File
+					RelativePath=".\util\configure.ac"
 					>
 				</File>
 				<File
@@ -2228,12 +2864,68 @@
 					RelativePath=".\util\TMOUNT.txt"
 					>
 				</File>
+				<File
+					RelativePath=".\util\voldsext.cmd"
+					>
+				</File>
+				<File
+					RelativePath=".\util\zzsacard.bin"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="tests"
 				>
 				<File
+					RelativePath=".\tests\asmtst.xedit"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\awsbsf.aws"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\bldhtc.exec"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\bldhtc.rexx"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\cvttst.rexx"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\hetbsf.het"
+					>
+				</File>
+				<File
 					RelativePath=".\tests\Makefile.am"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\mkcore.rexx"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\README"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\redtest.rexx"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\runtest"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\runtest.cmd"
+					>
+				</File>
+				<File
+					RelativePath=".\tests\tests.conf"
 					>
 				</File>
 				<Filter
@@ -2249,6 +2941,98 @@
 					</File>
 					<File
 						RelativePath=".\tests\bctr.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-001-divtoint.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-002-loadr.core"
+						>
+                    </File>
+					<File
+						 RelativePath=".\tests\bfp-003-loadfpi.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-004-cvttolog.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-005-cvttolog64.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-006-cvttofix.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-007-cvttofix64.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-008-cvtfrlog.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-009-cvtfrlog64.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-010-cvtfrfix.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-011-cvtfrfix64.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-012-loadtest.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-013-comps.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-014-divide.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-015-sqrt.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-016-add.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-017-loadl.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-018-subtract.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-019-multiply.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-020-multlonger.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-021-multadd.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-022-multsub.core"
+						>
+					</File>
+					<File
+						 RelativePath=".\tests\bfp-023-threads.core"
 						>
 					</File>
 					<File
@@ -2279,618 +3063,1186 @@
 						RelativePath=".\tests\st.core"
 						>
 					</File>
+					<File
+						RelativePath=".\tests\stfl.core"
+						>
+					</File>
 				</Filter>
 				<Filter
 					Name="scripts"
 					>
-					<File
-						RelativePath=".\tests\agf.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\alsi.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\axtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\brc.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cdfr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cdgr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cdsg.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cgdr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cgdtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cger.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cgfrl.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cgxr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cgxtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\comments.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cpsdr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\csst.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cxgbr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\cxgtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\diag24.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\diag8.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\dxtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\epsw.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\exrl.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\fiebr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\fixtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\iedtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kimd0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kimd1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kimd2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kimd3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kimd65.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\klmd0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\klmd1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\klmd2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\klmd3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km50.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km52.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km58.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km60.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\km9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmac9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc67.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmc9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmctr9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmf9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo0.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo1.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo10.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo11.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo18.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo19.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo20.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo26.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo27.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo28.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo3.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\kmo9.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\ldetr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\ldxtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\ledtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\lfpc.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\llhrl.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\loop.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\lpp.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\lxdtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\maer.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\mvcos.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\mxtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\popcnt.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\prtest.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\ptf.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\res40002.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\rnsbg.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\rrdtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\rrxtr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\srdt.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\stfle.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\stidp.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\stsi.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\sus40002.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tape.240k-2.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tape.240k.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tape.2m.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tape.32k.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tapepos.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tbedr.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tdcdt.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\tdgdt.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\thder.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\trace.txt"
-						>
-					</File>
-					<File
-						RelativePath=".\tests\trte.txt"
-						>
-					</File>
+					<Filter
+						Name="txt"
+						>
+						<File
+							RelativePath=".\tests\agf.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\alsi.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\axtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\brc.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cdfr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cdgr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cdsg.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cgdr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cgdtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cger.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cgfrl.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cgxr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cgxtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\channel-370.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\comments.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cpsdr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\csst.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cxgbr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cxgtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\diag24.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\diag8.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\dxtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\epsw.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\exrl.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\fiebr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\fixtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\iedtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kimd0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kimd1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kimd2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kimd3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kimd65.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\klmd0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\klmd1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\klmd2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\klmd3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km50.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km52.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km58.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km60.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\km9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmac9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc67.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmc9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmctr9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmf9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo0.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo1.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo10.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo11.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo18.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo19.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo20.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo26.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo27.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo28.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo3.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\kmo9.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ldetr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ldxtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ledtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\lfpc.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\llhrl.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\locgr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\loop.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\lparnum.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\lpp.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\lxdtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\maer.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mvcos.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mxtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\popcnt.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\printer.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ptf.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\res40002.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\rnsbg.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\rrdtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\rrxtr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\srdt.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\stfle.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\stidp.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\stsi.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sus40002.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tape.240k-2.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tape.240k.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tape.2m.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tape.32k.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tapepos.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tbedr.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tdcdt.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\tdgdt.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\thder.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\trace.txt"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\trte.txt"
+							>
+						</File>
+					</Filter>
+					<Filter
+						Name="assemble"
+						>
+						<File
+							RelativePath=".\tests\agf.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cipher.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\csxtr.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\digest.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ilc.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\invpsw.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\leapfrog.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\logicimm.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mhi.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mvcle.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\pfpo-esa.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sigp.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sske.assemble"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\stfl.assemble"
+							>
+						</File>
+						<Filter
+							Name="listing"
+							>
+							<File
+								RelativePath=".\tests\agf.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\cipher.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\csxtr.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\digest.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\ilc.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\invpsw.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\leapfrog.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\logicimm.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\mhi.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\mvcle.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\pfpo-esa.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\sigp.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\sske.listing"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\stfl.listing"
+								>
+							</File>
+						</Filter>
+					</Filter>
+					<Filter
+						Name="tst"
+						>
+						<File
+							RelativePath=".\tests\agf.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\awsbsf.tst"
+							>
+						</File>
+                        <File
+                             RelativePath=".\tests\bfp-001-divtoint.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-002-loadr.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-003-loadfpi.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-004-cvttolog.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-005-cvttolog64.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-006-cvttofix.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-007-cvttofix64.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-008-cvtfrlog.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-009-cvtfrlog64.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-010-cvtfrfix.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-011-cvtfrfix64.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-012-loadtest.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-013-comps.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-014-divide.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-015-sqrt.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-016-add.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-017-loadl.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-018-subtract.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-019-multiply.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-020-multlonger.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-021-multadd.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-022-multsub.tst"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-023-threads.sptst"
+                            >
+                        </File>
+						<File
+							RelativePath=".\tests\cipher.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cmd-abs.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\cmd-rv.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\csxtr.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\digest.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\hetbsf.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ilc.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\invpsw.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\leapfrog.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\logicimm.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mainsize.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mhi.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\mvcle.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\pfpo-esa.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\pr.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\runtest0.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\runtest4.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sigp.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\ssk370.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sske.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sske370.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\sske390.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\stfl.tst"
+							>
+						</File>
+						<File
+							RelativePath=".\tests\timeout.tst"
+							>
+						</File>
+						<Filter
+							Name="subtst"
+							>
+							<File
+								RelativePath=".\tests\cmd-abs-2K.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\cmd-abs-4K.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\cmd-rv-2K.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\cmd-rv-4K-32.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\cmd-rv-4K-64.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\pr.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\runtest.subtst"
+								>
+							</File>
+							<File
+								RelativePath=".\tests\tapebsf.subtst"
+								>
+							</File>
+						</Filter>
+					</Filter>
+					<Filter
+						Name="asm"
+						>
+       					<File
+                             RelativePath=".\tests\bfp-001-divtoint.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-002-loadr.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-003-loadfpi.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-004-cvttolog.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-005-cvttolog64.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-006-cvttofix.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-007-cvttofix64.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-008-cvtfrlog.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-009-cvtfrlog64.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-010-cvtfrfix.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-011-cvtfrfix64.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-012-loadtest.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-013-comps.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-014-divide.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-015-sqrt.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-016-add.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-017-loadl.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-018-subtract.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-019-multiply.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-020-multlonger.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-021-multadd.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-022-multsub.asm"
+                            >
+                        </File>
+                        <File
+                             RelativePath=".\tests\bfp-023-threads.asm"
+                            >
+                        </File>
+						<Filter
+							Name="list"
+							>
+                            <File
+                                 RelativePath=".\tests\bfp-001-divtoint.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-002-loadr.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-003-loadfpi.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-004-cvttolog.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-005-cvttolog64.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-006-cvttofix.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-007-cvttofix64.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-008-cvtfrlog.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-009-cvtfrlog64.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-010-cvtfrfix.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-011-cvtfrfix64.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-012-loadtest.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-013-comps.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-014-divide.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-015-sqrt.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-016-add.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-017-loadl.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-018-subtract.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-019-multiply.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-020-multlonger.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-021-multadd.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-022-multsub.list"
+                                >
+                            </File>
+                            <File
+                                 RelativePath=".\tests\bfp-023-threads.list"
+                                >
+                            </File>
+						</Filter>
+					</Filter>
 				</Filter>
 			</Filter>
 			<Filter

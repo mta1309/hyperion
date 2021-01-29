@@ -49,6 +49,10 @@
 #undef DEF_INST_EXPORT
 #define DEF_INST_EXPORT DLL_EXPORT
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
 
 /*-------------------------------------------------------------------*/
 /* 1A   AR    - Add Register                                    [RR] */
@@ -236,18 +240,19 @@ DEF_INST(and_immediate)
 BYTE    i2;                             /* Immediate byte of opcode  */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE   *dest;                           /* Pointer to target byte    */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SI(inst, regs, i2, b1, effective_addr1);
+    ITIMER_SYNC(effective_addr1, 0, regs);
 
     /* Get byte mainstor address */
     dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
     /* AND byte with immediate operand, setting condition code */
-    regs->psw.cc = ((*dest &= i2) != 0);
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, and, And, &) != 0);
 
     /* Update interval timer if necessary */
-    ITIMER_UPDATE(effective_addr1,4-1,regs);
+    ITIMER_UPDATE(effective_addr1, 0, regs);
 }
 
 
@@ -2078,7 +2083,7 @@ U32     old;                            /* old value                 */
 
     if (regs->psw.cc == 1)
     {
-        PTT(PTT_CL_CSF,"*CS",regs->GR_L(r1),regs->GR_L(r3),(U32)(addr2 & 0xffffffff));
+        PTT_CSF("*CS",regs->GR_L(r1),regs->GR_L(r3),(U32)(addr2 & 0xffffffff));
         regs->GR_L(r1) = CSWAP32(old);
 #if defined(_FEATURE_SIE)
         if(SIE_STATB(regs, IC0, CS1))
@@ -2142,7 +2147,7 @@ U64     old, new;                       /* old, new values           */
 
     if (regs->psw.cc == 1)
     {
-        PTT(PTT_CL_CSF,"*CDS",regs->GR_L(r1),regs->GR_L(r3),(U32)(addr2 & 0xffffffff));
+        PTT_CSF("*CDS",regs->GR_L(r1),regs->GR_L(r3),(U32)(addr2 & 0xffffffff));
         regs->GR_L(r1) = CSWAP64(old) >> 32;
         regs->GR_L(r1+1) = CSWAP64(old) & 0xffffffff;
 #if defined(_FEATURE_SIE)
@@ -2168,11 +2173,19 @@ U64     old, new;                       /* old, new values           */
 #if defined(FEATURE_COMPARE_AND_SWAP_AND_STORE)
 
 #if defined(FEATURE_COMPARE_AND_SWAP_AND_STORE_FACILITY_2)
+#ifndef MAX_CSST_FC
 #define MAX_CSST_FC 2
+#endif /*#ifndef MAX_CSST_FC*/
+#ifndef MAX_CSST_SC
 #define MAX_CSST_SC 4
+#endif /*#ifndef MAX_CSST_SC*/
 #else
+#ifndef MAX_CSST_FC
 #define MAX_CSST_FC 1
+#endif /*#ifndef MAX_CSST_FC*/
+#ifndef MAX_CSST_SC
 #define MAX_CSST_SC 3
+#endif /*#ifndef MAX_CSST_SC*/
 #endif
 
 /*-------------------------------------------------------------------*/
@@ -2187,11 +2200,13 @@ VADR    addr1, addr2;                   /* Effective addresses       */
 VADR    addrp;                          /* Parameter list address    */
 BYTE   *main1;                          /* Mainstor address of op1   */
 int     ln2;                            /* Second operand length - 1 */
+#if defined(FEATURE_COMPARE_AND_SWAP_AND_STORE_FACILITY_2)
 U64     old16l=0, old16h=0,
-        new16l=0, new16h=0;             /* swap values for cmpxchg16 */
+        new16l=0, new16h=0,             /* swap values for cmpxchg16 */
+        stv16h=0,stv16l=0;              /* 16-byte store value pair  */
+#endif /*#if defined(FEATURE_COMPARE_AND_SWAP_AND_STORE_FACILITY_2)*/
 U64     old8=0, new8=0;                 /* Swap values for cmpxchg8  */
 U32     old4=0, new4=0;                 /* Swap values for cmpxchg4  */
-U64     stv16h=0,stv16l=0;              /* 16-byte store value pair  */
 U64     stv8=0;                         /* 8-byte store value        */
 U32     stv4=0;                         /* 4-byte store value        */
 U16     stv2=0;                         /* 2-byte store value        */
@@ -2235,7 +2250,7 @@ BYTE    sc;                             /* Store characteristic      */
     }
 
 #if defined(FEATURE_COMPARE_AND_SWAP_AND_STORE_FACILITY_2)
-    if(r3 & 1)
+    if((r3 & 1) && (fc == 2))
     {
         regs->program_interrupt (regs, PGM_SPECIFICATION_EXCEPTION);
     }
@@ -4203,19 +4218,19 @@ DEF_INST(exclusive_or_immediate)
 BYTE    i2;                             /* Immediate operand         */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE   *dest;                           /* Pointer to target byte    */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SI(inst, regs, i2, b1, effective_addr1);
 
-    ITIMER_SYNC(effective_addr1,1,regs);
+    ITIMER_SYNC(effective_addr1, 0, regs);
 
     /* Get byte mainstor address */
     dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
     /* XOR byte with immediate operand, setting condition code */
-    regs->psw.cc = ((*dest ^= i2) != 0);
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, xor, Xor, ^) != 0);
 
-    ITIMER_UPDATE(effective_addr1,0,regs);
+    ITIMER_UPDATE(effective_addr1, 0, regs);
 }
 
 

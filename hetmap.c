@@ -27,7 +27,11 @@
 #include "sllib.h"
 #include "herc_getopt.h"
 
+#define UTILITY_NAME    "hetmap"
+
+#ifndef bcopy
 #define bcopy(_src,_dest,_len) memcpy(_dest,_src,_len)
+#endif
 
 /*
 || Local Types
@@ -164,7 +168,7 @@ int     main                            ( int, char * [] );
 void    Print_Dataset                   ( SInt32, SInt32 );
 void    Print_Label                     ( SInt32 );
 void    Print_Label_Tapemap             ( SInt32 );
-void    Print_Usage                     ( char * );
+void    Print_Usage                     ( const char* pgm );
 
 static Boolean  Print_Standard_Labels   ( void );
 static SInt32   Print_Block_Data        ( SInt32 );
@@ -174,22 +178,6 @@ static SInt32   Print_Block_Data        ( SInt32 );
 || Local constant data
 */
 static char sep[] = "---------------------\n";
-static char help_hetmap[] =
-    "%s - Print a map of an AWS, HET or FakeTape tape file\n\n"
-    "Usage: %s [options] filename\n\n"
-    "Options:\n"
-    "  -a  print all label and file information (default: on)\n"
-    "  -bn print 'n' bytes per file; -b implies -s\n"
-    "  -d  print only dataset information (default: off)\n"
-    "  -f  print only file information (default: off)\n"
-    "  -h  display usage summary\n"
-    "  -l  print only label information (default: off)\n"
-    "  -s  print dump of each data file (SLANAL format) (default: off)\n"
-    "  -t  print TAPEMAP-compatible format output (default: off)\n";
-static char help_tapemap[] =
-    "%s - Print a map of an AWS, HET or FakeTape tape file\n\n"
-    "Usage: %s filename\n\n";
-
 #ifdef EXTERNALGUI
 /* Previous reported file position */
 static off_t prevpos = 0;
@@ -233,19 +221,8 @@ main( int argc, char *argv[] )
     U32  opts = 0;
     SInt32  lResidue    = max_bytes_dsply;  /* amount of space left to print */
     char *pgm;
-#if 0
-    char *strtok_str = NULL;
- /**
-  ** 2010/08/31 @kl Attempt to set tapemap defaults if invoked
-  **                as "tapemap" was commented out after problems
-  **                encountered with libtool wrapper on Linux.
-  **/
-    char pgmpath[MAX_PATH];
-#if defined( _MSVC_ )
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-#endif
-#endif  /* 0 */
+
+    INITIALIZE_UTILITY( UTILITY_NAME, "Hercules AWS, HET and FakeTape tape map program", &pgm );
 
 #define O_ALL               0xC0
 #define O_FILES             0X80
@@ -254,43 +231,6 @@ main( int argc, char *argv[] )
 #define O_TAPEMAP_OUTPUT    0x10
 #define O_TAPEMAP_INVOKED   0x08
 #define O_SLANAL_OUT        0x04
-
-    pgm = "hetmap";
-#if 0
- /**
-  ** 2010/08/31 @kl Attempt to set tapemap defaults if invoked
-  **                as "tapemap" was commented out after problems
-  **                encountered with libtool wrapper on Linux.
-  **/
-    /* Figure out processing based on the program name */
-#if defined( _MSVC_ )
-    GetModuleFileName( NULL, pgmpath, MAX_PATH );
-    _splitpath( pgmpath, NULL, NULL, fname, ext );
-    pgm = strncat( fname, ext, _MAX_FNAME );
-#else
-    hostpath(pgmpath, argv[0], sizeof(pgmpath));
-    pgm = strrchr(pgmpath, '/');
-
-    if (pgm)
-    {
-        pgm++;
-    }
-    else
-    {
-        pgm = argv[0];
-    }
-#endif
-    strtok_r (pgm, ".", &strtok_str);
-    if  ((strcmp(pgm, "tapemap") == 0) || (strcmp(pgm, "TAPEMAP") == 0))
-    {
-        opts = O_TAPEMAP_OUTPUT+O_TAPEMAP_INVOKED;
-    }
-#endif  /* 0 */
-
-    INITIALIZE_UTILITY(pgm);
-
-    /* Display the program identification message */
-    display_version (stderr, "Hercules AWS, HET and FakeTape tape map program", FALSE);
 
     if (! (opts & O_TAPEMAP_INVOKED) )
     {
@@ -327,8 +267,7 @@ main( int argc, char *argv[] )
                     break;
                 case 'h':
                     Print_Usage( pgm );
-                    exit( 1 );
-                    break;
+                    return 1;
                 case 'l':
                     opts = O_LABELS;
                     break;
@@ -340,8 +279,7 @@ main( int argc, char *argv[] )
                     break;
                 default:
                     Print_Usage( pgm );
-                    exit( 1 );
-                    break;
+                    return 1;
             }
         }
 
@@ -416,7 +354,7 @@ main( int argc, char *argv[] )
             if( ( curpos & PROGRESS_MASK ) != ( prevpos & PROGRESS_MASK ) )
             {
                 prevpos = curpos;
-                fprintf( stderr, "IPOS=%" I64_FMT "d\n", (U64)curpos );
+                EXTGUIMSG( "IPOS=%"PRId64"\n", (U64)curpos );
             }
         }
 #endif /*EXTERNALGUI*/
@@ -633,10 +571,9 @@ Print_Dataset( SInt32 len, SInt32 fileno )
     else if( sl_iseof( gBuffer, 2 ) )
     {
         recfm[ 0 ] = '\0';
-        strcat( strcat( strcat( recfm,
-                               fmt.slds2.recfm ),
-                       fmt.slds2.blkattr ),
-               fmt.slds2.ctrl );
+        strlcat( recfm, fmt.slds2.recfm,   sizeof( recfm ));
+        strlcat( recfm, fmt.slds2.blkattr, sizeof( recfm ));
+        strlcat( recfm, fmt.slds2.ctrl,    sizeof( recfm ));
         printf ( "job=%17.17s  recfm=%-3.3s       lrecl=%-5d     blksize=%-5d\n\n",
                fmt.slds2.jobid,
                recfm,
@@ -700,15 +637,17 @@ Print_Label_Tapemap( SInt32 len )
  || Prints usage information
  */
 void
-Print_Usage( char* name )
+Print_Usage( const char* pgm )
 {
-    if  ((strcmp(name, "tapemap") == 0) || (strcmp(name, "TAPEMAP") == 0))
+    if (strcasecmp( pgm, "tapemap" ))
     {
-        printf ( help_tapemap, name, name );
+        // "Usage: %s ...
+        WRMSG( HHC02758, "I", pgm ); // HHC02758 = tapemap
     }
     else
     {
-        printf ( help_hetmap, name, name );
+        // "Usage: %s ...
+        WRMSG( HHC02759, "I", pgm ); // HHC02759 = hetmap
     }
 }
 
@@ -965,31 +904,31 @@ Print_Standard_Labels (void )
                         printf ( "%-4sCreated by: Job %-8s; Step %-11s%-6s"
                                 , "", jname, sname, "" );
 
-                        strcat ( dcb, "DCB=(RECFM=" );
+                        strlcat ( dcb, "DCB=(RECFM=", sizeof(dcb) );
 
-                        strcat ( dcb, fmt );                    /* first character of the RECFM F|V|U                   */
+                        strlcat ( dcb, fmt, sizeof(dcb) );      /* first character of the RECFM F|V|U                   */
                                                                 /* next 'S' means SPANNED for 'V' and STANDARD for 'F'  */
                         if ( battr[0] == 'R' )                  /* next 1 or 2 (if = 'R') characters B|S|R|' '          */
-                            strcat ( dcb, "BS" );               /* 'R' = both B & S together                            */
+                            strlcat ( dcb, "BS", sizeof(dcb) ); /* 'R' = both B & S together                            */
                         else
                             if ( battr[0] != ' ' )
-                                strcat ( dcb, battr );          /* just the B|S if not 'R' - blank is not included      */
+                                strlcat ( dcb, battr, sizeof(dcb) ); /* just the B|S if not 'R' - blank is not included      */
 
                         if ( pcchr[0] != ' ' )
-                            strcat ( dcb, pcchr );              /* last is the printer carriage control type A|M        */
+                            strlcat ( dcb, pcchr, sizeof(dcb) );/* last is the printer carriage control type A|M        */
                                                                 /* A = ANSI and M = Machine                             */
-                        strcat ( dcb, ",LRECL=" );
+                        strlcat ( dcb, ",LRECL=", sizeof(dcb) );
                         sprintf ( tmp, "%d", atoi( rsize ) );
-                        strcat ( dcb, tmp );
+                        strlcat ( dcb, tmp, sizeof(dcb) );
 
-                        strcat ( dcb, ",BLKSIZE=" );
+                        strlcat ( dcb, ",BLKSIZE=", sizeof(dcb) );
                         if ( lbsiz[0] == '0' )
                             sprintf ( tmp, "%ld", atol( lbsiz ) );
                         else
                             sprintf ( tmp, "%d", atoi( bsize ) );
-                        strcat ( dcb, tmp );
+                        strlcat ( dcb, tmp, sizeof(dcb) );
 
-                        strcat ( dcb, ")" );
+                        strlcat ( dcb, ")", sizeof(dcb) );
 
                         printf ( "%-51s", dcb );
 

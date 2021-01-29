@@ -32,6 +32,11 @@
 #include "inline.h"
 #include "clock.h"
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
+
 #if defined(FEATURE_BINARY_FLOATING_POINT)
 /*-------------------------------------------------------------------*/
 /* B29C STFPC - Store FPC                                        [S] */
@@ -989,7 +994,7 @@ U64     old;                            /* Old value                 */
     }
     else
     {
-        PTT(PTT_CL_CSF,"*CSPG",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+        PTT_CSF("*CSPG",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
 
         /* Otherwise yield */
         regs->GR_G(r1) = CSWAP64(old);
@@ -2172,7 +2177,7 @@ U64     gr0, gr1;                       /* Result register workareas */
     dreg = cpu_timer(regs);
 
     /* Reset the cpu timer pending flag according to its value */
-    if( dreg < 0 )
+    if( CPU_TIMER(regs) < 0 )
     {
         ON_IC_PTIMER(regs);
 
@@ -4088,7 +4093,7 @@ BYTE   *bp1;                            /* Unaligned Mainstor ptr    */
                be in the gcc 4.2.1 optimizer, as the code works when
                compiled with -O0. DO NOT REMOVE this until it's been found
                and fixed. -- JRM, 11 Feb 2010 */
-//            PTT(PTT_CL_INF,"LMG2KIN",p2,0,0);
+//            PTT_INF("LMG2KIN",p2,0,0);
             /* Addresses are double-word aligned */
             m >>= 3;
             for (i = 0; i < m; i++, p1++)
@@ -4927,7 +4932,7 @@ DEF_INST(perform_timing_facility_function)
             regs->psw.cc = 0;
             break;
         default:
-            PTT(PTT_CL_ERR,"*PTFF",regs->GR_L(0),regs->GR_L(1),regs->psw.IA_L);
+            PTT_ERR("*PTFF",regs->GR_L(0),regs->GR_L(1),regs->psw.IA_L);
             regs->psw.cc = 3;
     }
 }
@@ -4945,7 +4950,7 @@ int     fc, rc = 0;                     /* Function / Reason Code    */
 
     RRE(inst, regs, r1, unused);
 
-    PTT(PTT_CL_INF,"PTF",regs->GR_G(r1),0,regs->psw.IA_L);
+    PTT_INF("PTF",regs->GR_G(r1),0,regs->psw.IA_L);
 
     PRIV_CHECK(regs);
 
@@ -4955,7 +4960,7 @@ int     fc, rc = 0;                     /* Function / Reason Code    */
        are not zeros */
     if (regs->GR_G(r1) & 0xFFFFFFFFFFFFFF00ULL)
     {
-        PTT(PTT_CL_ERR,"*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
+        PTT_ERR("*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
         regs->program_interrupt (regs, PGM_SPECIFICATION_EXCEPTION);
     }
 
@@ -4999,7 +5004,7 @@ int     fc, rc = 0;                     /* Function / Reason Code    */
 
     default:
         /* Undefined function code */
-        PTT(PTT_CL_ERR,"*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
+        PTT_ERR("*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
         regs->program_interrupt (regs, PGM_SPECIFICATION_EXCEPTION);
     }
 
@@ -5008,7 +5013,7 @@ int     fc, rc = 0;                     /* Function / Reason Code    */
         regs->GR_G(r1) |= rc << 8;
 
     if (regs->psw.cc != 0)
-        PTT(PTT_CL_ERR,"*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
+        PTT_ERR("*PTF",regs->GR_G(r1),rc,regs->psw.IA_L);
 }
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
 
@@ -5063,7 +5068,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 #endif /*defined(_FEATURE_ZSIE)*/
                   ) && SIE_STATB(regs, RCPO2, RCPBY))
                 {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     storkey = STORAGE_KEY(n, regs);
 #else
                     storkey = STORAGE_KEY1(n, regs)
@@ -5071,7 +5076,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 #endif
                                                                     ;
                         /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
                     STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -5132,7 +5137,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
                                              regs->hostregs, ACCTYPE_SIE))
                     {
                         ra = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                         realkey = STORAGE_KEY(ra, regs) & (STORKEY_REF);
 #else
                         realkey = (STORAGE_KEY1(ra, regs) | STORAGE_KEY2(ra, regs))
@@ -5140,7 +5145,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 #endif
                         /* Reset the reference and change bits in
                            the real machine storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                         STORAGE_KEY(ra, regs) &= ~(STORKEY_REF);
 #else
                         STORAGE_KEY1(ra, regs) &= ~(STORKEY_REF);
@@ -5165,7 +5170,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
             }
             else
             {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 storkey = STORAGE_KEY(n, regs);
 #else
                 storkey = STORAGE_KEY1(n, regs)
@@ -5173,7 +5178,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 #endif
                                     ;
                 /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
                 STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -5184,7 +5189,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
         else
 #endif /*defined(_FEATURE_SIE)*/
         {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             storkey = STORAGE_KEY(n, regs);
 #else
             storkey = STORAGE_KEY1(n, regs)
@@ -5192,7 +5197,7 @@ U64     bitmap;                         /* Bitmap to be ret in r1    */
 #endif
                                                              ;
             /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
         STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -5402,7 +5407,7 @@ int     page_offset;                    /* Low order bits of R2      */
                             n = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
 
                             protkey =
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                                       STORAGE_KEY(n, regs)
 #else
                                       (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs))
@@ -5430,7 +5435,7 @@ int     page_offset;                    /* Low order bits of R2      */
                         if(!sr)
 #endif /*defined(_FEATURE_STORAGE_KEY_ASSIST)*/
                         {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                             STORAGE_KEY(aaddr, regs) &= STORKEY_BADFRM;
                             STORAGE_KEY(aaddr, regs) |= sk
                                             & (STORKEY_KEY | STORKEY_FETCH);
@@ -5448,7 +5453,7 @@ int     page_offset;                    /* Low order bits of R2      */
                 else
                 {
                     /* Update the storage key from R1 register bits 24-30 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(aaddr, regs) &= STORKEY_BADFRM;
                     STORAGE_KEY(aaddr, regs) |= sk & ~(STORKEY_BADFRM);
 #else
@@ -5464,7 +5469,7 @@ int     page_offset;                    /* Low order bits of R2      */
             {
 
                 /* Update the storage key from R1 register bits 24-30 */
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(FEATURE_2K_STORAGE_KEYS)
                 STORAGE_KEY(aaddr, regs) &= STORKEY_BADFRM;
                 STORAGE_KEY(aaddr, regs) |= sk & ~(STORKEY_BADFRM);
 #else
@@ -5540,7 +5545,7 @@ PSA    *psa;                            /* -> Prefixed storage area  */
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_INF,"STFL",b2,(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
+    PTT_INF("STFL",b2,(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
 
     /* Set the main storage reference and change bits */
     STORAGE_KEY(regs->PX, regs) |= (STORKEY_REF | STORKEY_CHANGE);
@@ -5573,7 +5578,7 @@ int     cc;                             /* Condition code            */
         longjmp(regs->progjmp, SIE_INTERCEPT_INST);
 #endif /*defined(_FEATURE_SIE)*/
 
-    PTT(PTT_CL_INF,"STFLE",regs->GR_L(0),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
+    PTT_INF("STFLE",regs->GR_L(0),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
 
     /* Note: STFLE is NOT a privileged instruction (unlike STFL) */
 
@@ -5595,7 +5600,7 @@ int     cc;                             /* Condition code            */
     }
     else
     {
-        PTT(PTT_CL_ERR,"*STFLE", ndbl, sdbl, regs->psw.IA_L);
+        PTT_ERR("*STFLE", ndbl, sdbl, regs->psw.IA_L);
         cc = 3;
     }
 
@@ -6652,21 +6657,19 @@ DEF_INST(and_immediate_y)
 BYTE    i2;                             /* Immediate byte of opcode  */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE    rbyte;                          /* Result byte               */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SIY(inst, regs, i2, b1, effective_addr1);
 
-    /* Fetch byte from operand address */
-    rbyte = ARCH_DEP(vfetchb) ( effective_addr1, b1, regs );
+    ITIMER_SYNC(effective_addr1, 0, regs);
 
-    /* AND with immediate operand */
-    rbyte &= i2;
+    /* Get byte mainstor address */
+    dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
-    /* Store result at operand address */
-    ARCH_DEP(vstoreb) ( rbyte, effective_addr1, b1, regs );
+    /* AND byte with immediate operand, setting condition code */
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, and, And, &) != 0);
 
-    /* Set condition code */
-    regs->psw.cc = rbyte ? 1 : 0;
+    ITIMER_UPDATE(effective_addr1,0,regs);
 
 } /* end DEF_INST(and_immediate_y) */
 #endif /*defined(FEATURE_LONG_DISPLACEMENT)*/
@@ -7034,21 +7037,19 @@ DEF_INST(exclusive_or_immediate_y)
 BYTE    i2;                             /* Immediate operand         */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE    rbyte;                          /* Result byte               */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SIY(inst, regs, i2, b1, effective_addr1);
 
-    /* Fetch byte from operand address */
-    rbyte = ARCH_DEP(vfetchb) ( effective_addr1, b1, regs );
+    ITIMER_SYNC(effective_addr1, 0, regs);
 
-    /* XOR with immediate operand */
-    rbyte ^= i2;
+    /* Get byte mainstor address */
+    dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
-    /* Store result at operand address */
-    ARCH_DEP(vstoreb) ( rbyte, effective_addr1, b1, regs );
+    /* XOR byte with immediate operand, setting condition code */
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, xor, Xor, ^) != 0);
 
-    /* Set condition code */
-    regs->psw.cc = rbyte ? 1 : 0;
+    ITIMER_UPDATE(effective_addr1,0,regs);
 
 } /* end DEF_INST(exclusive_or_immediate_y) */
 #endif /*defined(FEATURE_LONG_DISPLACEMENT)*/
@@ -7404,21 +7405,20 @@ DEF_INST(or_immediate_y)
 BYTE    i2;                             /* Immediate operand byte    */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE    rbyte;                          /* Result byte               */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SIY(inst, regs, i2, b1, effective_addr1);
 
-    /* Fetch byte from operand address */
-    rbyte = ARCH_DEP(vfetchb) ( effective_addr1, b1, regs );
+    ITIMER_SYNC(effective_addr1, 0, regs);
 
-    /* OR with immediate operand */
-    rbyte |= i2;
+    /* Get byte mainstor address */
+    dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
-    /* Store result at operand address */
-    ARCH_DEP(vstoreb) ( rbyte, effective_addr1, b1, regs );
+    /* OR byte with immediate operand, setting condition code */
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, or, Or, |) != 0);
 
-    /* Set condition code */
-    regs->psw.cc = rbyte ? 1 : 0;
+    ITIMER_UPDATE(effective_addr1,0,regs);
+
 
 } /* end DEF_INST(or_immediate_y) */
 #endif /*defined(FEATURE_LONG_DISPLACEMENT)*/
@@ -8454,6 +8454,28 @@ U64     effective_addr2;                /* Effective address         */
 
 } /* end DEF_INST(load_program_parameter) */
 #endif /* defined(FEATURE_LOAD_PROGRAM_PARAMETER_FACILITY) */   /* 810 */
+
+#if defined(FEATURE_PROCESSOR_ASSIST)                          /* 912 */
+/*-------------------------------------------------------------------*/
+/* B2E8 PPA - PERFORM PROCESSOR ASSIST                         [RRF] */
+/*-------------------------------------------------------------------*/
+DEF_INST(perform_processor_assist)
+{
+int     r1, r2;                         /* Register numbers          */
+int     m3;                             /* Mask bits                 */
+int     code;                           /* PPA code                  */
+    RRF_M(inst, regs, r1, r2, m3);
+    code = m3 & 0x0f;
+    switch(code)
+    {
+        case 1:	/* Transaction Abort Assist */
+            /* ARCH_DEP(transaction_abort_assist)(regs,r1); */
+            break;
+        default:
+            break;
+    }
+}
+#endif /* defined(FEATURE_PROCESSOR_ASSIST) */                 /* 912 */
 
 #if !defined(_GEN_ARCH)
 

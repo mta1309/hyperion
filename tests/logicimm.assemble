@@ -1,0 +1,150 @@
+* Stand-alone test for NI, NIY, OI, OIY, XI, XIY                        00010000
+                                                                        00020000
+* This file was put into the public domain 2015-10-05                   00030000
+* by John P. Hartmann.  You can use it for anything you like,           00040000
+* as long as this notice remains.                                       00050000
+                                                                        00060000
+ni start 0                                                              00070000
+ gbla &a Compensate for SETA limitation                                 00080000
+                                                                        00090000
+ macro                                                                  00100000
+ display &addr,&len                                                     00110000
+&l setc 'equ&sysndx'                                                    00120000
+&l equ &addr-&sysect                                                    00130000
+ ainsert '&&a seta &l',back                                             00140000
+ ainsert '&&ac setc a2x(&&a)',back                                      00150000
+ ainsert ' punch ''* r &&ac..&len''',back                               00160000
+ mend                                                                   00170000
+                                                                        00180000
+ macro                                                                  00190000
+ comp &addr,&len,&want,&text=                                           00200000
+ punch '* *Compare'                                                     00210000
+ display &addr,&len                                                     00220000
+&wt setc '&want'(2,k'&want-2)                                           00230000
+ aif (k'&text gt 0).havetxt                                             00240000
+ ainsert ' punch ''* *Want               &wt.''',back                   00250000
+ mexit                                                                  00260000
+.havetxt anop ,                                                         00270000
+&ts setc '&text'(2,k'&text-2)                                           00280000
+ ainsert ' punch ''* *Want "&ts." &wt.''',back                          00290000
+ mend                                                                   00300000
+                                                                        00310000
+ macro                                                                  00320000
+ dotest &op                                                             00330000
+ ex 1,inst_&op                                                          00340000
+ ipm 4                                                                  00350000
+ stcm 4,8,b.&op.cc                                                      00360000
+ ex 1,inst_&op.y                                                        00370000
+ ipm 4                                                                  00380000
+ stcm 4,8,b.&op.ycc                                                     00390000
+ mend                                                                   00400000
+                                                                        00410000
+ punch ':test logicImmediate'                                           00420000
+ punch ':btst z'                                                        00430000
+ ds xl(x'1a0')                                                          00440000
+ dc x'0000000180000000'                                                 00450000
+ dc ad(go_ni)                                                           00460000
+ ds xl(x'1d0'-x'1a0'-16)                                                00470000
+ dc x'0002000180000000'                                                 00480000
+ dc ad(x'deaddead') Program new PSW                                     00490000
+ ds xl(x'200'-x'1d0'-16)                                                00500000
+ using ni,0                                                             00510000
+go_ni ds 0d                                                             00520000
+ sr 0,0 Store one dword                                                 00530000
+ stfle facilities                                                       00540000
+ mvc faclist,facilities Save for display                                00550000
+ nc facilities,fmask  Select bit 52                                     00560000
+ la 0,8                                                                 00570000
+ la 1,1                                                                 00580000
+ la 2,nibytes                                                           00590000
+b using nibytes,2                                                       00600000
+ sr 4,4                                                                 00610000
+loop ds 0h                                                              00620000
+   dotest ni                                                            00630000
+   dotest oi                                                            00640000
+   dotest xi                                                            00650000
+   la 2,1(,2)                                                           00660000
+   sll 1,1                                                              00670000
+ brct 0,loop                                                            00680000
+ sr 4,4                                                                 00690000
+ sr 5,5                                                                 00700000
+ ni nizero,0                                                            00710000
+ ipm 5                                                                  00720000
+ oi nizero+1,0                                                          00730000
+ ipm 5                                                                  00740000
+ xi nizero+2,x'ff'                                                      00750000
+ ipm 5                                                                  00760000
+ sldl 4,8                                                               00770000
+ lr 3,4                                                                 00780000
+ sr 4,4                                                                 00790000
+ niy niyzero,0                                                          00800000
+ ipm 5                                                                  00810000
+ oiy niyzero+1,0                                                        00820000
+ ipm 5                                                                  00830000
+ xiy niyzero+2,x'ff'                                                    00840000
+ ipm 5                                                                  00850000
+ sldl 4,8                                                               00860000
+ lpswe stop                                                             00870000
+ drop 0                                                                 00880000
+ using nibytes,2                                                        00890000
+inst_ni ni nibytes,0                                                    00900000
+inst_niy niy niybytes,0                                                 00910000
+inst_oi oi oibytes,0                                                    00920000
+inst_oiy oiy oiybytes,0                                                 00930000
+inst_xi xi xibytes,0                                                    00940000
+inst_xiy xiy xiybytes,0                                                 00950000
+stop ds 0d                                                              00960000
+ dc x'0002000180000000'                                                 00970000
+ dc ad(0)                                                               00980000
+ org ni+x'800'                                                          00990000
+nibytes dc 8x'ff'                                                       01000000
+oibytes dc 8x'00'                                                       01010000
+xibytes dc 8x'ff'                                                       01020000
+nicc dc 8x'0'                                                           01030000
+niycc dc 8x'0'                                                          01040000
+oicc dc 8x'0'                                                           01050000
+oiycc dc 8x'0'                                                          01060000
+xicc dc 8x'0'                                                           01070000
+xiycc dc 8x'0'                                                          01080000
+nizero dc al1(x'ff',0,x'ff',0)                                          01090000
+niyzero dc al1(x'ff',0,x'ff',0)                                         01100000
+ org ni+x'880' To specific address                                      01110000
+facilities ds d                                                         01120000
+faclist ds d Original                                                   01130000
+fmask dc (52/8)x'00',x'08',x'00'                                        01140000
+ org ni+x'2000' To be sure long displacement is used                    01150000
+niybytes dc 8x'ff'                                                      01160000
+oiybytes dc 8x'00'                                                      01170000
+xiybytes dc 8x'ff'                                                      01180000
+ ltorg                                                                          
+ punch '* numcpu 1'                                                     01185000
+ punch '* runtest .1'                                                   01190000
+ comp nibytes,8,'01020408 10204080'                                     01200000
+ comp oibytes,8,'01020408 10204080'                                     01210000
+ comp xibytes,8,'FEFDFBF7 EFDFBF7F'                                     01220000
+ comp niybytes,8,'01020408 10204080'                                    01230000
+ comp oiybytes,8,'01020408 10204080'                                    01240000
+ comp xiybytes,8,'FEFDFBF7 EFDFBF7F'                                    01250000
+* Condition codes                                                       01260000
+ comp nicc,8,'10101010 10101010'                                        01270000
+ comp oicc,8,'10101010 10101010'                                        01280000
+ comp xicc,8,'10101010 10101010'                                        01290000
+ comp niycc,8,'10101010 10101010'                                       01300000
+ comp oiycc,8,'10101010 10101010'                                       01310000
+ comp xiycc,8,'10101010 10101010'                                       01320000
+ punch '* *Explain The failure of this test indicates either that'              
+ punch '* *Explain your C compiler lacks stdatomic.h and the GCC'               
+ punch '* *Explain intrinsic atomic operations, or that the atomic'             
+ punch '* *Explain operations are not lock free, or that Interlocked'           
+ punch '* *Explain Access Facility 2 has been unconfigured when'                
+ punch '* *Explain Hercules was built, or finally that Hercules'                
+ punch '* *Explain simply lacks the support for IAF2.'                          
+ comp  facilities,8,'00000000 00000800',text='Facilities list bit 52'   01330000
+ punch '* * First doubleword of facilities list'                        01340000
+ display  faclist,8                                                     01350000
+ comp   nizero,8,'00000000 00000000'                                    01360000
+ punch '*gpr'                                                           01370000
+ punch '* *Gpr 3 00000000'                                              01380000
+ punch '* *Gpr 4 00000000'                                              01390000
+ punch '* *Done'                                                        01400000
+ end                                                                    01410000

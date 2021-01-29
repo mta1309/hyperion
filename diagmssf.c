@@ -258,16 +258,6 @@ typedef struct _DIAG204_X_PART_CPU {
         BYTE    resv3[40];
     } DIAG204_X_PART_CPU;
 
-static const char diag224_cputable[]=
-{
-    "CP              "
-    "ICF             "
-    "ZAAP            "
-    "IFL             "
-    "*UNKNOWN*       "
-    "ZIIP            "
-};
-
 #endif /*!defined(_DIAGMSSF_C)*/
 
 
@@ -430,7 +420,7 @@ DEVBLK            *dev;                /* Device block pointer       */
             break;
 
         default:
-            PTT(PTT_CL_ERR,"*DIAG080",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+            PTT_ERR("*DIAG080",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
             /* Set response code X'06F0' for invalid MSSF command */
             spccb->resp[0] = SPCCB_REAS_UNASSIGNED;
             spccb->resp[1] = SPCCB_RESP_UNASSIGNED;
@@ -471,7 +461,7 @@ DIAG204_X_PART_CPU *cpuxinfo;          /* CPU info                   */
 #endif /*defined(FEATURE_EXTENDED_DIAG204)*/
 RADR              abs;                 /* abs addr of data area      */
 int               i;                   /* loop counter               */
-struct rusage     usage;               /* RMF type data              */
+struct timespec   cputime;             /* to obtain thread time data */
 ETOD              ETOD;                /* Extended TOD clock         */
 U64               uCPU[MAX_CPU_ENGINES];    /* User CPU time    (us) */
 U64               tCPU[MAX_CPU_ENGINES];    /* Total CPU time   (us) */
@@ -518,9 +508,12 @@ U64               wCPU[MAX_CPU_ENGINES];    /* Wait CPU time    (us) */
             if (IS_CPU_ONLINE(i))
             {
                 /* Get CPU times in microseconds */
-                getrusage((int)sysblk.cputid[i], &usage);
-                uCPU[i] = timeval2us(&usage.ru_utime);
-                tCPU[i] = uCPU[i] + timeval2us(&usage.ru_stime);
+                if( clock_gettime(sysblk.cpuclockid[i], &cputime) == 0 )
+                {
+                    uCPU[i] = timespec2us(&cputime);
+                    tCPU[i] = uCPU[i] + etod2us(sysblk.regs[i]->waittime_accumulated
+                                              + sysblk.regs[i]->waittime ) ;
+                }
             }
         }
 
@@ -618,11 +611,14 @@ U64               wCPU[MAX_CPU_ENGINES];    /* Wait CPU time    (us) */
         {
             if (IS_CPU_ONLINE(i))
             {
-                /* Get CPU times in microseconds */
-                getrusage((int)sysblk.cputid[i], &usage);
                 oCPU[i] = etod2us(ETOD.high - regs->tod_epoch - sysblk.cpucreateTOD[i]);
-                uCPU[i] = timeval2us(&usage.ru_utime);
-                tCPU[i] = uCPU[i] + timeval2us(&usage.ru_stime);
+                /* Get CPU times in microseconds */
+                if( clock_gettime(sysblk.cpuclockid[i], &cputime) == 0 )
+                {
+                    uCPU[i] = timespec2us(&cputime);
+                    tCPU[i] = uCPU[i] + etod2us(sysblk.regs[i]->waittime_accumulated
+                                              + sysblk.regs[i]->waittime ) ;
+                }
                 wCPU[i] = tCPU[i] - uCPU[i];
             }
         }
@@ -642,11 +638,12 @@ U64               wCPU[MAX_CPU_ENGINES];    /* Wait CPU time    (us) */
         memset(partxinfo, 0, sizeof(DIAG204_PART));
         partxinfo->partnum = sysblk.lparnum;    /* Hercules partition */
         partxinfo->virtcpu = sysblk.cpus;
+        partxinfo->realcpu = hostinfo.num_procs;
         get_lparname(partxinfo->partname);
         get_sysname(partxinfo->cpcname);
         get_systype(partxinfo->osname);
-        STORE_DW(partxinfo->cssize,sysblk.mainsize);
-        STORE_DW(partxinfo->essize,sysblk.xpndsize);
+        STORE_DW( partxinfo->cssize, sysblk.mainsize >> SHIFT_MEGABYTE );
+        STORE_DW( partxinfo->essize, sysblk.xpndsize >> SHIFT_MEGABYTE );
         get_sysplex(partxinfo->gr_name);
 
         /* hercules cpu's */
@@ -686,6 +683,7 @@ U64               wCPU[MAX_CPU_ENGINES];    /* Wait CPU time    (us) */
         memset(partxinfo, 0, sizeof(DIAG204_X_PART));
         partxinfo->partnum = 0; /* Physical machine */
         partxinfo->virtcpu = sysblk.cpus;
+        partxinfo->realcpu = hostinfo.num_procs;
         memcpy(partxinfo->partname,physical,sizeof(physical));
 
         /* report all emulated physical cpu's */
@@ -721,7 +719,7 @@ U64               wCPU[MAX_CPU_ENGINES];    /* Wait CPU time    (us) */
 #endif /*defined(FEATURE_EXTENDED_DIAG204)*/
 
     default:
-        PTT(PTT_CL_ERR,"*DIAG204",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+        PTT_ERR("*DIAG204",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
         regs->GR_L(r2) = 4;
 
     } /*switch(regs->GR_L(r2))*/
@@ -736,41 +734,50 @@ void ARCH_DEP(diag224_call) (int r1, int r2, REGS *regs)
 {
 RADR              abs;                 /* abs addr of data area      */
 BYTE             *p;                   /* pointer to the data area   */
-unsigned int      i;                   /* loop index                 */
+unsigned int      len, ptyp, i;        /* work                       */
 
-//FIXME : this is probably incomplete.
-//        see linux/arch/s390/hypfs/hypfs_diag.c
-    UNREFERENCED(r1);
+    // FIXME:  This function is probably incomplete.
+    //         See linux/arch/s390/hypfs/hypfs_diag.c
 
-    abs = APPLY_PREFIXING (regs->GR_L(r2), regs->PX);
+    UNREFERENCED( r1 );
+
+    abs = APPLY_PREFIXING( regs->GR_L( r2 ), regs->PX );
 
     /* Program check if data area is not on a page boundary */
-    if ( (abs & PAGEFRAME_BYTEMASK) != 0x000)
-        ARCH_DEP(program_interrupt) (regs, PGM_SPECIFICATION_EXCEPTION);
+    if ((abs & PAGEFRAME_BYTEMASK) != 0)
+        ARCH_DEP( program_interrupt )( regs, PGM_SPECIFICATION_EXCEPTION );
+
+    /* Calculate length of data to be stored */
+    len = 16 + ((MAX_SCCB_PTYP + 1) * 16);
 
     /* Program check if data area is outside main storage */
-    if ( abs > regs->mainlim )
-        ARCH_DEP(program_interrupt) (regs, PGM_ADDRESSING_EXCEPTION);
-
-    /* Point to DIAG 224 data area */
-    p = regs->mainstor + abs;
+    if (abs > regs->mainlim || len > PAGEFRAME_PAGESIZE)
+        ARCH_DEP( program_interrupt )( regs, PGM_ADDRESSING_EXCEPTION );
 
     /* Mark page referenced */
-    STORAGE_KEY(abs, regs) |= STORKEY_REF | STORKEY_CHANGE;
+    STORAGE_KEY( abs, regs ) |= (STORKEY_REF | STORKEY_CHANGE);
 
-    /* First byte contains the number of entries - 1 */
-    *p = 5;
+    /* Point to DIAG 224 return area */
+    p = regs->mainstor + abs;
 
-    /* Clear the next 15 bytes */
-    memset (p + 1, 0, 15);
+    /*
+    ** The first byte of the first 16-byte entry contains the total number
+    ** of 16-byte entries minus 1 that immediately follows the first entry.
+    ** The remaining 15 bytes of the first 16-byte entry are binary zeros.
+    ** Each of the remaining entries following the first one contains the
+    ** EBCDIC name of each processor type.
+    */
 
-    /* Set the 6 possible entries */
-    p += 16;
-    memcpy(p,diag224_cputable,sizeof(diag224_cputable)-1);
+    *p = MAX_SCCB_PTYP;         /* (number of entries which follows-1) */
+    memset( p+1, 0, 16-1 );     /* (pad first entry with binary zeros) */
 
-    /* Convert to EBCDIC */
-    for (i = 0; i < sizeof(diag224_cputable); i++)
-        p[i] = host_to_guest(p[i]);
+    for (ptyp=0; ptyp <= MAX_SCCB_PTYP; ptyp++)
+    {
+        p += 16;                              /* point to next entry   */
+        memcpy( p, ptyp2long( ptyp ), 16 );   /* move in ASCII value   */
+        for (i=0; i < 16; i++)
+            p[i] = host_to_guest( p[i] );     /* convert it to EBCDIC  */
+    }
 
 } /* end function diag224_call */
 

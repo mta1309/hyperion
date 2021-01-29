@@ -692,24 +692,16 @@ struct VMBIOENV *bioenv;  /* -->allocated environement               */
 /* enhancement.                                                    */
 static void d250_preserve(DEVBLK *dev)
 {
+    obtain_lock(&dev->lock);
+
+#if defined( OPTION_SHARED_DEVICES )
+    /* Wait for the device to become available      */
     /* Note: this logic comes from the beginning of */
     /* channel.c ARCH_DEP(execute_ccw_chain)        */
-    obtain_lock(&dev->lock);
-    if ( dev->shared )
-    {
-        while (dev->ioactive != DEV_SYS_NONE
-            && dev->ioactive != DEV_SYS_LOCAL)
-        {
-            dev->iowaiters++;
-            wait_condition(&dev->iocond, &dev->lock);
-            dev->iowaiters--;
-        }
-        dev->ioactive = DEV_SYS_LOCAL;
-    }
-    else
-    {
-        dev->ioactive = DEV_SYS_LOCAL;
-    }
+    shared_iowait( dev );
+    dev->shioactive = DEV_SYS_LOCAL;
+#endif // defined( OPTION_SHARED_DEVICES )
+
     dev->busy = 1;
     dev->startpending = 0;
     if (dev->sns_pending)
@@ -759,7 +751,9 @@ static void d250_restore(DEVBLK *dev)
        {  WRMSG (HHC01920, "I", dev->devnum);
        }
     }
-    dev->ioactive = DEV_SYS_NONE;
+#if defined( OPTION_SHARED_DEVICES )
+    dev->shioactive = DEV_SYS_NONE;
+#endif // defined( OPTION_SHARED_DEVICES )
     dev->busy = 0;
     release_lock(&dev->lock);
 }

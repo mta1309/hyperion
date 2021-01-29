@@ -7,8 +7,15 @@
 
 #include "hstdinc.h"
 
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
+#ifndef _CONFIG_C_
 #define _CONFIG_C_
+#endif
+
+#ifndef _HENGINE_DLL_
 #define _HENGINE_DLL_
+#endif
 
 #include "hercules.h"
 #include "opcode.h"
@@ -96,6 +103,10 @@ int configure_memfree(int mfree)
     return 0;
 }
 
+PUSH_GCC_WARNINGS()
+DISABLE_GCC_WARNING( "-Wpointer-to-int-cast" )
+DISABLE_GCC_WARNING( "-Wint-to-pointer-cast" )
+
 /* storage configuration */
 static U64   config_allocmsize = 0;
 static BYTE *config_allocmaddr  = NULL;
@@ -111,20 +122,8 @@ U32   skeysize;
 int cpu;
 
     /* Ensure all CPUs have been stopped */
-    if (sysblk.cpus)
-    {
-        OBTAIN_INTLOCK(NULL);
-        for (cpu = 0; cpu < sysblk.maxcpu; cpu++)
-        {
-            if (IS_CPU_ONLINE(cpu) &&
-                sysblk.regs[cpu]->cpustate == CPUSTATE_STARTED)
-            {
-                RELEASE_INTLOCK(NULL);
-                return HERRCPUONL;
-            }
-        }
-        RELEASE_INTLOCK(NULL);
-    }
+    if (are_any_cpus_started())
+        return HERRCPUONL;
 
     /* Release storage and return if deconfiguring */
     if (mainsize == ~0ULL)
@@ -140,18 +139,28 @@ int cpu;
     }
 
     /* Round requested storage size to architectural segment boundaries
+     *    ARCH_370  1   4K page
+     *    ARCH_390  256 4K pages (or 1M)
+     *    ARCH_900  256 4K pages (or 1M)
      */
     if (mainsize)
     {
-        /* All recorded storage sizes are maintained as full pages.
-         * That is, no partial pages are maintained or reported.
-         * Actual storage is obtained and maintained by 4K pages
-         * if 16M or less, 1M segments if greater than 16M.
-         */
+#if 0
         if (mainsize <= (16 << (SHIFT_MEGABYTE - 12)))
             storsize = MAX((sysblk.arch_mode <= ARCH_390) ? 1 : 2,
                            mainsize);
+            /* The side effect of this for values less than 256 is to establish
+             * zones with a memory size of zero megabytes.  Channel subsystem I/O
+             * (see MSCH instruction) drives I/O address checks via the memory size
+             * established in zones, not mainsize.  A zero megabyte zone memory
+             * size causes all channel subsystem I/O to fail with a program check
+             * channel status.
+             */
+#else
+        if (sysblk.arch_mode == ARCH_370)
+            storsize = MAX(1,mainsize);
         else
+#endif
             storsize = (mainsize + 255) & ~255ULL;
         mainsize = storsize;
     }
@@ -164,7 +173,7 @@ int cpu;
     }
 
     /* Storage key array size rounded to next page boundary */
-    switch (STORAGE_KEY_UNITSIZE)
+    switch (_STORKEY_ARRAY_UNITSIZE)
     {
         case 2048:
             skeysize = storsize << 1;
@@ -217,7 +226,7 @@ int cpu;
             sysblk.main_clear = 0;
             MSGBUF( buf, "configure_storage(%s)",
                     fmt_memsize_KB((U64)mainsize << 2) );
-            logmsg(MSG(HHC01430, "S", buf, strerror(errno)));
+            WRMSG( HHC01430, "S", buf, strerror(errno) );
             return -1;
         }
 
@@ -238,6 +247,7 @@ int cpu;
     }
 
     /* Mainstor is located beyond the storage key array on a page boundary */
+    /* Isn't the storage key array already at a page boundary?  jph  */
     mainstor = (BYTE*)((U64)(storkeys + (skeysize << 12)));
 
     /* Set in sysblk */
@@ -261,8 +271,8 @@ int cpu;
 
 #if 0   /*DEBUG-JJ-20/03/2000*/
     /* Mark selected frames invalid for debugging purposes */
-    for (i = 64 ; i < (sysblk.mainsize / STORAGE_KEY_UNITSIZE); i += 2)
-        if (i < (sysblk.mainsize / STORAGE_KEY_UNITSIZE) - 64)
+    for (i = 64 ; i < (sysblk.mainsize / _STORKEY_ARRAY_UNITSIZE); i += 2)
+        if (i < (sysblk.mainsize / _STORKEY_ARRAY_UNITSIZE) - 64)
             sysblk.storkeys[i] = STORKEY_BADFRM;
         else
             sysblk.storkeys[i++] = STORKEY_BADFRM;
@@ -312,20 +322,8 @@ REGS *regs;
 int  cpu;
 
     /* Ensure all CPUs have been stopped */
-    if (sysblk.cpus)
-    {
-        OBTAIN_INTLOCK(NULL);
-        for (cpu = 0; cpu < sysblk.maxcpu; cpu++)
-        {
-            if (IS_CPU_ONLINE(cpu) &&
-                sysblk.regs[cpu]->cpustate == CPUSTATE_STARTED)
-            {
-                RELEASE_INTLOCK(NULL);
-                return HERRCPUONL;
-            }
-        }
-        RELEASE_INTLOCK(NULL);
-    }
+    if (are_any_cpus_started())
+        return HERRCPUONL;
 
     /* Release storage and return if zero or deconfiguring */
     if (!xpndsize ||
@@ -373,7 +371,7 @@ int  cpu;
             sysblk.xpnd_clear = 0;
             MSGBUF( buf, "configure_xstorage(%s)",
                     fmt_memsize_MB((U64)xpndsize));
-            logmsg(MSG(HHC01430, "S", buf, strerror(errno)));
+            WRMSG( HHC01430, "S", buf, strerror(errno) );
             return -1;
         }
 
@@ -436,6 +434,8 @@ int  cpu;
 
     return 0;
 }
+
+POP_GCC_WARNINGS()
 
 /* 4 next functions used for fast device lookup cache management */
 
@@ -518,6 +518,7 @@ static void DelSubchanFastLookup(U16 ssid, U16 subchan)
     sysblk.subchan_fl[schw][subchan & 0xff]=NULL;
 }
 
+#ifdef NEED_FND_CHPBLK
 static
 CHPBLK *fnd_chpblk(U16 css, BYTE chpid)
 {
@@ -528,8 +529,9 @@ CHPBLK *chp;
             return chp;
     return NULL;
 }
+#endif
 
-
+#ifdef NEED_GET_CHPBLK
 static
 CHPBLK *get_chpblk(U16 css, BYTE chpid, BYTE chptype)
 {
@@ -560,10 +562,11 @@ CHPBLK**chpp;
         return chp;
     }
 }
+#endif
 
 
-static
-DEVBLK *get_devblk(U16 lcss, U16 devnum)
+/* NOTE: also does obtain_lock(&dev->lock); */
+static DEVBLK *get_devblk(U16 lcss, U16 devnum)
 {
 DEVBLK *dev;
 DEVBLK**dvpp;
@@ -594,15 +597,16 @@ DEVBLK**dvpp;
         /* Initialize the device lock and conditions */
 
         initialize_lock      ( &dev->lock               );
-        initialize_condition ( &dev->resumecond         );
-        initialize_condition ( &dev->iocond             );
+        initialize_condition ( &dev->kbcond             );
+#if defined( OPTION_SHARED_DEVICES )
+        initialize_condition ( &dev->shiocond           );
+#endif // defined( OPTION_SHARED_DEVICES )
 #if defined(OPTION_SCSI_TAPE)
         initialize_condition ( &dev->stape_sstat_cond   );
         InitializeListLink   ( &dev->stape_statrq.link  );
         InitializeListLink   ( &dev->stape_mntdrq.link  );
         dev->stape_statrq.dev = dev;
         dev->stape_mntdrq.dev = dev;
-        dev->sstat            = GMT_DR_OPEN(-1);
 #endif
         /* Search for the last device block on the chain */
         for (dvpp = &(sysblk.firstdev); *dvpp != NULL;
@@ -615,7 +619,7 @@ DEVBLK**dvpp;
         dev->subchan = sysblk.highsubchan[lcss]++;
     }
 
-    /* Initialize the device block */
+    /* Obtain the device lock. Caller will release it. */
     obtain_lock (&dev->lock);
 
     dev->group = NULL;
@@ -681,9 +685,8 @@ DEVBLK**dvpp;
     return dev;
 }
 
-
-static
-void ret_devblk(DEVBLK *dev)
+/* NOTE: also does release_lock(&dev->lock);*/
+static void ret_devblk(DEVBLK *dev)
 {
     /* PROGRAMMING NOTE: the device buffer will be freed by the
        'attach_device' function whenever it gets reused and not
@@ -702,12 +705,27 @@ void ret_devblk(DEVBLK *dev)
 /*-------------------------------------------------------------------*/
 /* Function to delete a device configuration block                   */
 /*-------------------------------------------------------------------*/
-static int detach_devblk (DEVBLK *dev)
+static int detach_devblk (DEVBLK *dev, int locked, const char *msg,
+                          DEVBLK *errdev, DEVGRP *group)
 {
 int     i;                              /* Loop index                */
 
-    /* Obtain the device lock */
-    obtain_lock(&dev->lock);
+    /* Free the entire group if this is a grouped device */
+    if (free_group( dev->group, locked, msg, errdev ))
+    {
+        /* Group successfully freed. All devices in the group
+           have been detached. Nothing remains for us to do.
+           All work has been completed. Return to caller.
+        */
+        return 0;
+    }
+
+    /* Restore group ptr that that 'free_group' may have set to NULL */
+    dev->group = group;
+
+    /* Obtain the device lock. ret_devblk will release it */
+    if (!locked)
+        obtain_lock(&dev->lock);
 
     DelSubchanFastLookup(dev->ssid, dev->subchan);
     if(dev->pmcw.flag5 & PMCW5_V)
@@ -718,6 +736,27 @@ int     i;                              /* Loop index                */
         /* Call the device close handler */
         (dev->hnd->close)(dev);
 
+    /* Issue device detached message and build channel report */
+    if (dev != errdev)
+    {
+        if (MLVL(DEBUG))
+        {
+            // "%1d:%04X %s detached"
+            WRMSG (HHC01465, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, msg);
+        }
+
+#ifdef _FEATURE_CHANNEL_SUBSYSTEM
+        /* Don't bother with channel report if we're shutting down */
+        if (!sysblk.shutdown)
+        {
+#if defined(_370)
+            if (sysblk.arch_mode != ARCH_370)
+#endif
+                build_detach_chrpt( dev );
+#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
+        }
+    }
+
     /* Free the argv array */
     for (i = 0; i < dev->argc; i++)
         if (dev->argv[i])
@@ -725,42 +764,11 @@ int     i;                              /* Loop index                */
     if (dev->argv)
         free(dev->argv);
 
+    /* Free the device type name */
     free(dev->typname);
 
-    /* detach all devices in group */
-    if(dev->group)
-    {
-    int i;
-
-        dev->group->memdev[dev->member] = NULL;
-
-        if(dev->group->members)
-        {
-            dev->group->members = 0;
-
-            for(i = 0; i < dev->group->acount; i++)
-            {
-                if(dev->group->memdev[i] && dev->group->memdev[i]->allocated)
-                {
-                    detach_devblk(dev->group->memdev[i]);
-                }
-            }
-
-            free(dev->group);
-        }
-
-        dev->group = NULL;
-    }
-
-    ret_devblk(dev);
-
-#ifdef _FEATURE_CHANNEL_SUBSYSTEM
-    /* Build Channel Report */
-#if defined(_370)
-    if (sysblk.arch_mode != ARCH_370)
-#endif
-        build_detach_chrpt( dev );
-#endif /*_FEATURE_CHANNEL_SUBSYSTEM*/
+    /* Release lock and return the device to the DEVBLK pool */
+    ret_devblk( dev ); /* also does release_lock(&dev->lock);*/
 
     return 0;
 } /* end function detach_devblk */
@@ -781,18 +789,19 @@ char   str[64];
 
     if (dev == NULL)
     {
+        // "%1d:%04X %s does not exist"
         WRMSG (HHC01464, "E", lcss, devnum, str);
         return 1;
     }
 
     obtain_lock(&sysblk.config);
 
-    rc = detach_devblk( dev );
+    if (dev->group)
+        MSGBUF( str, "group subchannel %1d:%04X", lcss, subchan);
+
+    rc = detach_devblk( dev, FALSE, str, NULL, dev->group );
 
     release_lock(&sysblk.config);
-
-    if(!rc)
-        WRMSG (HHC01465, "I", lcss, devnum, str);
 
     return rc;
 }
@@ -944,89 +953,42 @@ int rc;
 int configure_herc_priority(int prio)
 {
 int rc;
-
-#if !defined(NO_SETUID)
-    /* Cap the default priority at zero if setuid not available */
-    prio = (sysblk.suid && (prio < 0)) ? 0 : prio;
-#endif /*!defined(NO_SETUID)*/
-
     /* Set root mode in order to set priority */
     SETMODE(ROOT);
-
     /* Set Hercules base priority */
-    rc = setpriority(PRIO_PGRP, 0, (sysblk.hercprio = prio));
-
+    rc = setpriority(PRIO_PROCESS, 0, (sysblk.hercprio = prio));
     /* Back to user mode */
     SETMODE(USER);
-
     return rc;
 }
 
 int configure_cpu_priority(int prio)
 {
 int cpu;
-#if !defined(NO_SETUID)
-    /* Cap the default priority at zero if setuid not available */
-    prio = (sysblk.suid && (prio < 0)) ? 0 : prio;
-#endif /*!defined(NO_SETUID)*/
-
     sysblk.cpuprio = prio;
-
-    SETMODE(ROOT);
-
     for(cpu = 0; cpu < MAX_CPU_ENGINES; cpu++)
         if(sysblk.cputid[cpu])
-        {
-            if(setpriority(PRIO_PROCESS, sysblk.cputid[cpu], prio))
-                WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-        }
-
-    SETMODE(USER);
-
+            set_thread_priority(sysblk.cputid[cpu], prio);
     return 0;
 }
 
 int configure_dev_priority(int prio)
 {
-#if !defined(NO_SETUID)
-    /* Cap the default priority at zero if setuid not available */
-    prio = (sysblk.suid && (prio < 0)) ? 0 : prio;
-#endif /*!defined(NO_SETUID)*/
-
     sysblk.devprio = prio;
-
     return 0;
 }
 
 int configure_tod_priority(int prio)
 {
-#if !defined(NO_SETUID)
-    /* Cap the default priority at zero if setuid not available */
-    prio = (sysblk.suid && (prio < 0)) ? 0 : prio;
-#endif /*!defined(NO_SETUID)*/
-
     sysblk.todprio = prio;
-
-    SETMODE(ROOT);
-
     if(sysblk.todtid)
-        if(setpriority(PRIO_PROCESS, sysblk.todtid, prio))
-            WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-
-    SETMODE(USER);
-
+        set_thread_priority(sysblk.todtid, prio);
     return 0;
 }
 
 int configure_srv_priority(int prio)
 {
-#if !defined(NO_SETUID)
-    /* Cap the default priority at zero if setuid not available */
-    prio = (sysblk.suid && (prio < 0)) ? 0 : prio;
-#endif /*!defined(NO_SETUID)*/
-
     sysblk.srvprio = prio;
-
     return 0;
 }
 
@@ -1059,6 +1021,18 @@ TID   tid;
         WRMSG(HHC00102, "E", strerror(rc));
         return HERRCPUOFF; /* CPU offline */
     }
+
+#if defined(_POSIX_THREAD_CPUTIME) && (_POSIX_THREAD_CPUTIME >= 0)
+    /* Initialise the CPU's thread clockid so that clock_gettime() can use it */
+    /* provided the _POSIX_THREAD_CPUTIME is supported.                       */
+    pthread_getcpuclockid(sysblk.cputid[cpu], &sysblk.cpuclockid[cpu]);  	
+    WRMSG(HHC00109, "I", _POSIX_THREAD_CPUTIME);
+#else
+    /* When not supported, we zero the cpuclockid, which will trigger a       */
+    /* different approach to obtain the thread CPU time in clock.c            */
+    sysblk.cpuclockid[cpu] = 0; 	
+	WRMSG(HHC00110, "W");
+#endif /* defined(_POSIX_THREAD_CPUTIME) && (_POSIX_THREAD_CPUTIME >= 0) */	
 
     /* Find out if we are a cpu thread */
     tid = thread_id();
@@ -1143,6 +1117,7 @@ TID tid = thread_id();
     }
 
     sysblk.cputid[cpu] = 0;
+    sysblk.cpuclockid[cpu] = 0;
 
 #if defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)
     /* Set topology-change-report-pending condition */
@@ -1196,7 +1171,8 @@ int cpu;
 /* Function to build a device configuration block                    */
 /*-------------------------------------------------------------------*/
 int attach_device (U16 lcss, U16 devnum, const char *type,
-                   int addargc, char *addargv[])
+                   int addargc, char *addargv[],
+                   int numconfdev)
 {
 DEVBLK *dev;                            /* -> Device block           */
 int     rc;                             /* Return code               */
@@ -1208,18 +1184,27 @@ int     i;                              /* Loop index                */
     /* Check whether device number has already been defined */
     if (find_device_by_devnum(lcss,devnum) != NULL)
     {
+        // "%1d:%04X device already exists"
         WRMSG (HHC01461, "E", lcss, devnum);
         release_lock(&sysblk.config);
         return 1;
     }
 
-    /* obtain device block */
-    dev = get_devblk(lcss, devnum);
+    /* Obtain device block from our DEVBLK pool and lock the device. */
+    dev = get_devblk(lcss, devnum); /* does obtain_lock(&dev->lock); */
+
+    // PROGRAMMING NOTE: the rule is, once a DEVBLK has been obtained
+    // from the pool it can be returned back to the pool via a simple
+    // call to ret_devblk if the device handler initialization function
+    // has NOT yet been called. Once the device handler initialization
+    // function has been called however then you MUST use detach_devblk
+    // to return it back to the pool so that the entire group is freed.
 
     if(!(dev->hnd = hdl_ghnd(type)))
     {
+        // "%1d:%04X devtype %s not recognized"
         WRMSG (HHC01462, "E", lcss, devnum, type);
-        ret_devblk(dev);
+        ret_devblk(dev); /* also does release_lock(&dev->lock);*/
         release_lock(&sysblk.config);
         return 1;
     }
@@ -1240,22 +1225,19 @@ int     i;                              /* Loop index                */
     else
         dev->argv = NULL;
 
+    /* Set the number of config statement device addresses */
+    dev->numconfdev = numconfdev;
+
     /* Call the device handler initialization function */
     rc = (int)(dev->hnd->init)(dev, addargc, addargv);
 
     if (rc < 0)
     {
+        // "%1d:%04X device initialization failed"
         WRMSG (HHC01463, "E", lcss, devnum);
 
-        for (i = 0; i < dev->argc; i++)
-            if (dev->argv[i])
-                free(dev->argv[i]);
-        if (dev->argv)
-            free(dev->argv);
-
-        free(dev->typname);
-
-        ret_devblk(dev);
+        /* Detach the device and return it back to the DEVBLK pool */
+        detach_devblk( dev, TRUE, "device", dev, dev->group );
 
         release_lock(&sysblk.config);
         return 1;
@@ -1277,18 +1259,12 @@ int     i;                              /* Loop index                */
         if (dev->buf == NULL)
         {
             char buf[64];
+            // "%1d:%04X error in function %s: %s"
             MSGBUF( buf, "malloc(%lu)", (unsigned long) dev->bufsize);
             WRMSG (HHC01460, "E", lcss, dev->devnum, buf, strerror(errno));
 
-            for (i = 0; i < dev->argc; i++)
-                if (dev->argv[i])
-                    free(dev->argv[i]);
-            if (dev->argv)
-                free(dev->argv);
-
-            free(dev->typname);
-
-            ret_devblk(dev);
+            /* Detach the device and return it back to the DEVBLK pool */
+            detach_devblk( dev, TRUE, "device", dev, dev->group );
 
             release_lock(&sysblk.config);
             return 1;
@@ -1309,11 +1285,18 @@ int     i;                              /* Loop index                */
     /*
     if(lcss!=0 && sysblk.arch_mode==ARCH_370)
     {
+        // "%1d:%04X: only devices on CSS 0 are usable in S/370 mode"
         WRMSG (HHC01458, "W", lcss, devnum);
     }
     */
 
     release_lock(&sysblk.config);
+
+    if ( rc == 0 && MLVL(DEBUG) )
+    {
+        // "Device %04X type %04X subchannel %d:%04X attached"
+        WRMSG(HHC02198, "I", dev->devnum, dev->devtype, dev->chanset, dev->subchan);
+    }
 
     return 0;
 } /* end function attach_device */
@@ -1326,24 +1309,26 @@ int detach_device (U16 lcss,U16 devnum)
 {
 DEVBLK *dev;                            /* -> Device block           */
 int    rc;
+char* str = "device";
 
     /* Find the device block */
     dev = find_device_by_devnum (lcss,devnum);
 
     if (dev == NULL)
     {
-        WRMSG (HHC01464, "E", lcss, devnum, "device");
+        // "%1d:%04X %s does not exist"
+        WRMSG (HHC01464, "E", lcss, devnum, str);
         return 1;
     }
 
     obtain_lock(&sysblk.config);
 
-    rc = detach_devblk( dev );
+    if (dev->group)
+        str = "group device";
+
+    rc = detach_devblk( dev, FALSE, str, NULL, dev->group );
 
     release_lock(&sysblk.config);
-
-    if(!rc)
-        WRMSG (HHC01465, "I", lcss, devnum, "device");
 
     return rc;
 }
@@ -1511,7 +1496,9 @@ DEVBLK *tmp;
     else if(members)
     {
         // Allocate a new Group when requested
-        dev->group = malloc(sizeof(DEVGRP) + members * sizeof(DEVBLK *));
+        size_t size = sizeof(DEVGRP) + (members * sizeof(DEVBLK*));
+        dev->group = malloc( size );
+        memset( dev->group, 0, size );
         dev->group->members = members;
         dev->group->acount = 1;
         dev->group->memdev[0] = dev;
@@ -1519,6 +1506,39 @@ DEVBLK *tmp;
     }
 
     return (dev->group && (dev->group->members == dev->group->acount));
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Function to free a device group  (i.e. all devices in the group)  */
+/*-------------------------------------------------------------------*/
+DLL_EXPORT BYTE free_group( DEVGRP *group, int locked,
+                            const char *msg, DEVBLK *errdev )
+{
+    DEVBLK *dev;
+    int i;
+
+    if (!group || !group->members)
+        return FALSE;       // no group or group has no members
+
+    for (i=0; i < group->acount; i++)
+    {
+        if ((dev = group->memdev[i]) && dev->allocated)
+        {
+            // PROGRAMMING NOTE: detach_devblk automatically calls
+            // free_group (i.e. THIS function) to try and free the
+            // entire group at once in case it is a grouped device.
+            // Therefore we must clear dev->group to NULL *before*
+            // calling detach_devblk to prevent infinite recursion.
+
+            dev->group = NULL;
+            detach_devblk( dev, dev == errdev && locked, msg, errdev,
+                           group );
+        }
+    }
+
+    free( group );
+    return TRUE;        // group successfully freed
 }
 
 
@@ -1610,23 +1630,6 @@ DLL_EXPORT REGS *devregs(DEVBLK *dev)
     return NULL;    /* Not CPU thread. Return NULL register context  */
 }
 #endif // OPTION_SYNCIO
-
-
-/*-------------------------------------------------------------------*/
-/* Internal device parsing structures                                */
-/*-------------------------------------------------------------------*/
-typedef struct _DEVARRAY
-{
-    U16 cuu1;
-    U16 cuu2;
-} DEVARRAY;
-
-typedef struct _DEVNUMSDESC
-{
-    BYTE lcss;
-    DEVARRAY *da;
-} DEVNUMSDESC;
-
 
 /*-------------------------------------------------------------------*/
 /* Function to Parse a LCSS specification in a device number spec    */
@@ -1729,12 +1732,26 @@ parse_single_devnum__INTERNAL(const char *spec,
     rc=strtoul(r,&strptr,16);
     if(rc<0 || rc>0xffff || *strptr!=0)
     {
-        if(verbose)
+        int err = 1;
+
+        /* Maybe it's just a statement comment? */
+        if (rc >= 0 && rc <= 0xffff && *strptr != 0)
         {
-            WRMSG(HHC01470,"E","device address specification",*strptr);
+            while (*strptr == ' ') strptr++;
+            /* End of statement or start of comment? */
+            if (*strptr == 0 || *strptr == '#')
+                err = 0;  /* Then not an error! */
         }
-        free(r);
-        return -1;
+
+        if (err)
+        {
+            if(verbose)
+            {
+                WRMSG(HHC01470,"E","device address specification",*strptr);
+            }
+            free(r);
+            return -1;
+        }
     }
     *p_devnum=rc;
     *p_lcss=lcss;
@@ -1785,7 +1802,7 @@ parse_single_devnum_silent(const char *spec,
 /* NOTE : caller should free the array returned in da if the return  */
 /*        value is not 0                                             */
 /*-------------------------------------------------------------------*/
-static size_t parse_devnums(const char *spec,DEVNUMSDESC *dd)
+DLL_EXPORT size_t parse_devnums(const char *spec,DEVNUMSDESC *dd)
 {
     size_t gcount;      /* Group count                     */
     size_t i;           /* Index runner                    */
@@ -1938,28 +1955,40 @@ parse_and_attach_devices(const char *sdevnum,
         int         i;
         U16         devnum;
         int         rc;
+        int         numconfdev = 0;
 
-#if defined(OPTION_CONFIG_SYMBOLS)
+#if defined(ENABLE_SYSTEM_SYMBOLS)
         int         j;
         char        **newargv;
         char        **orig_newargv;
-#endif
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
 
         devncount=parse_devnums(sdevnum,&dnd);
 
         if(devncount==0)
             return HERRDEVIDA; /* Invalid Device Address */
 
-#if defined(OPTION_CONFIG_SYMBOLS)
+        /* Calculate the number of config statement device addresses */
+        for (i=0;i<(int)devncount;i++)
+        {
+            da=dnd.da;
+            numconfdev = numconfdev + ((da[i].cuu2 - da[i].cuu1) + 1);
+        }
+
+#if defined(ENABLE_SYSTEM_SYMBOLS)
         newargv=malloc(MAX_ARGS*sizeof(char *));
         orig_newargv=malloc(MAX_ARGS*sizeof(char *));
-#endif /* #if defined(OPTION_CONFIG_SYMBOLS) */
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
+
         for(baddev=0,i=0;i<(int)devncount;i++)
         {
             da=dnd.da;
             for(devnum=da[i].cuu1;devnum<=da[i].cuu2;devnum++)
             {
-#if defined(OPTION_CONFIG_SYMBOLS)
+
+#if defined(ENABLE_SYSTEM_SYMBOLS)
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
                char wrkbfr[32];
                MSGBUF( wrkbfr, "%3.3X",devnum);
                set_symbol("CUU",wrkbfr);
@@ -1968,20 +1997,23 @@ parse_and_attach_devices(const char *sdevnum,
                set_symbol("DEVN", wrkbfr);
                MSGBUF( wrkbfr, "%d",dnd.lcss);
                set_symbol("CSS",wrkbfr);
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
+
                for(j=0;j<addargc;j++)
                {
                    orig_newargv[j]=newargv[j]=resolve_symbol_string(addargv[j]);
                }
-                /* Build the device configuration block */
-               rc=attach_device(dnd.lcss, devnum, sdevtype, addargc, newargv);
+               /* Build the device configuration block */
+               rc=attach_device(dnd.lcss, devnum, sdevtype, addargc, newargv, numconfdev);
                for(j=0;j<addargc;j++)
                {
                    free(orig_newargv[j]);
                }
-#else /* #if defined(OPTION_CONFIG_SYMBOLS) */
-                /* Build the device configuration block (no syms) */
-               rc=attach_device(dnd.lcss, devnum, sdevtype, addargc, addargv);
-#endif /* #if defined(OPTION_CONFIG_SYMBOLS) */
+#else
+               /* Build the device configuration block (no syms) */
+               rc=attach_device(dnd.lcss, devnum, sdevtype, addargc, addargv, numconfdev);
+#endif /* #if defined(ENABLE_SYSTEM_SYMBOLS) */
+
                if(rc!=0)
                {
                    baddev=1;
@@ -1993,10 +2025,12 @@ parse_and_attach_devices(const char *sdevnum,
                 break;
             }
         }
-#if defined(OPTION_CONFIG_SYMBOLS)
+
+#if defined(ENABLE_SYSTEM_SYMBOLS)
         free(newargv);
         free(orig_newargv);
-#endif /* #if defined(OPTION_CONFIG_SYMBOLS) */
+#endif /* #if defined( ENABLE_SYSTEM_SYMBOLS ) */
+
         free(dnd.da);
         return baddev?-1:0;
 }

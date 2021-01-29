@@ -23,7 +23,6 @@
 /*-------------------------------------------------------------------*/
 
 //#define ENABLE_RDR_DEBUG   1    // 1:enable, 0:disable, #undef:default
-//#define RDR_PTT_TRACING         // #define to enable PTT debug tracing
 
 
 
@@ -42,20 +41,11 @@
   #define  ENABLE_TRACING_STMTS   1
   #include "dbgtrace.h"
   #define  NO_RDR_OPTIMIZE
-  #define  RDR_PTT_TRACING
 #endif
 
 /* (disable optimizations if debugging) */
 #if defined( _MSVC_ ) && defined( NO_RDR_OPTIMIZE )
   #pragma optimize( "", off )   // disable optimizations for reliable breakpoints
-#endif
-
-/* (enable PTT tracing if requested) */
-#if defined( RDR_PTT_TRACING )
-  #define PTT_RDR_TRACE(   _string, _tr1, _tr2, _tr3 )  \
-          PTT( PTT_CL_INF, _string, _tr1, _tr2, _tr3 )
-#else
-  #define PTT_RDR_TRACE(...)       __noop()
 #endif
 
 /*-------------------------------------------------------------------*/
@@ -397,7 +387,7 @@ static void cardrdr_query_device (DEVBLK *dev, char **devclass,
 {
     BEGIN_DEVICE_CLASS_QUERY( "RDR", dev, devclass, buflen, buffer );
 
-    snprintf (buffer, buflen-1, "%s%s%s%s%s%s%s%s IO[%" I64_FMT "u]",
+    snprintf (buffer, buflen-1, "%s%s%s%s%s%s%s%s IO[%"PRIu64"]",
         ((dev->filename[0] == '\0') ? "*"          : (char *)dev->filename),
         (dev->bs ?                    " sockdev"   : ""),
         (dev->multifile ?             " multifile" : ""),

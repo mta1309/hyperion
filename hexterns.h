@@ -262,10 +262,10 @@ HSYS_DLL_IMPORT int extgui;             // __attribute__ ((deprecated));
 #endif /*EXTERNALGUI*/
 
 /* Functions in module bldcfg.c */
-int build_config (char *fname);
+int build_config (const char *fname);
 
 /* Functions in module script.c */
-SCRI_DLL_IMPORT int process_config (char *fname);
+SCRI_DLL_IMPORT int process_config (const char *fname);
 SCRI_DLL_IMPORT int parse_args (char* p, int maxargc, char** pargv, int* pargc);
 
 /* Functions in module config.c */
@@ -279,10 +279,11 @@ DEVBLK *find_device_by_subchan (U32 ioid);
   #define DEVREGS(_dev) NULL
 #endif // OPTION_SYNCIO
 int  attach_device (U16 lcss, U16 devnum, const char *devtype, int addargc,
-        char *addargv[]);
+        char *addargv[], int numconfdev);
 int  detach_device (U16 lcss, U16 devnum);
 int  define_device (U16 lcss, U16 olddev, U16 newdev);
 CONF_DLL_IMPORT int  group_device(DEVBLK *dev, int members);
+CONF_DLL_IMPORT BYTE free_group(DEVGRP *group, int locked, const char *msg, DEVBLK *errdev);
 int  configure_cpu (int cpu);
 int  deconfigure_cpu (int cpu);
 int  configure_numcpu (int numcpu);
@@ -303,6 +304,19 @@ int  configure_shrdport(U16 shrdport);
 int parse_and_attach_devices(const char *devnums,const char *devtype,int ac,char **av);
 CONF_DLL_IMPORT int parse_single_devnum(const char *spec, U16 *lcss, U16 *devnum);
 int parse_single_devnum_silent(const char *spec, U16 *lcss, U16 *devnum);
+struct DEVARRAY
+{
+    U16 cuu1;
+    U16 cuu2;
+};
+typedef struct DEVARRAY DEVARRAY;
+struct DEVNUMSDESC
+{
+    BYTE lcss;
+    DEVARRAY *da;
+};
+typedef struct DEVNUMSDESC DEVNUMSDESC;
+CONF_DLL_IMPORT size_t parse_devnums(const char *spec,DEVNUMSDESC *dd);
 CONF_DLL_IMPORT int readlogo(char *fn);
 CONF_DLL_IMPORT void clearlogo(void);
 CONF_DLL_IMPORT int parse_conkpalv(char* s, int* idle, int* intv, int* cnt );
@@ -339,17 +353,23 @@ HAO_DLL_IMPORT void hao_command(char *command); /* process hao command */
 int qproc_cmd(int argc, char *argv[], char *cmdline);
 extern int g_numcpu;  /* Number of CPUs         */
 extern int g_maxcpu;  /* Maximum number of CPUs */
+HCMD_DLL_IMPORT const char* ptyp2long( BYTE ptyp );        // diag224_call()
+HCMD_DLL_IMPORT const char* ptyp2short( BYTE ptyp );       // PTYPSTR()
+HCMD_DLL_IMPORT BYTE short2ptyp( const char* shortname );  // engines_cmd()
 
 /* Functions in module hscpufun.c (so PTT debugging patches can access them) */
 HCPU_DLL_IMPORT int stopall_cmd (int argc, char *argv[], char *cmdline);
 int start_cmd_cpu (int argc, char *argv[], char *cmdline);
 int stop_cmd_cpu (int argc, char *argv[], char *cmdline);
+int restart_cmd(int argc, char *argv[], char *cmdline);
 
 /* Functions in module hscemode.c (so PTT debugging patches can access them) */
 HCEM_DLL_IMPORT int aia_cmd     (int argc, char *argv[], char *cmdline);
 
 /* Functions in module cmdtab.c */
-CMDT_DLL_IMPORT int HercCmdLine (char *cmdline);
+CMDT_DLL_IMPORT int InternalHercCmd(char *cmdline); /* (NEVER for guest) */
+CMDT_DLL_IMPORT int HercCmdLine (char *cmdline);    /* (maybe guest cmd) */
+/* Note: ALL arguments -- including argument 3 (cmdline) -- are REQUIRED */
 CMDT_DLL_IMPORT int CallHercCmd (int argc, char **argv, char *cmdline);
 
 /* Functions in module losc.c */
@@ -385,6 +405,8 @@ HSYS_DLL_IMPORT void *(*debug_chsc_unknown_request) (void *, void *, REGS *);
 HSYS_DLL_IMPORT void *(*debug_sclp_event_data)      (void *, void *, REGS *);
 
 #else
+#define system_command                  NULL
+#define daemon_task                     NULL
 void *panel_command (void *cmdline);
 void panel_display (void);
 void *replace_opcode (int arch, zz_func inst, int opcode1, int opcode2);
@@ -450,12 +472,11 @@ LOADPARM_DLL_IMPORT char *str_cpid();
 void get_mpfactors(BYTE *dest);
 
 /* Functions in module impl.c */
-IMPL_DLL_IMPORT void system_cleanup(void);
-
-typedef void (*LOGCALLBACK)(const char *,size_t);
-typedef void *(*COMMANDHANDLER)(void *);
-
 IMPL_DLL_IMPORT int impl(int,char **);
+int quit_cmd(int argc, char *argv[],char *cmdline);
+IMPL_DLL_IMPORT void system_cleanup(void);
+typedef void (*LOGCALLBACK)( const char*, size_t );
+typedef void *(*COMMANDHANDLER)(void *);
 IMPL_DLL_IMPORT void registerLogCallback(LOGCALLBACK);
 IMPL_DLL_IMPORT COMMANDHANDLER getCommandHandler(void);
 
@@ -525,6 +546,7 @@ CCKD_DLL_IMPORT void   *cckd_sf_comp (void *);
 CCKD_DLL_IMPORT void   *cckd_sf_chk (void *);
 CCKD_DLL_IMPORT int     cckd_command(char *, int);
 CCKD_DLL_IMPORT void    cckd_print_itrace ();
+CCKD_DLL_IMPORT void    cckd_sf_parse_sfn( DEVBLK* dev, char* sfn );
 
 /* Functions in module cckdutil.c */
 CCDU_DLL_IMPORT int     cckd_swapend (DEVBLK *);
@@ -537,12 +559,16 @@ CCDU_DLL_IMPORT void    cckd_swapend2 (char *);
 CCDU_DLL_IMPORT int     cckd_endian ();
 CCDU_DLL_IMPORT int     cckd_comp (DEVBLK *);
 CCDU_DLL_IMPORT int     cckd_chkdsk (DEVBLK *, int);
-CCDU_DLL_IMPORT void    cckdumsg (DEVBLK *, int, char *, ...);
+CCDU_DLL_IMPORT void    cckdumsg (DEVBLK *, int, char *, ...) ATTR_PRINTF(3,4);
 
 /* Functions in module hscmisc.c */
 int herc_system (char* command);
 void do_shutdown();
-int display_regs (REGS *regs, char *buf, int buflen, char *hdr);
+int are_all_cpus_stopped();
+int are_all_cpus_stopped_intlock_held();
+int are_any_cpus_started();
+int are_any_cpus_started_intlock_held();
+int display_gregs (REGS *regs, char *buf, int buflen, char *hdr);
 int display_fregs (REGS *regs, char *buf, int buflen,char *hdr);
 int display_cregs (REGS *regs, char *buf, int buflen, char *hdr);
 int display_aregs (REGS *regs, char *buf, int buflen, char *hdr);
@@ -556,7 +582,7 @@ HMISC_DLL_IMPORT const char* FormatSID( BYTE* iobuf, int num, char* buf, size_t 
 HMISC_DLL_IMPORT const char* FormatRCD( BYTE* iobuf, int num, char* buf, size_t bufsz );
 HMISC_DLL_IMPORT const char* FormatRNI( BYTE* iobuf, int num, char* buf, size_t bufsz );
 void get_connected_client (DEVBLK* dev, char** pclientip, char** pclientname);
-void alter_display_real (REGS *regs, int argc, char *argv[], char *cmdline);
+void alter_display_real_or_abs (REGS *regs, int argc, char *argv[], char *cmdline);
 void alter_display_virt (REGS *regs, int argc, char *argv[], char *cmdline);
 void disasm_stor        (REGS *regs, int argc, char *argv[], char *cmdline);
 int drop_privileges(int capa);
@@ -586,6 +612,7 @@ int  ecpsvm_dolctl(REGS *regs,int r1,int r3,int b2,VADR effective_addr2);
 int  ecpsvm_dostctl(REGS *regs,int r1,int r3,int b2,VADR effective_addr2);
 int  ecpsvm_doiucv(REGS *regs,int b2,VADR effective_addr2);
 int  ecpsvm_virttmr_ext(REGS *regs);
+int  ecpsvm_dolra(REGS *regs,int r1,int b2,VADR effective_addr2);
 #endif
 
 /* Functions in module w32ctca.c */
@@ -609,7 +636,22 @@ GOP_DLL_IMPORT int   getopt      ( int nargc, char * const *nargv, const char *o
 GOP_DLL_IMPORT int   getopt_long ( int nargc, char * const *nargv, const char *options, const struct option *long_options, int *idx );
 
 /* Function in channel.c */
+                void shared_iowait (DEVBLK *dev);
 CHAN_DLL_IMPORT int  device_attention (DEVBLK *dev, BYTE unitstat);
 CHAN_DLL_IMPORT int  ARCH_DEP(device_attention) (DEVBLK *dev, BYTE unitstat);
+
+CHAN_DLL_IMPORT void Queue_IO_Interrupt           (IOINT* io, U8 clrbsy);
+CHAN_DLL_IMPORT void Queue_IO_Interrupt_QLocked   (IOINT* io, U8 clrbsy);
+CHAN_DLL_IMPORT int  Dequeue_IO_Interrupt         (IOINT* io);
+CHAN_DLL_IMPORT int  Dequeue_IO_Interrupt_QLocked (IOINT* io);
+CHAN_DLL_IMPORT void Update_IC_IOPENDING          ();
+CHAN_DLL_IMPORT void Update_IC_IOPENDING_QLocked  ();
+
+#define QUEUE_IO_INTERRUPT              Queue_IO_Interrupt
+#define QUEUE_IO_INTERRUPT_QLOCKED      Queue_IO_Interrupt_QLocked
+#define DEQUEUE_IO_INTERRUPT            Dequeue_IO_Interrupt
+#define DEQUEUE_IO_INTERRUPT_QLOCKED    Dequeue_IO_Interrupt_QLocked
+#define UPDATE_IC_IOPENDING             Update_IC_IOPENDING
+#define UPDATE_IC_IOPENDING_QLOCKED     Update_IC_IOPENDING_QLocked
 
 #endif // _HEXTERNS_H

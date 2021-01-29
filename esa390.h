@@ -1423,6 +1423,12 @@ typedef struct _MBK {
 #define STFL_RESERVED_46          46    /* Reserved */
 #define STFL_CMPSC_ENH            47    /* CMPSC-enhancement        810
                                            Facility installed     810*/
+#define STFL_MISC_INST_EXTN_1     49    /* Misc Instr Extension 
+                                           Facility 1 installed   912
+                                           Plus Load And Trap and
+                                           Processor Assist Facility */
+#define STFL_INTERLOCKED_ACCESS_2 52 /* Interlocked access facility 2 */
+
 #define STFL_RESERVED_62          62    /* Reserved */
 #define STFL_RESERVED_63          63    /* Reserved */
 #define STFL_RES_REF_BITS_MUL     66    /* Reset-Reference-Bits-    810

@@ -385,8 +385,8 @@ int  rest_loadparm = FALSE;
     }
 
     /* Check that target processor type allows IPL */
-    if (sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_IFA
-     || sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_SUP)
+    if (sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_ZAAP
+     || sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_ZIIP)
     {
         WRMSG(HHC00818, "E", PTYPSTR(sysblk.pcpu), sysblk.pcpu);
         return -1;
@@ -559,18 +559,20 @@ int     rc = HNOERROR;
 /*-------------------------------------------------------------------*/
 int restart_cmd(int argc, char *argv[], char *cmdline)
 {
-    UNREFERENCED(cmdline);
     UNREFERENCED(argc);
     UNREFERENCED(argv);
+    UNREFERENCED(cmdline);
 
     /* Check that target processor type allows IPL */
-    if (sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_IFA
-     || sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_SUP)
+    if (sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_ZAAP
+     || sysblk.ptyp[sysblk.pcpu] == SCCB_PTYP_ZIIP)
     {
+        // "Processor %s%02X: not eligible for ipl nor restart"
         WRMSG(HHC00818, "E", PTYPSTR(sysblk.pcpu), sysblk.pcpu);
         return -1;
     }
 
+    // "%s key pressed"
     WRMSG(HHC02228, "I", "restart");
 
     /* Obtain the interrupt lock */
@@ -579,8 +581,9 @@ int restart_cmd(int argc, char *argv[], char *cmdline)
     if (!IS_CPU_ONLINE(sysblk.pcpu))
     {
         RELEASE_INTLOCK(NULL);
+        // "Processor %s%02X: processor is not %s"
         WRMSG(HHC00816, "W", PTYPSTR(sysblk.pcpu), sysblk.pcpu, "online");
-        return 0;
+        return +1;
     }
 
     /* Indicate that a restart interrupt is pending */
@@ -615,6 +618,7 @@ int ext_cmd(int argc, char *argv[], char *cmdline)
 
     ON_IC_INTKEY;
 
+    // "%s key pressed"
     WRMSG(HHC02228, "I", "interrupt");
 
     /* Signal waiting CPUs that an interrupt is pending */
@@ -789,14 +793,14 @@ int rc = 0;
         hw_now.low  = hw_tod.low;
         epoch_now = regs->tod_epoch;
         clkc_now = regs->clkc;
-        cpt_now = cpu_timer(regs);
+        cpt_now = CPU_TIMER(regs);
 #if defined(_FEATURE_SIE)
         if ( regs->sie_active )
         {
             vtod_now = TOD_CLOCK(regs->guestregs);
             vepoch_now = regs->guestregs->tod_epoch;
             vclkc_now = regs->guestregs->clkc;
-            vcpt_now = cpu_timer_SIE(regs->guestregs);
+            vcpt_now = CPU_TIMER(regs->guestregs);
             sie_flag = 1;
         }
 #endif
@@ -813,11 +817,11 @@ int rc = 0;
 
         release_lock(&sysblk.cpulock[sysblk.pcpu]);
 
-        MSGBUF( buf, "tod = %16.16" I64_FMT "X    %s",
+        MSGBUF( buf, "tod = %16.16"PRIX64"    %s",
                 ETOD2TOD(tod_now), format_tod(clock_buf,tod_now.high,TRUE) );
         WRMSG(HHC02274, "I", buf);
 
-        MSGBUF( buf, "h/w = %16.16" I64_FMT "X    %s",
+        MSGBUF( buf, "h/w = %16.16"PRIX64"    %s",
                 ETOD2TOD(hw_now), format_tod(clock_buf,hw_now.high,TRUE) );
         WRMSG(HHC02274, "I", buf);
 
@@ -831,26 +835,26 @@ int rc = 0;
             epoch_now_abs = epoch_now;
             epoch_sign = ' ';
         }
-        MSGBUF( buf, "off = %16.16" I64_FMT "X   %c%s",
+        MSGBUF( buf, "off = %16.16"PRIX64"   %c%s",
                 etod2tod(epoch_now), epoch_sign,
                 format_tod(clock_buf,epoch_now_abs,FALSE) );
         WRMSG(HHC02274, "I", buf);
 
-        MSGBUF( buf, "ckc = %16.16" I64_FMT "X    %s",
+        MSGBUF( buf, "ckc = %16.16"PRIX64"    %s",
                 etod2tod(clkc_now), format_tod(clock_buf,clkc_now,TRUE) );
         WRMSG(HHC02274, "I", buf);
 
         if (regs->cpustate != CPUSTATE_STOPPED)
-            MSGBUF( buf, "cpt = %16.16" I64_FMT "X", cpt_now );
+            MSGBUF( buf, "cpt = %16.16"PRIX64, cpt_now );
         else
-            MSGBUF( buf, "cpt = %16.16" I64_FMT "X         not decrementing", cpt_now );
+            MSGBUF( buf, "cpt = %16.16"PRIX64"         not decrementing", cpt_now );
         WRMSG(HHC02274, "I", buf);
 
 #if defined(_FEATURE_SIE)
         if (sie_flag)
         {
 
-            MSGBUF( buf, "vtod = %16.16" I64_FMT "X    %s",
+            MSGBUF( buf, "vtod = %16.16"PRIX64"    %s",
                     etod2tod(vtod_now), format_tod(clock_buf,vtod_now,TRUE) );
             WRMSG(HHC02274, "I", buf);
 
@@ -864,23 +868,23 @@ int rc = 0;
                 vepoch_now_abs = vepoch_now;
                 vepoch_sign = ' ';
             }
-            MSGBUF( buf, "voff = %16.16" I64_FMT "X   %c%s",
+            MSGBUF( buf, "voff = %16.16"PRIX64"   %c%s",
                     etod2tod(vepoch_now), vepoch_sign,
                     format_tod(clock_buf,vepoch_now_abs,FALSE) );
             WRMSG(HHC02274, "I", buf);
 
-            MSGBUF( buf, "vckc = %16.16" I64_FMT "X    %s",
+            MSGBUF( buf, "vckc = %16.16"PRIX64"    %s",
                     etod2tod(vclkc_now), format_tod(clock_buf,vclkc_now,TRUE) );
             WRMSG(HHC02274, "I", buf);
 
-            MSGBUF( buf, "vcpt = %16.16" I64_FMT "X", vcpt_now );
+            MSGBUF( buf, "vcpt = %16.16"PRIX64, vcpt_now );
             WRMSG(HHC02274, "I", buf);
         }
 #endif
 
         if (arch370_flag)
         {
-            MSGBUF( buf, "itm = %8.8" I32_FMT "X                     %s",
+            MSGBUF( buf, "itm = %8.8"PRIX32"                     %s",
                    itimer, itimer_formatted );
             WRMSG(HHC02274, "I", buf);
         }
@@ -1026,29 +1030,31 @@ int stop_cmd_cpu(int argc, char *argv[], char *cmdline)
 /*-------------------------------------------------------------------*/
 int alrf_cmd(int argc, char *argv[], char *cmdline)
 {
-static char *ArchlvlCmd[3] = { "archlvl", "Query", "asn_lx_reuse" };
-int     rc = 0;
+char    buffer[128] = {0};
+char   *archlvl_func;
 
     UNREFERENCED(cmdline);
 
-    WRMSG( HHC02256, "W", "ALRF", "archlvl enable|disable|query asn_lx_reuse" );
-
-    if ( argc == 2 )
-    {
-        ArchlvlCmd[1] = argv[1];
-        CallHercCmd(3,ArchlvlCmd,NULL);
-    }
-    else if ( argc == 1 )
-    {
-        CallHercCmd(3,ArchlvlCmd,NULL);
-    }
-    else
+    if (argc < 1 || argc > 2)
     {
         WRMSG( HHC02299, "E", argv[0] );
-        rc = -1;
+        return -1;
     }
 
-    return rc;
+    // HHC02256 "Command %s is deprecated, use %s instead"
+
+    if (argc == 1)
+    {
+        archlvl_func = "query";
+    }
+    else /* (argc == 2) */
+    {
+        archlvl_func = argv[1];
+    }
+
+    MSGBUF( buffer, "archlvl %s asn_lx_reuse", archlvl_func );
+    WRMSG( HHC02256, "W", "ALRF", buffer );
+    return InternalHercCmd( buffer );
 }
 #endif /*defined(_FEATURE_ASN_AND_LX_REUSE)*/
 
@@ -1058,7 +1064,7 @@ int     rc = 0;
 /*-------------------------------------------------------------------*/
 int cmpscpad_cmd( int argc, char* argv[], char* cmdline )
 {
-    int bits, i;
+    int bits;
     const char* ptr;
     char* nxt;
     char buf[8];
@@ -1076,19 +1082,12 @@ int cmpscpad_cmd( int argc, char* argv[], char* cmdline )
 
     OBTAIN_INTLOCK( NULL );
 
-    if (sysblk.cpus)
+    if (are_any_cpus_started_intlock_held())
     {
-        for (i = 0; i < sysblk.maxcpu; i++)
-        {
-            if (IS_CPU_ONLINE( i ) &&
-                sysblk.regs[ i ]->cpustate == CPUSTATE_STARTED)
-            {
-                RELEASE_INTLOCK( NULL );
-                // "CPUs must be offline or stopped"
-                WRMSG( HHC02389, "E" );
-                return HERRCPUONL;
-            }
-        }
+        RELEASE_INTLOCK( NULL );
+        // "CPUs must be offline or stopped"
+        WRMSG( HHC02389, "E" );
+        return HERRCPUONL;
     }
 
     if ( argc == 2 )

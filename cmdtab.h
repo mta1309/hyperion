@@ -19,16 +19,28 @@
 //  -------------- (template for new commands) ----------------
 //
 //#define xxx_cmd_desc            "Short XXX description"
-//#define xxx_cmd_help            \
-//                                \
-//  "Much longer, more detailed xxx command description...\n"                     \
-//  "Use other commands as reference for typical formatting and wording.\n"       \
+//#define xxx_cmd_help            <backslash>
+//                                <backslash>
+//  "Much longer, more detailed xxx command description...\n" <backslash>
+//  "Use other commands as reference for typical formatting and wording.\n" <backslash>
 //
 //  -------------- (template for new commands) ----------------
 //  -------------- (template for new commands) ----------------
 
+#define $locate_cmd_desc        "Display sysblk, regs or hostinfo"
 
-#define $test_cmd_desc           "Your custom command (*DANGEROUS!*)"
+#define $runtest_cmd_desc       "Start the test if test mode is active"
+#define $runtest_cmd_help       \
+                                \
+  "Issue 'restart' command and then wait for all processors to load a\n"        \
+  "disabled wait PSW. This is a scripting only command and is only valid\n"     \
+  "when test mode is active. Test mode can only be activated by specifying\n"   \
+  "the '-t' command line switch when Hercules is started. Runtest supports\n"   \
+  "a single optional argument being the expected test duration in seconds.\n"   \
+  "If not specified then a default value is used. If the test runs longer\n"    \
+  "than the expected time an error message is issued and the test aborts.\n"
+
+#define $test_cmd_desc          "Your custom command (*DANGEROUS!*)"
 #define $test_cmd_help          \
                                 \
   "Performs whatever test function *YOU* specifically coded it to do.\n\n"      \
@@ -59,7 +71,6 @@
     "is the default for Debug builds but not normal production builds).\n"      \
     "Note: it is possible to disable the $zapcmd itself so BE CAREFUL!\n"
 
-#define $locate_cmd_desc        "Display sysblk, regs or hostinfo"
 #define bangmsg_cmd_desc        "SCP priority message"
 #define bangmsg_cmd_help        \
                                 \
@@ -77,6 +88,14 @@
   "with a period.\n"
 
 #define quest_cmd_desc          "alias for help"
+#define abs_cmd_desc            "Display or alter absolute storage"
+#define abs_cmd_help            \
+                                \
+  "Format: \"abs addr[.len]\" or \"abs addr[-addr2]\" to display up to 64K\n"   \
+  "of absolute storage, or \"abs addr=value\" to alter up to 32 bytes of\n"     \
+  "absolute storage, where 'value' is a string of up to 32 pairs of hex\n"      \
+  "digits.\n"
+
 #define aea_cmd_desc            "Display AEA tables"
 #define aia_cmd_desc            "Display AIA fields"
 #define alrf_cmd_desc           "Command deprecated: Use \"archlvl enable|disable|query asn_lx_reuse\" instead"
@@ -89,7 +108,7 @@
   "                query [<facility> | all]\n"                                  \
   "command without any argument simply displays the current architecture\n"     \
   "mode. Entering the command with an argument sets the architecture mode\n"    \
-  "to the specified value.\n"
+  "to the specified value or enables or disables the given facility.\n"
 
 #define archmode_cmd_desc       "Alias for archlvl"
 #define asnlx_cmd_desc          "Command deprecated: Use \"archlvl enable|disable|query asn_lx_reuse\" instead"
@@ -234,19 +253,21 @@
   "If 'cp' is specified, then code page is set to the specified page\n"         \
   "if the page is valid.\n"
 
-#define conkpalv_cmd_desc       "Display/alter console TCP keep-alive settings"
+#define conkpalv_cmd_desc       "Display/alter console TCP keepalive settings"
 #define conkpalv_cmd_help       \
                                 \
-  "Format: \"conkpalv (idle, intv, count)\" where 'idle', 'intv' and 'count'\n" \
-  "are the new values for the TCP keep-alive settings for console\n"            \
+  "Format: \"conkpalv (idle,intv,count)\" where 'idle', 'intv' and 'count'\n"   \
+  "are the new values for the TCP keepalive settings for console\n"             \
   "connections:\n"                                                              \
-  "- send probe when connection goes idle for 'idle' seconds\n"                 \
-  "- wait maximum of 'intv' seconds for a response to probe\n"                  \
-  "- disconnect after 'count' consecutive failed probes\n"                      \
+  "\n"                                                                          \
+  "   Begin probing after connection has been idle for 'idle' seconds\n"        \
+  "   wait for a maximum of 'intv' seconds for a probe response\n"              \
+  "   Close the connection once 'count' consecutive probes have failed\n"       \
+  "\n"                                                                          \
   "The format must be exactly as shown, with each value separated from\n"       \
-  "the next by a single comma, no intervening spaces between them,\n"           \
-  "surrounded by parenthesis. The command \"conkpalv\" without any operand\n"   \
-  "displays the current values.\n"
+  "the next by a single comma, no intervening spaces between them, and\n"       \
+  "surrounded within parenthesis. Enter the command without any operands\n"     \
+  "to display the current values.\n"
 
 #define count_cmd_desc          "Display/clear overall instruction count"
 #define cp_updt_cmd_desc        "Create/Modify user character conversion table"
@@ -297,6 +318,7 @@
   "in your multiprocessor configuration which you wish all panel commands\n"    \
   "to apply to. If command text follows the cpu address, the command will\n"    \
   "execute on cpu xx and the target cpu will not be permanently changed.\n"     \
+  "\n"                                                                          \
   "For example, entering 'cpu 1F' followed by \"gpr\" will change the\n"        \
   "target cpu for the panel display and commands and then display the\n"        \
   "general purpose registers for cpu 31 of your configuration. Entering\n"      \
@@ -816,24 +838,14 @@
 #define msglevel_cmd_desc       "Display/Set current Message Display output"
 #define msglevel_cmd_help       \
                                 \
-  "Format: msglevel [on|off|text|time|debug|nodebug|verbose|terse|{device}]\n"   \
-  "  on      Normal message display\n"                                           \
-  "  off     No messages are displayed\n"                                        \
-  "  text    Text portion only of message is display\n"                          \
-  "  time    Timestamp is prefixed to message\n"                                 \
-  "  debug   Messages prefixed with source and linenumber\n"                     \
-  "  nodebug Turn off debug\n"                                                   \
-  "  tape    Tape related messages\n"                                            \
-  "  dasd    DASD related messages\n"                                            \
-  "  comm    Communications related messages\n"                                  \
-  "  ur      Unit Record related messages\n"                                     \
-  "  scsi    SCSI related messages\n"                                            \
-  "  ctca    CTCA, LCS related messages\n"                                       \
-  "  graf    Graphics (3270) related messages\n"                                 \
-  "  thread  Threading related messages\n"                                       \
-  "  channel Channel related messages\n"                                         \
-  "  verbose Display messages during configuration file processing\n"            \
-  "  terse   Turn off verbose"
+  "Format:  msglevel  [verbose|terse|debug|nodebug|emsgloc|noemsgloc]\n"         \
+  "\n"                                                                           \
+  "   verbose     Display messages during configuration file processing\n"       \
+  "   terse       Do not display configuration file processing messages\n"       \
+  "   debug       Prefix messages with filename and line number\n"               \
+  "   nodebug     Display messages normally\n"                                   \
+  "   emsgloc     Show where error messages originated\n"                        \
+  "   noemsgloc   Do not show where error messages originated\n"
 
 #define msglvl_cmd_desc         "Alias for msglevel"
 #define msgnoh_cmd_desc         "Similar to \"message\" but no header"
@@ -859,7 +871,7 @@
 #define ostailor_cmd_desc       "Tailor trace information for specific OS"
 #define ostailor_cmd_help       \
                                 \
-  "Format: \"ostailor [quiet|os/390|z/os|vm|vse|linux|opensolaris|null]\".\n"    \
+  "Format: \"ostailor [quiet|os/390|z/os|vm|vse|z/vse|linux|opensolaris|null]\".\n"    \
   "Specifies the intended operating system. The effect is to reduce\n"           \
   "control panel message traffic by selectively suppressing program\n"           \
   "check trace messages which are considered normal in the specified\n"          \
@@ -876,8 +888,8 @@
   "Format: \"panrate [nnn | fast | slow]\".\n"                                                  \
   "Sets or displays the panel refresh rate.\n"                                                  \
   "panrate nnn sets the refresh rate to nnn milliseconds.\n"                                    \
-  "panrate fast sets the refresh rate to " QSTR(PANEL_REFRESH_RATE_FAST) " milliseconds.\n"  \
-  "panrate slow sets the refresh rate to " QSTR(PANEL_REFRESH_RATE_SLOW) " milliseconds.\n"  \
+  "panrate fast sets the refresh rate to " QSTR(PANEL_REFRESH_RATE_FAST) " milliseconds.\n"     \
+  "panrate slow sets the refresh rate to " QSTR(PANEL_REFRESH_RATE_SLOW) " milliseconds.\n"     \
   "If no operand is specified, panrate displays the current refresh rate.\n"
 
 #define pantitle_cmd_desc       "Display or set console title"
@@ -907,12 +919,13 @@
 
 #define pgmprdos_cmd_desc       "Set LPP license setting"
 #define pgmprdos_cmd_help       \
+                                \
   "Format: \"pgmprdos restricted | licensed\"\n\n"                               \
   "Note: It is YOUR responsibility to comply with the terms of the license for\n"\
   "      the operating system you intend to run on Hercules. If you specify\n"   \
   "      LICENSED and run a licensed operating system in violation of that\n"    \
   "      license, then don't come after the Hercules developers when the vendor\n"\
-  "      sends his lawyers after you.\n"
+  "      sends their lawyers after you.\n"
 
 
 #define pgmtrace_cmd_desc       "Trace program interrupts"
@@ -924,7 +937,14 @@
   "interruption.\n"
 
 #define plant_cmd_desc          "Set STSI plant code"
-#define pr_cmd_desc             "Display prefix register"
+#define pr_cmd_desc             "Display or alter prefix register"
+#define pr_cmd_help             \
+                                \
+  "Format: \"pr [value]\" where the optional 'value' operand is the new\n"       \
+  "prefix register value for the current CPU. Enter just 'pr' by itself\n"       \
+  "to display the current value. Use the'cpu' command beforehand to choose\n"    \
+  "which processor's prefix register should be displayed or altered.\n"
+
 #define pscp_cmd_desc           "Send prio message scp command"
 #define pscp_cmd_help           \
                                 \
@@ -955,31 +975,41 @@
   "identified by <devnum>, or for all PTP device groups if\n"                    \
   "<devnum> is not specified or specified as 'ALL'.\n"
 
-#define ptt_cmd_desc            "Set or display internal trace"
+#define ptt_cmd_desc            "Activate or display internal trace table"
 #define ptt_cmd_help            \
                                 \
-  "Format: \"ptt [options] [nnn]\"\n"                                               \
-  "When specified with no operands, the ptt command displays the trace options\n"   \
-  "and the contents of the internal trace table.\n"                                 \
-  "When specified with operands, the ptt command sets the trace options and/or\n"   \
-  "specifies which events are to be traced. If the last operand is numeric, it\n"   \
-  "sets the size of the trace table and activates the trace.\n"                     \
-  "options:\n"                                                                      \
-  "  (no)control - control trace\n"                                                 \
-  "  (no)error   - error trace\n"                                                   \
-  "  (no)inter   - interlock failure trace\n"                                       \
-  "  (no)io      - io trace\n"                                                      \
-  "  (no)lock    - lock trace buffer\n"                                             \
-  "  (no)logger  - logger trace\n"                                                  \
-  "  (no)prog    - program interrupt trace\n"                                       \
-  "  (no)sie     - sie trace\n"                                                     \
-  "  (no)signal  - signaling trace\n"                                               \
-  "  (no)threads - thread trace\n"                                                  \
-  "  (no)timer   - timer trace\n"                                                   \
-  "  (no)tod     - timestamp trace entries\n"                                       \
-  "  (no)wrap    - wrap trace buffer\n"                                             \
-  "  to=nnn      - trace buffer display timeout\n"                                  \
-  "  nnn         - trace buffer size\n"
+  "Format: \"ptt [?] [events] [options] [nnnnnn]\"\n"                               \
+  "\n"                                                                              \
+  "When specified with no operands, the ptt command displays the defined trace\n"   \
+  "parameters and the contents of the internal trace table.\n"                      \
+  "\n"                                                                              \
+  "When specified with operands, the ptt command defines the trace parameters\n"    \
+  "identifying which events are to be traced. When the last option is numeric,\n"   \
+  "it defines the size of the trace table itself and activates tracing.\n"          \
+  "\n"                                                                              \
+  "Events:    (should be specified first, before any options are specified)\n"      \
+  "\n"                                                                              \
+  "     (no)log          trace internal logger events\n"                            \
+  "     (no)tmr          trace internal timer events\n"                             \
+  "     (no)thr          trace internal threading events\n"                         \
+  "     (no)inf          trace instruction information events\n"                    \
+  "     (no)err          trace instruction error events\n"                          \
+  "     (no)pgm          trace program interrupt events\n"                          \
+  "     (no)csf          trace interlocked instruction type events\n"               \
+  "     (no)sie          trace SIE instruction events\n"                            \
+  "     (no)sig          trace SIGP instruction events\n"                           \
+  "     (no)io           trace I/O instruction events\n"                            \
+  "     (no)lcs1         trace LCS timing events\n"                                 \
+  "     (no)lcs2         trace LCS general debugging events\n"                      \
+  "\n"                                                                              \
+  "options:   (should be specified last, after any events are specified)\n"         \
+  "\n"                                                                              \
+  "     ?                show currently defined trace parameters\n"                 \
+  "     (no)lock         lock table before updating\n"                              \
+  "     (no)tod          timestamp table entries\n"                                 \
+  "     (no)wrap         wraparound trace table\n"                                  \
+  "     to=nnn           automatic display timeout  (number of seconds)\n"          \
+  "     nnnnnn           table size                 (number of entries)\n"
 
 #define pwd_cmd_desc            "Print working directory"
 #define qcpuid_cmd_desc         "Display cpuid"
@@ -987,7 +1017,23 @@
                                 \
   "Display cpuid and STSI results presented to the SCP\n"
 
-#define qd_cmd_desc             "Query dasd"
+#define qd_cmd_desc             "Query device information"
+#define qd_cmd_help             \
+                                \
+  "Format: \"qd [devnum(s)] | [devclass]\" where 'devnum(s)' is either\n"        \
+  "a single device number or a multiple device number specification\n"           \
+  "in the same format as used for configuration file device statements,\n"       \
+  "and 'devclass' is either CHAN, CON, CTCA, DASD, DSP, FCP, LINE, OSA,\n"       \
+  "PCH, PRT, RDR or TAPE. When no argument is given all devices are shown.\n"
+
+#define qeth_cmd_desc           "Enable/Disable QETH debugging"
+#define qeth_cmd_help           \
+                                \
+  "Format:  \"qeth  debug  { on | off } [ [ <devnum> | ALL ] [ mask ] ]\".\n\n"  \
+  "Enables/disables debug tracing for the QETH device group\n"                   \
+  "identified by <devnum>, or for all QETH device groups if\n"                   \
+  "<devnum> is not specified or specified as 'ALL'.\n"
+
 #define qpfkeys_cmd_desc        "Display the current PF Key settings"
 #define qpid_cmd_desc           "Display Process ID of Hercules"
 #define qports_cmd_desc         "Display TCP/IP ports in use"
@@ -1072,9 +1118,9 @@
 #define r_cmd_desc              "Display or alter real storage"
 #define r_cmd_help              \
                                 \
-  "Format: \"r addr[.len]\" or \"r addr[-addr2]\" to display real\n"             \
-  "storage, or \"r addr=value\" to alter real storage, where 'value'\n"          \
-  "is a hex string of up to 32 pairs of digits.\n"
+  "Format: \"r addr[.len]\" or \"r addr[-addr2]\" to display up to 64K\n"        \
+  "of real storage, or \"r addr=value\" to alter up to 32 bytes of real\n"       \
+  "storage, where 'value' is a string of up to 32 pairs of hex digits.\n"
 
 #define restart_cmd_desc        "Generate restart interrupt"
 #define resume_cmd_desc         "Resume hercules"
@@ -1315,17 +1361,20 @@
 #define start_cmd_desc          "Start CPU (or printer/punch device if argument given)"
 #define start_cmd_help          \
                                 \
-  "Entering the 'start' command by itself simply starts a stopped\n"             \
-  "CPU, whereas 'start <devn>' presses the virtual start button on\n"            \
-  "printer/punch device <devn>.\n"
+  "Entering the 'start' command by itself starts the target cpu if it\n"         \
+  "is currently stopped. Entering the 'start <devn>' command will press\n"       \
+  "the specified printer or punch device's virtual start button. Use the\n"      \
+  "'cpu' command beforehand to choose which processor you wish to start.\n"
 
 #define startall_cmd_desc       "Start all CPU's"
 #define stop_cmd_desc           "Stop CPU (or printer/punch device if argument given)"
 #define stop_cmd_help           \
                                 \
-  "Entering the 'stop' command by itself simply stops a running\n"               \
-  "CPU, whereas 'stop <devn>' presses the virtual stop button on\n"              \
-  "printer/punch device <devn>, usually causing an INTREQ.\n"
+  "Entering the 'stop' command by itself stops the target cpu if it is\n"        \
+  "currently running. Entering the 'stop <devn>' command will press the\n"       \
+  "specified printer or punch device's virtual stop button, usually causing\n"   \
+  "an INTREQ (Intervention Required) status. Use the 'cpu' command before\n"     \
+  "issuing the stop command to choose which processor you wish to stop.\n"
 
 #define stopall_cmd_desc        "Stop all CPU's"
 #define store_cmd_desc          "Store CPU status at absolute zero"
@@ -1402,12 +1451,12 @@
   "Entering the command without any argument simply displays the current\n"      \
   "mode.\n"
 
-#define tt32_cmd_desc           "Control/query CTCI-W32 functionality"
+#define tt32_cmd_desc           "Control/query CTCI-WIN functionality"
 #define tt32_cmd_help           \
                                 \
   "Format:  \"tt32   debug | nodebug | stats <devnum>\".\n"                      \
   "\n"                                                                           \
-  "Enables or disables global CTCI-W32 debug tracing\n"                          \
+  "Enables or disables global CTCI-WIN debug tracing\n"                          \
   "or displays TunTap32 stats for the specified CTC device.\n"
 
 #define tzoffset_cmd_desc       "Set tzoffset parameter"
@@ -1415,20 +1464,21 @@
 #define u_cmd_help              \
                                 \
   "Format: \"u [R|V|P|H]addr[.len]\" or \"u [R|V|P|H]addr[-addr2]\" to\n"       \
-  "disassemble storage beginning at address 'addr' for length 'len' or\n"       \
-  "to address 'addr2'. The optional 'R', 'V', 'P' or 'H' address prefix\n"      \
-  "forces Real, Virtual, Primary Space, or Home Space address translation\n"    \
-  "mode instead of using the current PSW mode, which is the default.\n"
+  "disassemble up to 64K of storage beginning at address 'addr' for length\n"   \
+  "'len' or to address 'addr2'. The optional R, V, P or H address prefix\n"     \
+  "forces Real, Virtual, Primary, or Home Space address translation mode\n"     \
+  "instead of using the current PSW mode, which is the default.\n"
 
 #define uptime_cmd_desc         "Display how long Hercules has been running"
 #define v_cmd_desc              "Display or alter virtual storage"
 #define v_cmd_help              \
                                 \
   "Format: \"v [P|S|H]addr[.len]\" or \"v [P|S|H]addr[-addr2]\" to display\n"   \
-  "virtual storage, or \"v [P|S|H]addr=value\" to alter virtual storage,\n"     \
-  "where 'value' is a hex string of up to 32 pairs of digits. The optional\n"   \
-  "'P', 'S' or 'H' address prefix character forces Primary Space, Secondary\n"  \
-  "Space or Home Space address translation mode instead of current PSW mode.\n"
+  "up to 64K of virtual storage, or \"v [P|S|H]addr=value\" to alter up to\n"   \
+  "32 bytes of virtual storage, where 'value' is a string of up to 32\n"        \
+  "pairs of hex digits. The optional P, S or H address prefix character\n"      \
+  "forces Primary, Secondary or Home Space address translation mode\n"          \
+  "instead of using the current PSW mode, which is the default.\n"
 
 #define version_cmd_desc        "Display version information"
 #define xpndsize_cmd_desc       "Define/Display xpndsize parameter"
@@ -1466,9 +1516,10 @@
 //MMAND( "x{+/-}zz",  "flag on/off cmd", NULL,        SYSCMDNOPER, NULL )  // 'OnOffCommand'   (special handling)
 
 //       "1...5...9",               function                type flags          description             long help
+CMDABBR( "$locate",        4,       locate_cmd,             SYSPROGDEVELDEBUG,  $locate_cmd_desc,       NULL                )
+COMMAND( "$runtest",                $runtest_cmd,           SYSPROGDEVELDEBUG,  $runtest_cmd_desc,      $runtest_cmd_help   )
 COMMAND( "$test",                   test_cmd,               SYSPROGDEVELDEBUG,  $test_cmd_desc,         $test_cmd_help      )
 CMDABBR( "$zapcmd",        4,       zapcmd_cmd,             SYSPROGDEVELDEBUG,  $zapcmd_cmd_desc,       $zapcmd_cmd_help    )
-CMDABBR( "$locate",        4,       locate_cmd,             SYSPROGDEVELDEBUG,  $locate_cmd_desc,       NULL                )
 
 COMMAND( "cache",                   cache_cmd,              SYSCONFIG,          cache_cmd_desc,         cache_cmd_help      )
 COMMAND( "cckd",                    cckd_cmd,               SYSCONFIG,          cckd_cmd_desc,          cckd_cmd_help       )
@@ -1512,6 +1563,7 @@ CMDABBR( "qstor",   5,              qstor_cmd,              SYSCMD,             
 COMMAND( "start",                   start_cmd,              SYSCMD,             start_cmd_desc,         start_cmd_help      )
 COMMAND( "stop",                    stop_cmd,               SYSCMD,             stop_cmd_desc,          stop_cmd_help       )
 
+COMMAND( "abs",                     abs_or_r_cmd,           SYSCMDNOPER,        abs_cmd_desc,           abs_cmd_help        )
 COMMAND( "aea",                     aea_cmd,                SYSCMDNOPER,        aea_cmd_desc,           NULL                )
 COMMAND( "aia",                     aia_cmd,                SYSCMDNOPER,        aia_cmd_desc,           NULL                )
 COMMAND( "ar",                      ar_cmd,                 SYSCMDNOPER,        ar_cmd_desc,            NULL                )
@@ -1544,13 +1596,14 @@ COMMAND( "numcpu",                  numcpu_cmd,             SYSCMDNOPER,        
 COMMAND( "numvec",                  numvec_cmd,             SYSCMDNOPER,        numvec_cmd_desc,        NULL                )
 COMMAND( "ostailor",                ostailor_cmd,           SYSCMDNOPER,        ostailor_cmd_desc,      ostailor_cmd_help   )
 COMMAND( "pgmtrace",                pgmtrace_cmd,           SYSCMDNOPER,        pgmtrace_cmd_desc,      pgmtrace_cmd_help   )
-COMMAND( "pr",                      pr_cmd,                 SYSCMDNOPER,        pr_cmd_desc,            NULL                )
+COMMAND( "pr",                      pr_cmd,                 SYSCMDNOPER,        pr_cmd_desc,            pr_cmd_help         )
 COMMAND( "psw",                     psw_cmd,                SYSCMDNOPER,        psw_cmd_desc,           psw_cmd_help        )
 COMMAND( "ptp",                     ptp_cmd,                SYSCMDNOPER,        ptp_cmd_desc,           ptp_cmd_help        )
 COMMAND( "ptt",                     EXTCMD( ptt_cmd ),      SYSCMDNOPER,        ptt_cmd_desc,           ptt_cmd_help        )
-COMMAND( "qd",                      qd_cmd,                 SYSCMDNOPER,        qd_cmd_desc,            NULL                )
+COMMAND( "qd",                      qd_cmd,                 SYSCMDNOPER,        qd_cmd_desc,            qd_cmd_help         )
+COMMAND( "qeth",                    qeth_cmd,               SYSCMDNOPER,        qeth_cmd_desc,          qeth_cmd_help       )
 COMMAND( "quiet",                   quiet_cmd,              SYSCMDNOPER,        quiet_cmd_desc,         quiet_cmd_help      )
-COMMAND( "r",                       r_cmd,                  SYSCMDNOPER,        r_cmd_desc,             r_cmd_help          )
+COMMAND( "r",                       abs_or_r_cmd,           SYSCMDNOPER,        r_cmd_desc,             r_cmd_help          )
 COMMAND( "resume",                  resume_cmd,             SYSCMDNOPER,        resume_cmd_desc,        NULL                )
 COMMAND( "s-",                      trace_cmd,              SYSCMDNOPER,        sminus_cmd_desc,        NULL                )
 COMMAND( "s",                       trace_cmd,              SYSCMDNOPER,        s_cmd_desc,             s_cmd_help          )
@@ -1674,10 +1727,12 @@ COMMAND( "t{+/-}dev",               NULL,                   SYSCMDNOPER,        
 COMMAND( "t{+/-}CKD",               NULL,                   SYSCMDNOPER,        tckd_cmd_desc,          NULL )
 #endif
 #endif
+
 #if defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX)
 COMMAND( "rexx",                    rexx_cmd,               SYSCONFIG,          rexx_cmd_desc,          rexx_cmd_help       )
 COMMAND( "exec",                    exec_cmd,               SYSCMD,             exec_cmd_desc,          exec_cmd_help       )
 #endif /* defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX) */
+
 #if 0
 #if defined( _MSVC_ )
 COMMAND( "dir",                     dir_cmd,                SYSCMDNDIAG8,       dir_cmd_desc,           NULL                )
@@ -1685,17 +1740,13 @@ COMMAND( "dir",                     dir_cmd,                SYSCMDNDIAG8,       
 COMMAND( "ls",                      ls_cmd,                 SYSCMDNDIAG8,       ls_cmd_desc,            NULL                )
 #endif
 #endif
-#if defined( OPTION_CMDTGT )
-COMMAND( "cmdtgt",                  cmdtgt_cmd,             SYSCMD,             cmdtgt_cmd_desc,        cmdtgt_cmd_help     )
-COMMAND( "herc",                    herc_cmd,               SYSCMD,             herc_cmd_desc,          herc_cmd_help       )
-COMMAND( "pscp",                    prioscp_cmd,            SYSCMD,             pscp_cmd_desc,          pscp_cmd_help       )
-COMMAND( "scp",                     scp_cmd,                SYSCMD,             scp_cmd_desc,           scp_cmd_help        )
-#endif
-#if defined( OPTION_CONFIG_SYMBOLS )
+
+#if defined( ENABLE_BUILTIN_SYMBOLS )
 CMDABBR( "qpfkeys",  3,             qpfkeys_cmd,            SYSCMD,             qpfkeys_cmd_desc,       NULL                )
 COMMAND( "defsym",                  defsym_cmd,             SYSCMDNOPER,        defsym_cmd_desc,        defsym_cmd_help     )
 COMMAND( "delsym",                  delsym_cmd,             SYSCMDNOPER,        delsym_cmd_desc,        delsym_cmd_help     )
-#endif
+#endif /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
+
 #if defined(HAVE_MLOCKALL)
 COMMAND( "memlock",                 memlock_cmd,            SYSCONFIG,          NULL,                   NULL                )
 COMMAND( "memfree",                 memfree_cmd,            SYSCONFIG,          NULL,                   NULL                )
@@ -1731,10 +1782,6 @@ COMMAND( "pgmprdos",                pgmprdos_cmd,           SYSCFGNDIAG8,       
 #endif
 #if defined( OPTION_MIPS_COUNTING )
 COMMAND( "maxrates",                maxrates_cmd,           SYSCMD,             maxrates_cmd_desc,      maxrates_cmd_help   )
-#endif
-#if defined( OPTION_MSGHLD )
-COMMAND( "kd",                      msghld_cmd,             SYSCMD,             kd_cmd_desc,            NULL                )
-COMMAND( "msghld",                  msghld_cmd,             SYSCMD,             msghld_cmd_desc,        msghld_cmd_help     )
 #endif
 #if defined( OPTION_SCSI_TAPE )
 COMMAND( "auto_scsi_mount",         scsimount_cmd,          SYSCMDNOPER,        autoscsi_cmd_desc,      autoscsi_cmd_help   )

@@ -7,6 +7,8 @@
 
 #include "hstdinc.h"
 
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
 #define _HERCULES_SHARED_C
 #define _SHARED_C_
 #define _HDASD_DLL_
@@ -15,9 +17,6 @@
 #include "devtype.h"
 
 #define FBA_BLKGRP_SIZE (120*512)
-
-/* Change the following to "define" when Shared FBA support is implemented */
-#undef FBA_SHARED
 
 /*-------------------------------------------------------------------*/
 /* Definitions for sense data format codes and message codes         */
@@ -73,7 +72,7 @@ int      i, j;                          /* Indexes                   */
 
         /* Ignore the entry if it doesn't exist or if it's ours
            our if it's already maxed out */
-        if (dev->shrd[i] == NULL || dev->shrd[i]->id == dev->ioactive
+        if (dev->shrd[i] == NULL || dev->shrd[i]->id == dev->shioactive
          || dev->shrd[i]->purgen < 0)
             continue;
 
@@ -439,6 +438,7 @@ char    *strtok_str = NULL;             /* last token                */
             dev->rmtnum = dev->devnum;
 
         /* Process the remaining arguments */
+        rc = 0;
         for (i = 1; i < argc; i++)
         {
 #ifdef HAVE_LIBZ
@@ -454,8 +454,10 @@ char    *strtok_str = NULL;             /* last token                */
             }
 #endif
             WRMSG (HHC00700, "S", argv[i], i + 1);
-            return -1;
+            rc = -1;
         }
+        if (rc)
+            return rc;
     }
 
     /* Set suported compression */
@@ -895,7 +897,11 @@ int             sz;                     /* Size so far               */
     return sz;
 }
 
-#if defined(FBA_SHARED)
+#if 0
+Perhaps these functions should have not been static.  They are
+dead code and identified as such.
+
+#if defined( OPTION_SHARED_DEVICES ) && defined(FBA_SHARED)
 /*-------------------------------------------------------------------
  * Shared fba read block exit (client side)
  *-------------------------------------------------------------------*/
@@ -1055,7 +1061,6 @@ int             rc;                     /* Return code               */
     return len;
 }
 
-
 /*-------------------------------------------------------------------*/
 /* Calculate length of an FBA block group                            */
 /*-------------------------------------------------------------------*/
@@ -1071,6 +1076,7 @@ off_t   offset;                         /* Offset of block group     */
 }
 
 #endif /* FBA_SHARED */
+#endif
 
 /*-------------------------------------------------------------------
  * Shared usage exit (client side)
@@ -1732,17 +1738,17 @@ int      off;                           /* Offset into record        */
         obtain_lock (&dev->lock);
 
         /* Make the device available if this system active on it */
-        if (dev->ioactive == id)
+        if (dev->shioactive == id)
         {
             if (!dev->suspended)
             {
                 dev->busy = 0;
-                dev->ioactive = DEV_SYS_NONE;
+                dev->shioactive = DEV_SYS_NONE;
             }
             else
-                dev->ioactive = DEV_SYS_LOCAL;
-            if (dev->iowaiters)
-                signal_condition (&dev->iocond);
+                dev->shioactive = DEV_SYS_LOCAL;
+            if (dev->shiowaiters)
+                signal_condition (&dev->shiocond);
         }
 
         release_lock (&dev->lock);
@@ -1754,14 +1760,14 @@ int      off;                           /* Offset into record        */
         obtain_lock (&dev->lock);
 
         /* If the device is suspended locally then grab it */
-        if (dev->ioactive == DEV_SYS_LOCAL && dev->suspended && !dev->reserved)
-            dev->ioactive = id;
+        if (dev->shioactive == DEV_SYS_LOCAL && dev->suspended && !dev->reserved)
+            dev->shioactive = id;
 
         /* Check if the device is busy */
-        if (dev->ioactive != id && dev->ioactive != DEV_SYS_NONE)
+        if (dev->shioactive != id && dev->shioactive != DEV_SYS_NONE)
         {
-            shrdtrc(dev,"server_request busy id=%d ioactive=%d reserved=%d\n",
-                    id,dev->ioactive,dev->reserved);
+            shrdtrc(dev,"server_request busy id=%d shioactive=%d reserved=%d\n",
+                    id,dev->shioactive,dev->reserved);
             /* If the `nowait' bit is on then respond `busy' */
             if (flag & SHRD_NOWAIT)
             {
@@ -1774,15 +1780,15 @@ int      off;                           /* Offset into record        */
             dev->shrd[ix]->waiting = 1;
 
             /* Wait while the device is busy by the local system */
-            while (dev->ioactive == DEV_SYS_LOCAL && !dev->suspended)
+            while (dev->shioactive == DEV_SYS_LOCAL && !dev->suspended)
             {
-                dev->iowaiters++;
-                wait_condition (&dev->iocond, &dev->lock);
-                dev->iowaiters--;
+                dev->shiowaiters++;
+                wait_condition (&dev->shiocond, &dev->lock);
+                dev->shiowaiters--;
             }
 
             /* Return with the `waiting' bit on if busy by a remote system */
-            if (dev->ioactive != DEV_SYS_NONE && dev->ioactive != DEV_SYS_LOCAL)
+            if (dev->shioactive != DEV_SYS_NONE && dev->shioactive != DEV_SYS_LOCAL)
             {
                 release_lock (&dev->lock);
                 break;
@@ -1792,7 +1798,7 @@ int      off;                           /* Offset into record        */
         }
 
         /* Make this system active on the device */
-        dev->ioactive = id;
+        dev->shioactive = id;
         dev->busy = 1;
 #ifdef OPTION_SYNCIO
         dev->syncio_active = dev->syncio_retry = 0;
@@ -1830,7 +1836,7 @@ int      off;                           /* Offset into record        */
     case SHRD_END:
     case SHRD_SUSPEND:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -1851,12 +1857,12 @@ int      off;                           /* Offset into record        */
             /* If locally suspended then return the device to local */
             if (dev->suspended)
             {
-                dev->ioactive = DEV_SYS_LOCAL;
+                dev->shioactive = DEV_SYS_LOCAL;
                 dev->busy = 1;
             }
             else
             {
-                dev->ioactive = DEV_SYS_NONE;
+                dev->shioactive = DEV_SYS_NONE;
                 dev->busy = 0;
             }
 
@@ -1866,8 +1872,8 @@ int      off;                           /* Offset into record        */
                     dev->shrd[i]->waiting = 0;
 
             /* Notify any waiters */
-            if (dev->iowaiters)
-                signal_condition (&dev->iocond);
+            if (dev->shiowaiters)
+                signal_condition (&dev->shiocond);
         }
         shrdtrc(dev,"server_request inactive id=%d\n", id);
 
@@ -1880,7 +1886,7 @@ int      off;                           /* Offset into record        */
 
     case SHRD_RESERVE:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -1904,7 +1910,7 @@ int      off;                           /* Offset into record        */
 
     case SHRD_RELEASE:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -1928,7 +1934,7 @@ int      off;                           /* Offset into record        */
 
     case SHRD_READ:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -1963,7 +1969,7 @@ int      off;                           /* Offset into record        */
 
     case SHRD_WRITE:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -1991,7 +1997,7 @@ int      off;                           /* Offset into record        */
 
     case SHRD_SENSE:
         /* Must be active on the device for this command */
-        if (dev->ioactive != id)
+        if (dev->shioactive != id)
         {
             serverError (dev, ix, SHRD_ERROR_NOTACTIVE, cmd,
                          "not active on this device");
@@ -2255,7 +2261,7 @@ BYTE     cbuf[SHRD_HDR_SIZE + 65536];   /* Combined buffer           */
 static int serverDisconnectable (DEVBLK *dev, int ix) {
 
     if (dev->shrd[ix]->waiting || dev->shrd[ix]->pending
-     || dev->ioactive == dev->shrd[ix]->id)
+     || dev->shioactive == dev->shrd[ix]->id)
         return 0;
     else
         return 1;
@@ -2277,7 +2283,7 @@ int i;                                  /* Loop index                */
 
     /* If the device is active by the client then extricate it.
        This is *not* a good situation */
-    if (dev->ioactive == id)
+    if (dev->shioactive == id)
     {
         WRMSG(HHC00730, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, id, dev->reserved ? "reserved" : "");
 
@@ -2296,18 +2302,18 @@ int i;                                  /* Loop index                */
 
         /* Make the device available */
         if (dev->suspended) {
-            dev->ioactive = DEV_SYS_LOCAL;
+            dev->shioactive = DEV_SYS_LOCAL;
             dev->busy = 1;
         }
         else
         {
-            dev->ioactive = DEV_SYS_NONE;
+            dev->shioactive = DEV_SYS_NONE;
             dev->busy = 0;
         }
 
         /* Notify any waiters */
-        if (dev->iowaiters)
-            signal_condition (&dev->iocond);
+        if (dev->shiowaiters)
+            signal_condition (&dev->shiocond);
     }
 
     WRMSG(HHC00731, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->shrd[ix]->ipaddr, id);
@@ -2475,7 +2481,7 @@ char            threadname[40];
 
     /* This thread will be the shared device thread */
     MSGBUF(threadname, "Shared device(%1d:%04X)", SSID_TO_LCSS(dev->ssid), dev->devnum);
-    WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), threadname);
 
     while (dev->shrdconn)
     {
@@ -2606,7 +2612,7 @@ char            threadname[40];
     dev->shrdtid = 0;
     release_lock (&dev->lock);
 
-    WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
 
     return NULL;
 
@@ -2659,7 +2665,7 @@ COND shrdcond;
 static void shared_device_manager_shutdown(void * unused)
 {
     UNREFERENCED(unused);
-    
+
     if(sysblk.shrdport)
     {
         sysblk.shrdport = 0;
@@ -2698,7 +2704,7 @@ char                    threadname[40];
     MSGBUF(threadname, "Shared device server %d.%d", SHARED_VERSION, SHARED_RELEASE);
 
     /* Display thread started message on control panel */
-    WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), threadname);
 
     /* Obtain a internet socket */
     lsock = socket (AF_INET, SOCK_STREAM, 0);
@@ -2884,7 +2890,7 @@ char                    threadname[40];
 
     sysblk.shrdtid = 0;
 
-    WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
 
     return NULL;
 
@@ -3036,7 +3042,7 @@ DEVHND shared_fba_device_hndinfo = {
         &fbadasd_hresume               /* Hercules resume            */
 };
 
-#else
+#else // !defined( OPTION_SHARED_DEVICES )
 
 int shared_update_notify (DEVBLK *dev, int block)
 {
@@ -3044,14 +3050,14 @@ int shared_update_notify (DEVBLK *dev, int block)
  UNREFERENCED(block);
  return 0;
 }
-int shared_ckd_init (DEVBLK *dev, int argc, BYTE *argv[] )
+int shared_ckd_init (DEVBLK *dev, int argc, char *argv[] )
 {
  UNREFERENCED(dev);
  UNREFERENCED(argc);
  UNREFERENCED(argv);
  return -1;
 }
-int shared_fba_init (DEVBLK *dev, int argc, BYTE *argv[] )
+int shared_fba_init (DEVBLK *dev, int argc, char *argv[] )
 {
  UNREFERENCED(dev);
  UNREFERENCED(argc);
@@ -3064,11 +3070,12 @@ void *shared_server (void *arg)
  WRMSG (HHC00742, "E");
  return NULL;
 }
-int shared_cmd(int argc, char *argv[], char *cmdline);
- UNREFERENCED(cmdline);
+int shared_cmd(int argc, char *argv[], char *cmdline)
+{
  UNREFERENCED(argc);
  UNREFERENCED(argv);
+ UNREFERENCED(cmdline);
  WRMSG (HHC00742, "E");
  return 0;
 }
-#endif /*defined(OPTION_SHARED_DEVICES)*/
+#endif /* defined(OPTION_SHARED_DEVICES) */

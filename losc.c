@@ -13,18 +13,12 @@
 
 #include "hercules.h"
 
-#ifdef OPTION_MSGCLR
-#define KEEPMSG "<pnl,color(lightred,black),keep>"
-#else
-#define KEEPMSG ""
-#endif
-
 #if defined(OPTION_LPP_RESTRICT)
 static char *licensed_os[] = {
       "MVS", /* Generic name for MVS, OS/390, z/OS       */
       "VM",  /* Generic name for VM, VM/XA, VM/ESA, z/VM */
-      "VSE", 
-      "TPF", 
+      "VSE",
+      "TPF",
       NULL };
 
 static int    os_licensed = 0;
@@ -42,7 +36,7 @@ char **lictype;
 int i;
 CPU_BITMAP mask;
 
-    if(check_done) 
+    if(check_done)
         return;
     else
         check_done = 1;
@@ -52,10 +46,11 @@ CPU_BITMAP mask;
         if(!strncasecmp(ostype, *lictype, strlen(*lictype)))
         {
             if(os_licensed == PGM_PRD_OS_LICENSED)
-                WRCMSG(KEEPMSG, HHC00130, "W");
+                WRMSG(HHC00130, "W");
             else
             {
-                WRCMSG(KEEPMSG, HHC00131, "A");
+                // "A licensed program product operating system detected, all processors have been stopped"
+                WRMSG(HHC00131, "A");
                 mask = sysblk.started_mask;
                 for (i = 0; mask; i++)
                 {

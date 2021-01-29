@@ -2,7 +2,10 @@
 /*              Architecture-dependent macro definitions             */
 
 #ifdef HAVE_CONFIG_H
-  #include <config.h> // Hercules build configuration options/settings
+  #ifndef    _CONFIG_H
+  #define    _CONFIG_H
+    #include <config.h>         /* Hercules build configuration      */
+  #endif /*  _CONFIG_H*/
 #endif
 
 #if !defined(FEATCHK_CHECK_DONE)
@@ -14,6 +17,13 @@
   #include  "featchk.h"
   #undef    FEATCHK_CHECK_ALL
   #define   FEATCHK_CHECK_DONE
+
+  #if defined(_FEATURE_2K_STORAGE_KEYS)
+    #define _STORKEY_ARRAY_UNITSIZE   2048
+  #else
+    #define _STORKEY_ARRAY_UNITSIZE   4096
+  #endif
+
 #endif /*!defined(FEATCHK_CHECK_DONE)*/
 
 #undef __GEN_ARCH
@@ -77,7 +87,6 @@
 #undef RSTNEW
 #undef RADR
 #undef F_RADR
-#undef FRADR
 #undef VADR
 #undef VADR_L
 #undef F_VADR
@@ -174,22 +183,20 @@ s370_ ## _name
 #define RSTNEW  iplpsw
 #if !defined(_FEATURE_ZSIE)
 #define RADR    U32
-#define F_RADR  "%8.8"I32_FMT"X"
-#define FRADR   I32_FMT
+#define F_RADR  "%8.8"PRIX32
 #else
 #define RADR    U64
-#define F_RADR  "%8.8"I64_FMT"X"
-#define FRADR   I64_FMT
+#define F_RADR  "%16.16"PRIX64
 #endif
 #define VADR    U32
 #define VADR_L  VADR
-#define F_VADR  "%8.8"I32_FMT"X"
+#define F_VADR  "%8.8"PRIX32
 #define GREG    U32
-#define F_GREG  "%8.8"I32_FMT"X"
+#define F_GREG  "%8.8"PRIX32
 #define CREG    U32
-#define F_CREG  "%8.8"I32_FMT"X"
+#define F_CREG  "%8.8"PRIX32
 #define AREG    U32
-#define F_AREG  "%8.8"I32_FMT"X"
+#define F_AREG  "%8.8"PRIX32
 #define STORE_W STORE_FW
 #define FETCH_W FETCH_FW
 #define AIV     AIV_L
@@ -207,6 +214,33 @@ s370_ ## _name
 #define TLBID_BYTEMASK  0x001FFFFF
 #define ASD_PRIVATE   SEGTAB_370_CMN
 #define CHANNEL_MASKS(_regs) ((_regs)->CR(2))
+
+// 370
+
+#undef STORAGE_KEY_PAGESHIFT
+#undef STORAGE_KEY_PAGESIZE
+#undef STORAGE_KEY_BYTEMASK
+#undef STORAGE_KEY_PAGEMASK
+#undef STORAGE_KEY
+
+#if defined(FEATURE_2K_STORAGE_KEYS)
+
+  #define STORAGE_KEY_PAGESHIFT     11
+  #define STORAGE_KEY_PAGESIZE      2048
+  #define STORAGE_KEY_BYTEMASK      0x000007FF
+  #define STORAGE_KEY_PAGEMASK      0x7FFFF800
+
+#else /* FEATURE_4K_STORAGE_KEYS */
+
+  #define STORAGE_KEY_PAGESHIFT     12
+  #define STORAGE_KEY_PAGESIZE      4096
+  #define STORAGE_KEY_BYTEMASK      0x00000FFF
+  #define STORAGE_KEY_PAGEMASK      0x7FFFF000
+
+#endif
+
+#define STORAGE_KEY(_addr, _pointer) \
+   (_pointer)->storkeys[(_addr)>>STORAGE_KEY_PAGESHIFT]
 
 #elif __GEN_ARCH == 390
 
@@ -284,22 +318,20 @@ s390_ ## _name
 #define RSTOLD  iplccw1
 #if !defined(_FEATURE_ZSIE)
 #define RADR    U32
-#define F_RADR  "%8.8"I32_FMT"X"
-#define FRADR   I32_FMT
+#define F_RADR  "%8.8"PRIX32
 #else
 #define RADR    U64
-#define F_RADR  "%8.8"I64_FMT"X"
-#define FRADR   I64_FMT
+#define F_RADR  "%16.16"PRIX64
 #endif
 #define VADR    U32
 #define VADR_L  VADR
-#define F_VADR  "%8.8"I32_FMT"X"
+#define F_VADR  "%8.8"PRIX32
 #define GREG    U32
-#define F_GREG  "%8.8"I32_FMT"X"
+#define F_GREG  "%8.8"PRIX32
 #define CREG    U32
-#define F_CREG  "%8.8"I32_FMT"X"
+#define F_CREG  "%8.8"PRIX32
 #define AREG    U32
-#define F_AREG  "%8.8"I32_FMT"X"
+#define F_AREG  "%8.8"PRIX32
 #define STORE_W STORE_FW
 #define FETCH_W FETCH_FW
 #define AIV     AIV_L
@@ -321,6 +353,32 @@ s390_ ## _name
 #else
  #define CHANNEL_MASKS(_regs) ((_regs)->CR(2))
 #endif /* FEATURE_ACCESS_REGISTERS */
+
+// 390
+
+#undef STORAGE_KEY_PAGESHIFT
+#undef STORAGE_KEY_PAGESIZE
+#undef STORAGE_KEY_BYTEMASK
+#undef STORAGE_KEY_PAGEMASK
+#undef STORAGE_KEY
+
+#if defined(FEATURE_2K_STORAGE_KEYS)
+  #error FEATURE_2K_STORAGE_KEYS unsupported for __GEN_ARCH == 390!
+#else /* FEATURE_4K_STORAGE_KEYS */
+
+  #define STORAGE_KEY_PAGESHIFT     12
+  #define STORAGE_KEY_PAGESIZE      4096
+  #define STORAGE_KEY_BYTEMASK      0x00000FFF
+  #if !defined(FEATURE_ESAME)
+    #define STORAGE_KEY_PAGEMASK    0x7FFFF000
+  #else
+    #define STORAGE_KEY_PAGEMASK    0xFFFFFFFFFFFFF000ULL
+  #endif
+
+#endif
+
+#define STORAGE_KEY(_addr, _pointer) \
+   (_pointer)->storkeys[(_addr)>>STORAGE_KEY_PAGESHIFT]
 
 #elif __GEN_ARCH == 900
 
@@ -391,7 +449,7 @@ z900_ ## _name
 #define PSA PSA_900
 #define PSA_SIZE 8192
 #define IA  IA_G
-#define PX  PX_L
+#define PX  PX_G
 #define CR(_r)  CR_G(_r)
 #define GR(_r)  GR_G(_r)
 #define GR_A(_r, _regs) ((_regs)->psw.amode64 ? (_regs)->GR_G((_r)) : (_regs)->GR_L((_r)))
@@ -411,26 +469,21 @@ z900_ ## _name
 #define PX_MASK 0x7FFFE000
 #define RSTOLD  rstold
 #define RSTNEW  rstnew
-#if 0
-#define RADR    U32
-#else
 #define RADR    U64
-#endif
-#define F_RADR  "%16.16"I64_FMT"X"
-#define FRADR   I64_FMT
+#define F_RADR  "%16.16"PRIX64
 #define VADR    U64
 #if SIZEOF_INT == 4
 #define VADR_L  U32
 #else
 #define VADR_L  VADR
 #endif
-#define F_VADR  "%16.16"I64_FMT"X"
+#define F_VADR  "%16.16"PRIX64
 #define GREG    U64
-#define F_GREG  "%16.16"I64_FMT"X"
+#define F_GREG  "%16.16"PRIX64
 #define CREG    U64
-#define F_CREG  "%16.16"I64_FMT"X"
+#define F_CREG  "%16.16"PRIX64
 #define AREG    U32
-#define F_AREG  "%8.8"I32_FMT"X"
+#define F_AREG  "%8.8"PRIX32
 #define STORE_W STORE_DW
 #define FETCH_W FETCH_DW
 #define AIV     AIV_G
@@ -453,110 +506,120 @@ z900_ ## _name
  #define CHANNEL_MASKS(_regs) ((_regs) -> CR(2))
 #endif /* FEATURE_ACCESS_REGISTERS */
 
-#else
+// 900
 
-#warning __GEN_ARCH must be 370, 390, 900 or undefined
+#undef STORAGE_KEY_PAGESHIFT
+#undef STORAGE_KEY_PAGESIZE
+#undef STORAGE_KEY_BYTEMASK
+#undef STORAGE_KEY_PAGEMASK
+#undef STORAGE_KEY
+
+#if defined(FEATURE_2K_STORAGE_KEYS)
+  #error FEATURE_2K_STORAGE_KEYS unsupported for __GEN_ARCH == 900!
+#else /* FEATURE_4K_STORAGE_KEYS */
+
+  #define STORAGE_KEY_PAGESHIFT     12
+  #define STORAGE_KEY_PAGESIZE      4096
+  #define STORAGE_KEY_BYTEMASK      0x00000FFF
+  #if !defined(FEATURE_ESAME)
+    #define STORAGE_KEY_PAGEMASK    0x7FFFF000
+  #else
+    #define STORAGE_KEY_PAGEMASK    0xFFFFFFFFFFFFF000ULL
+  #endif
 
 #endif
+
+#define STORAGE_KEY(_addr, _pointer) \
+   (_pointer)->storkeys[(_addr)>>STORAGE_KEY_PAGESHIFT]
+
+#else
+
+  WARNING( "__GEN_ARCH must be 370, 390, 900 or undefined" )
+
+#endif
+
+#undef STORAGE_KEY1
+#undef STORAGE_KEY2
+
+#if defined(_FEATURE_2K_STORAGE_KEYS)
+  #define STORAGE_KEY1(_addr, _pointer) \
+    (_pointer)->storkeys[((_addr)>>STORAGE_KEY_PAGESHIFT)&~1]
+  #define STORAGE_KEY2(_addr, _pointer) \
+    (_pointer)->storkeys[((_addr)>>STORAGE_KEY_PAGESHIFT)|1]
+#endif
+
+/*-------------------------------------------------------------------*/
+/* PAGEFRAME-size related constants                                  */
+/*-------------------------------------------------------------------*/
+
+// FIXME: Why do we have separate STORAGE_KEY_xxx and PAGEFRAME_xxx constants?
+// FIXME: Choose one or the other. Inconsistent usage is confusing and dangerous.
 
 #undef PAGEFRAME_PAGESIZE
 #undef PAGEFRAME_PAGESHIFT
 #undef PAGEFRAME_BYTEMASK
 #undef PAGEFRAME_PAGEMASK
 #undef MAXADDRESS
+
 #if defined(FEATURE_ESAME)
- #define PAGEFRAME_PAGESIZE 4096
- #define PAGEFRAME_PAGESHIFT    12
- #define PAGEFRAME_BYTEMASK 0x00000FFF
- #define PAGEFRAME_PAGEMASK 0xFFFFFFFFFFFFF000ULL
- #define MAXADDRESS             0xFFFFFFFFFFFFFFFFULL
+  #define PAGEFRAME_PAGESIZE        4096
+  #define PAGEFRAME_PAGESHIFT       12
+  #define PAGEFRAME_BYTEMASK        0x00000FFF
+  #define PAGEFRAME_PAGEMASK        0xFFFFFFFFFFFFF000ULL
+  #define MAXADDRESS                0xFFFFFFFFFFFFFFFFULL
 #elif defined(FEATURE_S390_DAT)
- #define PAGEFRAME_PAGESIZE 4096
- #define PAGEFRAME_PAGESHIFT    12
- #define PAGEFRAME_BYTEMASK 0x00000FFF
- #define PAGEFRAME_PAGEMASK 0x7FFFF000
- #define MAXADDRESS             0x7FFFFFFF
+  #define PAGEFRAME_PAGESIZE        4096
+  #define PAGEFRAME_PAGESHIFT       12
+  #define PAGEFRAME_BYTEMASK        0x00000FFF
+  #define PAGEFRAME_PAGEMASK        0x7FFFF000
+  #define MAXADDRESS                0x7FFFFFFF
 #else /* S/370 */
- #define PAGEFRAME_PAGESIZE 2048
- #define PAGEFRAME_PAGESHIFT    11
- #define PAGEFRAME_BYTEMASK 0x000007FF
- #define PAGEFRAME_PAGEMASK 0x7FFFF800
- #if defined(FEATURE_370E_EXTENDED_ADDRESSING)
-  #define MAXADDRESS             0x03FFFFFF
- #else
-  #define MAXADDRESS             0x00FFFFFF
- #endif
+  #define PAGEFRAME_PAGESIZE        2048
+  #define PAGEFRAME_PAGESHIFT       11
+  #define PAGEFRAME_BYTEMASK        0x000007FF
+  #define PAGEFRAME_PAGEMASK        0x7FFFF800
+  #if defined(FEATURE_370E_EXTENDED_ADDRESSING)
+    #define MAXADDRESS              0x03FFFFFF
+  #else
+    #define MAXADDRESS              0x00FFFFFF
+  #endif
 #endif
 
+/*-------------------------------------------------------------------*/
+/* EXPANDED STORAGE page-size related constants                      */
+/*-------------------------------------------------------------------*/
+
+#define XSTORE_INCREMENT_SIZE       0x00100000
+#define XSTORE_PAGESHIFT            12
+#define XSTORE_PAGESIZE             4096
+#undef  XSTORE_PAGEMASK
+#if defined(FEATURE_ESAME) || defined(_FEATURE_ZSIE)
+  #define XSTORE_PAGEMASK           0xFFFFFFFFFFFFF000ULL
+#else
+  #define XSTORE_PAGEMASK           0x7FFFF000
+#endif
+
+/*-------------------------------------------------------------------*/
+/* Interval Timer update and synchronization macros                  */
+/*-------------------------------------------------------------------*/
 
 #undef ITIMER_UPDATE
 #undef ITIMER_SYNC
+
 #if defined(FEATURE_INTERVAL_TIMER)
- #define ITIMER_UPDATE(_addr, _len, _regs)       \
+  #define ITIMER_UPDATE(_addr, _len, _regs)      \
     do {                                         \
-    if( ITIMER_ACCESS((_addr), (_len)) )     \
+    if( ITIMER_ACCESS((_addr), (_len)) )         \
             ARCH_DEP(fetch_int_timer) ((_regs)); \
-    } while(0) 
- #define ITIMER_SYNC(_addr, _len, _regs)         \
+    } while(0)
+  #define ITIMER_SYNC(_addr, _len, _regs)        \
     do {                                         \
         if( ITIMER_ACCESS((_addr), (_len)) )     \
-        ARCH_DEP(store_int_timer) ((_regs)); \
+        ARCH_DEP(store_int_timer) ((_regs));     \
     } while (0)
 #else
- #define ITIMER_UPDATE(_addr, _len, _regs)
- #define ITIMER_SYNC(_addr, _len, _regs)
-#endif
-
-
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
- #define STORAGE_KEY_UNITSIZE 4096
-#else
- #define STORAGE_KEY_UNITSIZE 2048
-#endif
-
- #undef STORAGE_KEY
- #undef STORAGE_KEY_PAGESHIFT
- #undef STORAGE_KEY_PAGESIZE
- #undef STORAGE_KEY_PAGEMASK
- #undef STORAGE_KEY_BYTEMASK
-#ifdef FEATURE_4K_STORAGE_KEYS
- #if defined(_FEATURE_2K_STORAGE_KEYS)
-  #define STORAGE_KEY_PAGESHIFT 11
- #else
-  #define STORAGE_KEY_PAGESHIFT 12
- #endif
- #define STORAGE_KEY_PAGESIZE   4096
- #if defined(FEATURE_ESAME)
-  #define STORAGE_KEY_PAGEMASK  0xFFFFFFFFFFFFF000ULL
- #else
-  #define STORAGE_KEY_PAGEMASK  0x7FFFF000
- #endif
- #define STORAGE_KEY_BYTEMASK   0x00000FFF
-#else
- #define STORAGE_KEY_PAGESHIFT  11
- #define STORAGE_KEY_PAGESIZE   2048
- #define STORAGE_KEY_PAGEMASK   0x7FFFF800
- #define STORAGE_KEY_BYTEMASK   0x000007FF
-#endif
-
-#define STORAGE_KEY(_addr, _pointer) \
-   (_pointer)->storkeys[(_addr)>>STORAGE_KEY_PAGESHIFT]
-
-#if defined(_FEATURE_2K_STORAGE_KEYS)
- #define STORAGE_KEY1(_addr, _pointer) \
-    (_pointer)->storkeys[((_addr)>>STORAGE_KEY_PAGESHIFT)&~1]
- #define STORAGE_KEY2(_addr, _pointer) \
-    (_pointer)->storkeys[((_addr)>>STORAGE_KEY_PAGESHIFT)|1]
-#endif
-
-#define XSTORE_INCREMENT_SIZE   0x00100000
-#define XSTORE_PAGESHIFT    12
-#define XSTORE_PAGESIZE     4096
-#undef   XSTORE_PAGEMASK
-#if defined(FEATURE_ESAME) || defined(_FEATURE_ZSIE)
- #define XSTORE_PAGEMASK    0xFFFFFFFFFFFFF000ULL
-#else
- #define XSTORE_PAGEMASK    0x7FFFF000
+  #define ITIMER_UPDATE(_addr, _len, _regs)
+  #define ITIMER_SYNC(_addr, _len, _regs)
 #endif
 
 /*-------------------------------------------------------------------*/

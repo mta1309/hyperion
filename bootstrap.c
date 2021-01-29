@@ -165,7 +165,7 @@ int main(int ac,char *av[])
 
     if (!IsDebuggerPresent())
     {
-        if (!sysblk.daemon_mode)    // (normal panel mode?)
+        if (!sysblk.daemon_mode && isatty( STDERR_FILENO )) // (normal panel mode?)
         {
             EnableMenuItem( GetSystemMenu( FindConsoleHandle(), FALSE ),
                             SC_CLOSE, MF_BYCOMMAND | MF_GRAYED );
@@ -193,7 +193,7 @@ int main(int ac,char *av[])
 
     if (!IsDebuggerPresent())
     {
-        if (!sysblk.daemon_mode)    // (normal panel mode?)
+        if (!sysblk.daemon_mode && isatty( STDERR_FILENO )) // (normal panel mode?)
         {
             EnableMenuItem( GetSystemMenu( FindConsoleHandle(), FALSE ),
                         SC_CLOSE, MF_BYCOMMAND | MF_ENABLED );
@@ -479,7 +479,7 @@ static BOOL CreateMiniDump( EXCEPTION_POINTERS* pExceptionPtrs )
         if ( bSuccess )
         {
             _tprintf( _T("\nDump \"%ls\" created.\n\n"
-                         "Please forward the dump to the Hercules team for analysis.\n\n"), 
+                         "Please forward the dump to the Hercules team for analysis.\n\n"),
                          g_wszDumpPath );
         }
         else

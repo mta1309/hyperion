@@ -31,49 +31,16 @@ static int needsep = 0;         /* Write newline separator next time */
 
 int main(int argc, char **argv)
 {
-char           *pgmname;                /* prog name in host format  */
 char           *pgm;                    /* less any extension (.ext) */
-char            msgbuf[512];            /* message build work area   */
 int             rc = 0;
 char           *fn, *sfn;
-char           *strtok_str = NULL;
 
-    /* Set program name */
-    if ( argc > 0 )
+    INITIALIZE_UTILITY( UTILITY_NAME, "DASD list program", &pgm );
+
+    if (argc < 2)
     {
-        if ( strlen(argv[0]) == 0 )
-        {
-            pgmname = strdup( UTILITY_NAME );
-        }
-        else
-        {
-            char path[MAX_PATH];
-#if defined( _MSVC_ )
-            GetModuleFileName( NULL, path, MAX_PATH );
-#else
-            strncpy( path, argv[0], sizeof( path ) );
-#endif
-            pgmname = strdup(basename(path));
-#if !defined( _MSVC_ )
-            strncpy( path, argv[0], sizeof(path) );
-#endif
-        }
-    }
-    else
-    {
-        pgmname = strdup( UTILITY_NAME );
-    }
-
-    pgm = strtok_r( strdup(pgmname), ".", &strtok_str);
-    INITIALIZE_UTILITY( pgmname );
-
-    /* Display the program identification message */
-    MSGBUF( msgbuf, MSG_C( HHC02499, "I", pgm, "DASD list program" ) );
-    display_version (stderr, msgbuf+10, FALSE);
-
-    if (argc < 2) 
-    {
-        fprintf( stderr, MSG( HHC02463, "I", pgm, "" ) );
+        // "Usage: %s ckdfile [sf=shadow-file-name]%s"
+        WRMSG( HHC02463, "I", pgm, "" );
         exit(2);
     }
 
@@ -114,9 +81,7 @@ int list_contents(CIFBLK *cif, char *volser, DSXTENT *extent)
     u_int ecyl = (extent[cext].xtecyl[0] << 8) | extent[cext].xtecyl[1];
     u_int ehead = (extent[cext].xtetrk[0] << 8) | extent[cext].xtetrk[1];
 
-#ifdef EXTERNALGUI
-    if (extgui) fprintf(stderr,"ETRK=%d\n",((ecyl*(cif->heads))+ehead));
-#endif /*EXTERNALGUI*/
+    EXTGUIMSG( "ETRK=%d\n",((ecyl*(cif->heads))+ehead));
 
     printf("%s%s: VOLSER=%s\n", needsep ? "\n" : "", cif->fname, volser);
     needsep = 1;
@@ -125,23 +90,21 @@ int list_contents(CIFBLK *cif, char *volser, DSXTENT *extent)
         BYTE *ptr;
         int rc = read_track(cif, ccyl, chead);
 
-#ifdef EXTERNALGUI
-        if (extgui) fprintf(stderr,"CTRK=%d\n",((ccyl*(cif->heads))+chead));
-#endif /*EXTERNALGUI*/
+        EXTGUIMSG( "CTRK=%d\n",((ccyl*(cif->heads))+chead));
 
         if (rc < 0)
             return -1;
 
         ptr = cif->trkbuf + CKDDASD_TRKHDR_SIZE;
 
-        while (!end_of_track(ptr)) 
+        while (!end_of_track(ptr))
         {
             char dsname[45];
 
             CKDDASD_RECHDR *rechdr = (CKDDASD_RECHDR*)ptr;
             int kl = rechdr->klen;
             int dl = (rechdr->dlen[0] << 8) | rechdr->dlen[1];
-            
+
             make_asciiz(dsname, sizeof(dsname), ptr + CKDDASD_RECHDR_SIZE, kl);
 
             dsname[44] = '\0';
@@ -178,9 +141,10 @@ int do_ls_cif(CIFBLK *cif)
     rc = read_block(cif, 0, 0, 3, 0, 0, &vol1data, &rlen);
     if (rc < 0)
         return -1;
-    if (rc > 0) 
+    if (rc > 0)
     {
-        fprintf( stderr, MSG( HHC02471, "E", "VOL1" ) );
+        // "%s record not found"
+        FWRMSG( stderr, HHC02471, "E", "VOL1" );
         return -1;
     }
 
@@ -192,9 +156,10 @@ int do_ls_cif(CIFBLK *cif)
     rc = read_block(cif, cyl, head, rec, (void *)&f4dscb, &klen, 0, 0);
     if (rc < 0)
         return -1;
-    if (rc > 0) 
+    if (rc > 0)
     {
-        fprintf( stderr, MSG( HHC02471, "E", "Format 4 DSCB" ) );
+        // "%s record not found"
+        FWRMSG( stderr, HHC02471, "E", "Format 4 DSCB" );
         return -1;
     }
     return list_contents(cif, volser, &f4dscb->ds4vtoce);

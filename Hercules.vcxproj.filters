@@ -150,9 +150,6 @@
     <ClCompile Include="cckddiag.c">
       <Filter>Source Files\Utilities</Filter>
     </ClCompile>
-    <ClCompile Include="cckdfix.c">
-      <Filter>Source Files\Utilities</Filter>
-    </ClCompile>
     <ClCompile Include="cckdswap.c">
       <Filter>Source Files\Utilities</Filter>
     </ClCompile>
@@ -255,6 +252,9 @@
     <ClCompile Include="console.c">
       <Filter>Source Files\Hercules\Devices\Con/Disp/Term\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="telnet.c">
+      <Filter>Source Files\Hercules\Devices\Con/Disp/Term\Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="commadpt.c">
       <Filter>Source Files\Hercules\Devices\CTC\Source Files</Filter>
     </ClCompile>
@@ -321,6 +321,9 @@
     <ClCompile Include="scsitape.c">
       <Filter>Source Files\Hercules\Devices\Tape\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="scsiutil.c">
+      <Filter>Source Files\Hercules\Devices\Tape\Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="sllib.c">
       <Filter>Source Files\Hercules\Devices\Tape\Source Files</Filter>
     </ClCompile>
@@ -344,6 +347,9 @@
     </ClCompile>
     <ClCompile Include="sockdev.c">
       <Filter>Source Files\Hercules\Devices\Unit Record\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="_archdep_templ.c">
+      <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="archlvl.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
@@ -495,6 +501,9 @@
     <ClCompile Include="hscutl.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="hexdumpe.c">
+      <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="hscutl2.c">
       <Filter>Source Files\Hercules\Emulation\Source Files</Filter>
     </ClCompile>
@@ -644,7 +653,19 @@
     <None Include="decNumber\readme.txt">
       <Filter>Source Files\Hercules\decNumber</Filter>
     </None>
+    <None Include="hercver.rc2">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </None>
     <None Include="hercules.ico">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </None>
+    <None Include="hercdasd.ico">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </None>
+    <None Include="herctape.ico">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </None>
+    <None Include="hercmisc.ico">
       <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
     </None>
     <None Include="_TODO.txt">
@@ -660,6 +681,9 @@
       <Filter>Other Files\DOC</Filter>
     </None>
     <None Include="README.AIX">
+      <Filter>Other Files\DOC\README</Filter>
+    </None>
+    <None Include="README.CMPSC">
       <Filter>Other Files\DOC\README</Filter>
     </None>
     <None Include="README.COMMADPT">
@@ -878,6 +902,9 @@
     <None Include="html\hercmsvm.html">
       <Filter>Other Files\DOC\html\msgs</Filter>
     </None>
+    <None Include="html\telnet.html">
+      <Filter>Other Files\DOC\html\msgs</Filter>
+    </None>
     <None Include="dynmake.bat">
       <Filter>Other Files\Build\msvc</Filter>
     </None>
@@ -885,6 +912,9 @@
       <Filter>Other Files\Build\msvc</Filter>
     </None>
     <None Include="makefile.bat">
+      <Filter>Other Files\Build\msvc</Filter>
+    </None>
+    <None Include="_dynamic_version.cmd">
       <Filter>Other Files\Build\msvc</Filter>
     </None>
     <None Include="makefile.msvc">
@@ -953,9 +983,6 @@
     <None Include="msvc.makefile.includes\REXX_RULES.msvc">
       <Filter>Other Files\Build\msvc\makefile includes</Filter>
     </None>
-    <None Include="msvc.makefile.includes\VERSION.msvc">
-      <Filter>Other Files\Build\msvc\makefile includes</Filter>
-    </None>
     <None Include="msvc.makefile.includes\ZLIB_DIR.msvc">
       <Filter>Other Files\Build\msvc\makefile includes</Filter>
     </None>
@@ -987,6 +1014,9 @@
       <Filter>Other Files\Build\other</Filter>
     </None>
     <None Include="Makefile.am">
+      <Filter>Other Files\Build\other</Filter>
+    </None>
+    <None Include="_dynamic_version">
       <Filter>Other Files\Build\other</Filter>
     </None>
     <None Include="util\awssl-v19g">
@@ -1034,6 +1064,75 @@
     <None Include="tests\cpu0off.core">
       <Filter>Other Files\tests\core</Filter>
     </None>
+	<None Include="tests\bfp-001-divtoint.core">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-002-loadr.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-003-loadfpi.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-004-cvttolog.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-005-cvttolog64.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-006-cvttofix.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-007-cvttofix64.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-008-cvtfrlog.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-009-cvtfrlog64.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-010-cvtfrfix.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-011-cvtfrfix64.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-012-loadtest.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-013-comps.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-014-divide.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-015-sqrt.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-016-add.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-017-loadl.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-018-subtract.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-019-multiply.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-020-multlonger.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-021-multadd.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-022-multsub.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
+	<None Include="tests\bfp-023-threads.core">
+	 <Filter>Other Files\tests\core</Filter>
+	</None>
     <None Include="tests\l.core">
       <Filter>Other Files\tests\core</Filter>
     </None>
@@ -1061,6 +1160,213 @@
     <None Include="tests\brc.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
+	<None Include="tests\bfp-001-divtoint.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-002-loadr.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-003-loadfpi.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-004-cvttolog.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-005-cvttolog64.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-006-cvttofix.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-007-cvttofix64.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-008-cvtfrlog.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-009-cvtfrlog64.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-010-cvtfrfix.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-011-cvtfrfix64.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-012-loadtest.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-013-comps.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-014-divide.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-015-sqrt.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-016-add.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-017-loadl.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-018-subtract.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-019-multiply.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-020-multlonger.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-021-multadd.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-022-multsub.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-023-threads.asm">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-001-divtoint.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-002-loadr.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-003-loadfpi.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-004-cvttolog.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-005-cvttolog64.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-006-cvttofix.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-007-cvttofix64.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-008-cvtfrlog.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-009-cvtfrlog64.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-010-cvtfrfix.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-011-cvtfrfix64.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-012-loadtest.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-013-comps.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-014-divide.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-015-sqrt.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-016-add.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-017-loadl.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-018-subtract.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-019-multiply.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-020-multlonger.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-021-multadd.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-022-multsub.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-023-threads.list">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-023-threads.sptst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-001-divtoint.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-002-loadr.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-003-loadfpi.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-004-cvttolog.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-005-cvttolog64.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-006-cvttofix.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-007-cvttofix64.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-008-cvtfrlog.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-009-cvtfrlog64.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-010-cvtfrfix.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-011-cvtfrfix64.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-012-loadtest.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-013-comps.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-014-divide.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-015-sqrt.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-016-add.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-017-loadl.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-018-subtract.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-019-multiply.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-020-multlonger.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-021-multadd.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
+	<None Include="tests\bfp-022-multsub.tst">
+	 <Filter>Other Files\tests\scripts</Filter>
+	</None>
     <None Include="tests\cdfr.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
@@ -1115,6 +1421,7 @@
     <None Include="tests\iedtr.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
+
     <None Include="tests\kimd0.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
@@ -1226,7 +1533,7 @@
     <None Include="tests\mxtr.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
-    <None Include="tests\prtest.txt">
+    <None Include="tests\printer.txt">
       <Filter>Other Files\tests\scripts</Filter>
     </None>
     <None Include="tests\rnsbg.txt">
@@ -1272,6 +1579,9 @@
       <Filter>Other Files\misc</Filter>
     </None>
     <None Include="README.HRAF">
+      <Filter>Other Files\DOC\README</Filter>
+    </None>
+    <None Include="README.HQA">
       <Filter>Other Files\DOC\README</Filter>
     </None>
   </ItemGroup>
@@ -1351,6 +1661,9 @@
     <ClInclude Include="scsitape.h">
       <Filter>Source Files\Hercules\Devices\Tape\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="scsiutil.h">
+      <Filter>Source Files\Hercules\Devices\Tape\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="sllib.h">
       <Filter>Source Files\Hercules\Devices\Tape\Header Files</Filter>
     </ClInclude>
@@ -1426,6 +1739,9 @@
     <ClInclude Include="getopt.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="hatomic.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="hbyteswp.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
@@ -1481,6 +1797,9 @@
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hscutl.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hexdumpe.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="hsocket.h">
@@ -1540,6 +1859,9 @@
     <ClInclude Include="parser.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="printfmt.h">
+      <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="pttrace.h">
       <Filter>Source Files\Hercules\Emulation\Header Files</Filter>
     </ClInclude>
@@ -1585,12 +1907,24 @@
     <ClInclude Include="cnsllogo.h">
       <Filter>Source Files\Hercules\Devices\Con/Disp/Term\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="telnet.h">
+      <Filter>Source Files\Hercules\Devices\Con/Disp/Term\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="decNumber\decNumber.rc">
       <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
     </ResourceCompile>
-    <ResourceCompile Include="hercver.rc">
+    <ResourceCompile Include="hercprod.rc">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="hercdasd.rc">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="herctape.rc">
+      <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="hercmisc.rc">
       <Filter>Source Files\Hercules\decNumber\Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>

@@ -15,8 +15,13 @@
 
 #include "hstdinc.h"
 
+#ifndef _IMPL_C_
 #define _IMPL_C_
+#endif
+
+#ifndef _HENGINE_DLL_
 #define _HENGINE_DLL_
+#endif
 
 #include "hercules.h"
 #include "opcode.h"
@@ -25,17 +30,93 @@
 #include "hostinfo.h"
 #include "history.h"
 
-/* forward define process_script_file (ISW20030220-3) */
-int process_script_file(char *,int);
+#if(HAVE_MACH_O_DYLD_H)
+#  include <mach-o/dyld.h>
+#endif
 
-static LOGCALLBACK  log_callback=NULL;
+static char shortopts[] =
+
+#if defined( EXTERNALGUI )
+    "e"
+#endif
+   "hf:r:db:vt::"
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+   "s:"
+#endif
+#if defined(OPTION_DYNAMIC_LOAD)
+   "p:l:"
+#endif
+   ;
+
+#if defined(HAVE_GETOPT_LONG)
+static struct option longopts[] =
+{
+    { "test",     optional_argument, NULL, 't' },
+    { "help",     no_argument,       NULL, 'h' },
+    { "config",   required_argument, NULL, 'f' },
+    { "rcfile",   required_argument, NULL, 'r' },
+    { "daemon",   no_argument,       NULL, 'd' },
+    { "herclogo", required_argument, NULL, 'b' },
+    { "verbose",  no_argument,       NULL, 'v' },
+#if defined( EXTERNALGUI )
+    { "externalgui",  no_argument,   NULL, 'e' },
+#endif
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+    { "defsym",   required_argument, NULL, 's' },
+#endif
+
+#if defined(OPTION_DYNAMIC_LOAD)
+    { "modpath",  required_argument, NULL, 'p' },
+    { "ldmod",    required_argument, NULL, 'l' },
+#endif
+    { NULL,       0,                 NULL,  0  }
+};
+#endif
+
+static LOGCALLBACK  log_callback = NULL;
+
+struct cfgandrcfile
+{
+   const char * filename;             /* Or NULL                     */
+   const char * const envname; /* Name of environment variable to test */
+   const char * const defaultfile;    /* Default file                */
+   const char * const whatfile;       /* config/restart, for message */
+};
+
+enum cfgorrc
+{
+   want_cfg,
+   want_rc,
+   cfgorrccount
+};
+
+static struct cfgandrcfile cfgorrc[ cfgorrccount ] =
+{
+   { NULL, "HERCULES_CNF", "hercules.cnf", "Configuration", },
+   { NULL, "HERCULES_RC",  "hercules.rc",  "Run Commands",  },
+};
+
+#if defined(OPTION_DYNAMIC_LOAD)
+#define MAX_DLL_TO_LOAD         50
+static char   *dll_load[MAX_DLL_TO_LOAD];    /* Pointers to modnames */
+static int     dll_count = -1;        /* index into array            */
+#endif
+
+/* forward define process_script_file (ISW20030220-3) */
+extern int process_script_file(char *,int);
+/* extern int quit_cmd(int argc, char *argv[],char *cmdline);        */
+
+/* Forward declarations:                                             */
+static int process_args(int argc, char *argv[]);
+/* End of forward declarations.                                      */
 
 /*-------------------------------------------------------------------*/
 /* Register a LOG callback                                           */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT void registerLogCallback(LOGCALLBACK lcb)
+DLL_EXPORT void registerLogCallback( LOGCALLBACK cb )
 {
-    log_callback=lcb;
+    log_callback = cb;
 }
 
 /*-------------------------------------------------------------------*/
@@ -61,7 +142,6 @@ static void delayed_exit (int exit_code)
     usleep(100000);
     return;
 }
-
 
 /*-------------------------------------------------------------------*/
 /* Signal handler for SIGINT signal                                  */
@@ -117,91 +197,229 @@ static void sigterm_handler (int signo)
 } /* end function sigterm_handler */
 
 #if defined( _MSVC_ )
-
 /*-------------------------------------------------------------------*/
-/* Signal handler for Windows signals                                */
+/* Perform immediate/emergency shutdown                              */
 /*-------------------------------------------------------------------*/
-static BOOL WINAPI console_ctrl_handler (DWORD signo)
+static void do_emergency_shutdown()
 {
-    int i;
+    sysblk.shutdown = TRUE;
 
-    SetConsoleCtrlHandler(console_ctrl_handler, FALSE);   // turn handler off while processing
+    if (!sysblk.shutimmed)
+    {
+        sysblk.shutimmed = TRUE;
+        do_shutdown();
+    }
+    else // (already in progress)
+    {
+        while (!sysblk.shutfini)
+            usleep(100000);
+    }
+}
 
+/*-------------------------------------------------------------------*/
+/* Windows console control signal handler                            */
+/*-------------------------------------------------------------------*/
+static BOOL WINAPI console_ctrl_handler( DWORD signo )
+{
     switch ( signo )
     {
+    ///////////////////////////////////////////////////////////////
+    //
+    //                    PROGRAMMING NOTE
+    //
+    ///////////////////////////////////////////////////////////////
+    //
+    // "SetConsoleCtrlHandler function HandlerRoutine Callback
+    //  Function:"
+    //
+    //   "Return Value:"
+    //
+    //     "If the function handles the control signal, it
+    //      should return TRUE."
+    //
+    //   "CTRL_LOGOFF_EVENT:"
+    //
+    //     "Note that this signal is received only by services.
+    //      Interactive applications are terminated at logoff,
+    //      so they are not present when the system sends this
+    //      signal."
+    //
+    //   "CTRL_SHUTDOWN_EVENT:"
+    //
+    //     "Interactive applications are not present by the time
+    //      the system sends this signal, therefore it can be
+    //      received only be services in this situation."
+    //
+    //   "CTRL_CLOSE_EVENT:"
+    //
+    //      "... if the process does not respond within a certain
+    //       time-out period (5 seconds for CTRL_CLOSE_EVENT..."
+    //
+    ///////////////////////////////////////////////////////////////
+    //
+    //  What this all boils down to is we'll never receive the
+    //  logoff and shutdown signals (via this callback), and
+    //  we only have a maximum of 5 seconds to return TRUE from
+    //  the CTRL_CLOSE_EVENT signal. Thus, as normal shutdowns
+    //  may likely take longer than 5 seconds and our goal is
+    //  to try hard to shutdown Hercules as gracfully as we can,
+    //  we are left with little choice but to always perform
+    //  an immediate/emergency shutdown for CTRL_CLOSE_EVENT.
+    //
+    ///////////////////////////////////////////////////////////////
+
         case CTRL_BREAK_EVENT:
-            WRMSG (HHC01400, "I");
 
-            OBTAIN_INTLOCK(NULL);
+            // "CTRL_BREAK_EVENT received: %s"
+            WRMSG( HHC01400, "I", "pressing interrupt key" );
 
+            OBTAIN_INTLOCK( NULL );
             ON_IC_INTKEY;
+            WAKEUP_CPUS_MASK( sysblk.waiting_mask );
+            RELEASE_INTLOCK( NULL );
 
-            /* Signal waiting CPUs that an interrupt is pending */
-            WAKEUP_CPUS_MASK (sysblk.waiting_mask);
-
-            RELEASE_INTLOCK(NULL);
-
-            SetConsoleCtrlHandler(console_ctrl_handler, TRUE);  // reset handler
             return TRUE;
-            break;
+
         case CTRL_C_EVENT:
-            WRMSG(HHC01401, "I");
-            SetConsoleCtrlHandler(console_ctrl_handler, TRUE);  // reset handler
+
+            if (!sysblk.shutimmed)
+                // "CTRL_C_EVENT received: %s"
+                WRMSG( HHC01401, "I", "initiating emergency shutdown" );
+            do_emergency_shutdown();
             return TRUE;
-            break;
+
+
         case CTRL_CLOSE_EVENT:
-        case CTRL_SHUTDOWN_EVENT:
-        case CTRL_LOGOFF_EVENT:
-            if ( !sysblk.shutdown )  // (system shutdown not initiated)
-            {
-                WRMSG(HHC01402, "I", ( signo == CTRL_CLOSE_EVENT ? "close" :
-                                      signo == CTRL_SHUTDOWN_EVENT ? "shutdown" : "logoff" ),
-                                    ( signo == CTRL_CLOSE_EVENT ? "immediate " : "" ) );
 
-                if ( signo == CTRL_CLOSE_EVENT )
-                    sysblk.shutimmed = TRUE;
-                do_shutdown();
-
-//                logmsg("%s(%d): return from shutdown\n", __FILE__, __LINE__ ); /* debug */
-
-                for ( i = 0; i < 120; i++ )
-                {
-                    if ( sysblk.shutdown && sysblk.shutfini )
-                    {
-//                        logmsg("%s(%d): %d shutdown completed\n",  /* debug */
-//                                __FILE__, __LINE__, i );           /* debug */
-                        break;
-                    }
-                    else
-                    {
-//                        logmsg("%s(%d): %d waiting for shutdown to complete\n",   /* debug */
-//                                __FILE__, __LINE__, i );                          /* debug */
-                        sleep(1);
-                    }
-                }
-                if ( !sysblk.shutfini )
-                {
-                    sysblk.shutimmed = TRUE;
-                    do_shutdown();
-                }
-            }
-            else
-            {
-                sysblk.shutimmed = TRUE;
-                do_shutdown();
-                WRMSG(HHC01403, "W", ( signo == CTRL_CLOSE_EVENT ? "close" :
-                                      signo == CTRL_SHUTDOWN_EVENT ? "shutdown" : "logoff" ) );
-            }
+            if (!sysblk.shutimmed)
+                // "CTRL_CLOSE_EVENT received: %s"
+                WRMSG( HHC01402, "I", "initiating emergency shutdown" );
+            do_emergency_shutdown();
             return TRUE;
-            break;
+
         default:
-            return FALSE;
+
+            return FALSE;  // (not handled; call next signal handler)
     }
 
-} /* end function console_ctrl_handler */
-#endif
+    UNREACHABLE_CODE( return FALSE );
+}
+
+/*-------------------------------------------------------------------*/
+/* Windows hidden window message handler                             */
+/*-------------------------------------------------------------------*/
+static LRESULT CALLBACK MainWndProc( HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam )
+{
+    switch (msg)
+    {
+    ///////////////////////////////////////////////////////////////
+    //
+    //                    PROGRAMMING NOTE
+    //
+    ///////////////////////////////////////////////////////////////
+    //
+    //  "If an application returns FALSE in response to
+    //   WM_QUERYENDSESSION, it still appears in the shutdown
+    //   UI. Note that the system does not allow console
+    //   applications or applications without a visible window
+    //   to cancel shutdown. These applications are automatically
+    //   terminated if they do not respond to WM_QUERYENDSESSION
+    //   or WM_ENDSESSION within 5 seconds or if they return FALSE
+    //   in response to WM_QUERYENDSESSION."
+    //
+    ///////////////////////////////////////////////////////////////
+    //
+    //  What this all boils down to is we can NEVER prevent the
+    //  user from logging off or shutting down since not only are
+    //  we a console application but our window is created invisible
+    //  as well. Thus we only have a maximum of 5 seconds to return
+    //  TRUE from WM_QUERYENDSESSION or return 0 from WM_ENDSESSION,
+    //  and since a normal shutdown may likely take longer than 5
+    //  seconds and our goal is to try hard to shutdown Hercules as
+    //  gracfully as possible, we are left with little choice but to
+    //  perform an immediate emergency shutdown once we receive the
+    //  WM_ENDSESSION message with a WPARAM value of TRUE.
+    //
+    ///////////////////////////////////////////////////////////////
+
+        case WM_QUERYENDSESSION:
+
+            // "%s received: %s"
+            WRMSG( HHC01403, "I", "WM_QUERYENDSESSION", "allow" );
+            return TRUE;    // Vote "YES"... (we have no choice!)
+
+        case WM_ENDSESSION:
+
+            if (!wParam)    // FALSE? (session not really ending?)
+            {
+                // Some other application (or the user themselves)
+                // has aborted the logoff or system shutdown...
+
+                // "%s received: %s"
+                WRMSG( HHC01403, "I", "WM_ENDSESSION", "aborted" );
+                return 0; // (message processed)
+            }
+
+            // User is logging off or the system is being shutdown.
+            // We have a maximum of 5 seconds to shutdown Hercules.
+
+            // "%s received: %s"
+            WRMSG( HHC01403, "I", "WM_ENDSESSION", "initiating emergency shutdown" );
+            do_emergency_shutdown();
+            return 0; // (message handled)
+
+        default:
+
+            return DefWindowProc( hWnd, msg, wParam, lParam );
+    }
+
+    UNREACHABLE_CODE( return 0 );
+}
+
+// Create invisible message handling window...
+
+HANDLE  g_hWndEvt  = NULL;  // (temporary window creation event)
+HWND    g_hMsgWnd  = NULL;  // (window handle of message window)
+
+static void* WinMsgThread( void* arg )
+{
+    WNDCLASS  wc    =  {0};
+
+    UNREFERENCED( arg );
+
+    wc.lpfnWndProc    =  MainWndProc;
+    wc.hInstance      =  GetModuleHandle(0);
+    wc.lpszClassName  =  "Hercules";
+
+    RegisterClass( &wc );
+
+    g_hMsgWnd = CreateWindowEx( 0,
+        "Hercules", "Hercules",
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        NULL, NULL,
+        GetModuleHandle(0), NULL );
+
+    SetEvent( g_hWndEvt );      // (indicate create window completed)
+
+    if (g_hMsgWnd)  // (pump messages if window successfully created)
+    {
+        MSG msg;
+        while (GetMessage( &msg, NULL , 0 , 0 ))
+        {
+            TranslateMessage ( &msg );
+            DispatchMessage  ( &msg );
+        }
+    }
+    return NULL;
+}
+#endif /* defined( _MSVC_ ) */
 
 #if !defined(NO_SIGABEND_HANDLER)
+/*-------------------------------------------------------------------*/
+/* Linux watchdog thread -- detects malfunctioning CPU engines       */
+/*-------------------------------------------------------------------*/
 static void *watchdog_thread(void *arg)
 {
 S64 savecount[MAX_CPU_ENGINES];
@@ -212,11 +430,9 @@ int i;
     /* Set watchdog priority just below cpu priority
        such that it will not invalidly detect an
        inoperable cpu */
+
     if(sysblk.cpuprio >= 0)
-    {
-        if(setpriority(PRIO_PROCESS, 0, sysblk.cpuprio+1))
-        WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-    }
+        set_thread_priority(0, sysblk.cpuprio+1);
 
     for (i = 0; i < sysblk.maxcpu; i ++) savecount[i] = -1;
 
@@ -259,99 +475,69 @@ int i;
 }
 #endif /*!defined(NO_SIGABEND_HANDLER)*/
 
-void *log_do_callback(void *dummy)
+/*-------------------------------------------------------------------*/
+/* Herclin (plain line mode Hercules) message callback function      */
+/*-------------------------------------------------------------------*/
+void* log_do_callback( void* dummy )
 {
-    char *msgbuf;
-    int msgcnt = -1,msgnum;
-    UNREFERENCED(dummy);
-    while(msgcnt)
-    {
-        if((msgcnt = log_read(&msgbuf, &msgnum, LOG_BLOCK)))
-        {
-            log_callback(msgbuf,msgcnt);
-        }
-    }
-    return(NULL);
-}
+    char* msgbuf;
+    int   msglen;
+    int   msgidx = -1;
 
-DLL_EXPORT  COMMANDHANDLER getCommandHandler(void)
-{
-    return(panel_command);
+    UNREFERENCED( dummy );
+
+    while ((msglen = log_read( &msgbuf, &msgidx, LOG_BLOCK )))
+        log_callback( msgbuf, msglen );
+
+    /* Let them know logger thread has ended */
+    log_callback( NULL, 0 );
+
+    return (NULL);
 }
 
 /*-------------------------------------------------------------------*/
-/* Process .RC file thread                                           */
+/* Return panel command handler to herclin line mode hercules        */
 /*-------------------------------------------------------------------*/
-static char *rcname = NULL;             /* hercules.rc name pointer  */
+DLL_EXPORT  COMMANDHANDLER  getCommandHandler()
+{
+    return (panel_command);
+}
+
+/*-------------------------------------------------------------------*/
+/* Process .RC file thread.                                          */
+/*                                                                   */
+/* Called synchronously when in daemon mode.                         */
+/*-------------------------------------------------------------------*/
 static void* process_rc_file (void* dummy)
 {
-int     is_default_rc  = 0;             /* 1 == default name used    */
 char    pathname[MAX_PATH];             /* (work)                    */
 
     UNREFERENCED(dummy);
 
-    /* Obtain the name of the hercules.rc file or default */
-
-    if (!rcname)
-    {
-        if (!(rcname = getenv("HERCULES_RC")))
-        {
-            rcname = "hercules.rc";
-            is_default_rc = 1;
-        }
-    }
-
-    if(!strcasecmp(rcname,"None"))
-        return NULL;
-
-    hostpath(pathname, rcname, sizeof(pathname));
+    /* We have a .rc file to run                                 */
+    hostpath(pathname, cfgorrc[want_rc].filename, sizeof(pathname));
 
     /* Wait for panel thread to engage */
 // ZZ FIXME:THIS NEED TO GO
-    while (!sysblk.panel_init)
-        usleep( 10 * 1000 );
+    if (!sysblk.daemon_mode)
+        while (!sysblk.panel_init)
+            usleep( 10 * 1000 );
 
     /* Run the script processor for this file */
-
-    if (process_script_file(pathname,1) != 0)
-        if (ENOENT == errno)
-            if (!is_default_rc)
-                WRMSG(HHC01405, "E", pathname);
+    process_script_file(pathname, 1);
         // (else error message already issued)
 
-    return NULL;
+    return NULL;                      /* End the .rc thread.         */
 }
-
 
 /*-------------------------------------------------------------------*/
 /* IMPL main entry point                                             */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT int impl(int argc, char *argv[])
 {
-char   *cfgfile;                        /* -> Configuration filename */
-char    pathname[MAX_PATH];             /* work area for filenames   */
-#if defined ( OPTION_LOCK_CONFIG_FILE )
-int     fd_cfg = -1;                    /* fd for config file        */
-#if !defined ( _MSVC_ )
-struct  flock  fl_cfg;                  /* file lock for conf file   */
-#endif
-#endif
-int     c;                              /* Work area for getopt      */
-int     arg_error = 0;                  /* 1=Invalid arguments       */
-char   *msgbuf;                         /*                           */
-int     msgnum;                         /*                           */
-int     msgcnt;                         /*                           */
 TID     rctid;                          /* RC file thread identifier */
 TID     logcbtid;                       /* RC file thread identifier */
 int     rc;
-#if defined(EXTERNALGUI)
-int     e_gui = FALSE;                  /* EXTERNALGUI parm          */
-#endif
-#if defined(OPTION_DYNAMIC_LOAD)
-#define MAX_DLL_TO_LOAD         50
-char   *dll_load[MAX_DLL_TO_LOAD];      /* Pointers to modnames      */
-int     dll_count;                      /* index into array          */
-#endif
 
     /* Seed the pseudo-random number generator */
     srand( time(NULL) );
@@ -383,13 +569,26 @@ int     dll_count;                      /* index into array          */
     /* Initialize SETMODE and set user authority */
     SETMODE(INIT);
 
-#if defined(OPTION_DYNAMIC_LOAD)
-    for ( dll_count = 0; dll_count < MAX_DLL_TO_LOAD; dll_count++ )
-        dll_load[dll_count] = NULL;
-    dll_count = -1;
+    SET_THREAD_NAME("impl");
+
+    /* Remain compatible with older external gui versions */
+#if defined( EXTERNALGUI )
+    if (argc >= 1 && strncmp(argv[argc-1],"EXTERNALGUI",11) == 0)
+    {
+        extgui = TRUE;
+        argc--;
+    }
 #endif
 
-    SET_THREAD_NAME("impl");
+    /* Scan  argv  array  up  front  and  set decoded variables.  As */
+    /* nothing has been started we can just exit on serious errors.  */
+    rc = process_args(argc, argv);
+    if (rc)
+    {
+        /* HHC02343 "Terminating due to %d argument errors"          */
+        WRMSG(HHC02343, "S", rc);
+        exit(rc);        /* Serously bad arguments?  Stop right here */
+    }
 
     /* Initialize 'hostinfo' BEFORE display_version is called */
     init_hostinfo( &hostinfo );
@@ -403,55 +602,7 @@ int     dll_count;                      /* index into array          */
        hdl_shut will ensure entries are only called once */
     atexit(hdl_shut);
 
-    if ( argc > 0 )
-    {
-        int i,len;
-
-        for (len = 0, i = 0; i < argc; i++ )
-            len += (int)strlen( (char *)argv[i] ) + 1;
-
-        sysblk.hercules_cmdline = (char *)malloc( len );
-
-        strlcpy( sysblk.hercules_cmdline, argv[0], len );
-        for ( i = 1; i < argc; i++ )
-        {
-            strlcat( sysblk.hercules_cmdline, " ", len );
-            strlcat( sysblk.hercules_cmdline, argv[i], len );
-        }
-    }
-
-    /* Set program name */
-    if ( argc > 0 )
-    {
-        if ( strlen(argv[0]) == 0 )
-        {
-            sysblk.hercules_pgmname = strdup("hercules");
-            sysblk.hercules_pgmpath = strdup("");
-        }
-        else
-        {
-            char path[MAX_PATH];
-#if defined( _MSVC_ )
-            GetModuleFileName( NULL, path, MAX_PATH );
-#else
-            strncpy(path,argv[0],sizeof(path)-1);
-#endif
-            sysblk.hercules_pgmname = strdup(basename(path));
-#if !defined( _MSVC_ )
-            strncpy(path,argv[0],sizeof(path)-1);
-#endif
-            sysblk.hercules_pgmpath = strdup(dirname(path));
-        }
-    }
-    else
-    {
-            sysblk.hercules_pgmname = strdup("hercules");
-            sysblk.hercules_pgmpath = strdup("");
-    }
-
-#if defined( OPTION_CONFIG_SYMBOLS )
-
-    /* These were moved from console.c to make them available sooner */
+#if defined(ENABLE_BUILTIN_SYMBOLS)
     set_symbol( "VERSION", VERSION);
     set_symbol( "BDATE", __DATE__ );
     set_symbol( "BTIME", __TIME__ );
@@ -486,8 +637,7 @@ int     dll_count;                      /* index into array          */
 
     set_symbol( "MODNAME", sysblk.hercules_pgmname );
     set_symbol( "MODPATH", sysblk.hercules_pgmpath );
-
-#endif // defined( OPTION_CONFIG_SYMBOLS )
+#endif
 
     sysblk.sysgroup = DEFAULT_SYSGROUP;
     sysblk.msglvl   = DEFAULT_MLVL;                 /* Defaults to TERSE and DEVICES */
@@ -500,11 +650,6 @@ int     dll_count;                      /* index into array          */
 
     /* default for system dasd cache is on */
     sysblk.dasdcache = TRUE;
-
-#if defined(OPTION_MSGCLR) || defined(OPTION_MSGHLD)
-    /* set default error message display (emsg) */
-    sysblk.emsg = EMSG_ON;
-#endif
 
 #if defined( OPTION_SHUTDOWN_CONFIRMATION )
     /* set default quit timeout value (also ssd) */
@@ -581,11 +726,6 @@ int     dll_count;                      /* index into array          */
     }
 #endif
 
-    /* set default console keep alive values */
-    sysblk.kaidle = KEEPALIVE_IDLE_TIME;
-    sysblk.kaintv = KEEPALIVE_PROBE_INTERVAL;
-    sysblk.kacnt  = KEEPALIVE_PROBE_COUNT;
-
 #if defined(_FEATURE_ECPSVM)
     sysblk.ecpsvm.available = 0;
     sysblk.ecpsvm.level = 20;
@@ -604,13 +744,8 @@ int     dll_count;                      /* index into array          */
     sysblk.shrdport = 0;
 #endif
 
-#ifdef OPTION_MSGHLD
-    /* Set the default timeout value */
-    sysblk.keep_timeout_secs = 120;
-#endif
-
-#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
-    /* setup defaults for BUILTIN symbols  */
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+    /* setup defaults for CONFIG symbols  */
     {
         char buf[8];
 
@@ -625,7 +760,7 @@ int     dll_count;                      /* index into array          */
         set_symbol( "CPUMODEL", buf );
 
     }
-#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS */
+#endif
 
 #if defined(_FEATURE_CMPSC_ENHANCEMENT_FACILITY)
     sysblk.zpbits  = DEF_CMPSC_ZP_BITS;
@@ -642,13 +777,10 @@ int     dll_count;                      /* index into array          */
     initialize_lock (&sysblk.sigplock);
     initialize_lock (&sysblk.mntlock);
     initialize_lock (&sysblk.scrlock);
+    initialize_condition (&sysblk.scrcond);
     initialize_lock (&sysblk.crwlock);
     initialize_lock (&sysblk.ioqlock);
     initialize_condition (&sysblk.ioqcond);
-#if defined(OPTION_CMDSER)
-    initialize_lock      (&sysblk.cmdlock);
-    initialize_condition (&sysblk.cmdcond);
-#endif /*defined(OPTION_CMDSER)*/
 
 #ifdef FEATURE_MESSAGE_SECURITY_ASSIST_EXTENSION_3
     /* Initialize the wrapping key registers lock */
@@ -680,14 +812,19 @@ int     dll_count;                      /* index into array          */
        needs to be set before logger_init gets called since the
        logger_logfile_write function relies on its setting.
     */
-    sysblk.daemon_mode = !isatty(STDERR_FILENO) && !isatty(STDOUT_FILENO);
+    if (!isatty(STDERR_FILENO) && !isatty(STDOUT_FILENO))
+        sysblk.daemon_mode = 1;       /* Leave -d intact             */
 
     /* Initialize the logmsg pipe and associated logger thread.
        This causes all subsequent logmsg's to be redirected to
        the logger facility for handling by virtue of stdout/stderr
        being redirected to the logger facility.
     */
-    logger_init();
+    if (!sysblk.daemon_mode
+#if defined( EXTERNALGUI )
+        || extgui
+#endif
+    ) logger_init();
 
     /*
        Setup the initial codepage
@@ -707,15 +844,18 @@ int     dll_count;                      /* index into array          */
        cepted and handled by the logger facility thereby allowing the
        panel thread or external gui to "see" it and thus display it.
     */
-    display_version (stdout, "Hercules", TRUE);
+    display_version       ( stdout, 0, "Hercules" );
+    display_build_options ( stdout, 0 );
 
-#ifdef EXTERNALGUI
-    if (argc >= 1 && strncmp(argv[argc-1],"EXTERNALGUI",11) == 0)
-    {
-        e_gui = TRUE;
-        argc--;
-    }
-#endif
+    /* Report whether Hercules is running in "elevated" mode or not */
+#if defined( _MSVC_ ) // (remove this test once non-Windows version of "is_elevated()" is coded)
+    // HHC00018 "Hercules is %srunning in elevated mode"
+    if (is_elevated())
+        WRMSG (HHC00018, "I", "" );
+    else
+        WRMSG (HHC00018, "W", "NOT " );
+#endif // defined( _MSVC_ )
+
 
 #if !defined(WIN32) && !defined(HAVE_STRERROR_R)
     strerror_r_init();
@@ -728,160 +868,101 @@ int     dll_count;                      /* index into array          */
     InitializeListHead   ( &sysblk.stape_status_link  );
 #endif /* defined(OPTION_SCSI_TAPE) */
 
-    /* Get name of configuration file or default to hercules.cnf */
-    if(!(cfgfile = getenv("HERCULES_CNF")))
-        cfgfile = "hercules.cnf";
-
-    /* Process the command line options */
+    if (sysblk.scrtest)
     {
-#define  HERCULES_BASE_OPTS     "hf:r:db:v"
-#define  HERCULES_SYM_OPTS      ""
-#define  HERCULES_HDL_OPTS      ""
-#if defined(OPTION_CONFIG_SYMBOLS)
-#undef   HERCULES_SYM_OPTS
-#define  HERCULES_SYM_OPTS      "s:"
-#endif
-#if defined(OPTION_DYNAMIC_LOAD)
-#undef   HERCULES_HDL_OPTS
-#define  HERCULES_HDL_OPTS      "p:l:"
-#endif
-#define  HERCULES_OPTS_STRING   HERCULES_BASE_OPTS  HERCULES_SYM_OPTS  HERCULES_HDL_OPTS
-
-#if defined(HAVE_GETOPT_LONG)
-    static struct option longopts[] =
-    {
-        { "help",     no_argument,       NULL, 'h' },
-        { "config",   required_argument, NULL, 'f' },
-        { "rcfile",   required_argument, NULL, 'r' },
-        { "daemon",   no_argument,       NULL, 'd' },
-        { "herclogo", required_argument, NULL, 'b' },
-        { "verbose",  no_argument,       NULL, 'v' },
-#if defined(OPTION_CONFIG_SYMBOLS)
-        { "defsym",   required_argument, NULL, 's' },
-#endif
-#if defined(OPTION_DYNAMIC_LOAD)
-        { "modpath",  required_argument, NULL, 'p' },
-        { "ldmod",    required_argument, NULL, 'l' },
-#endif
-        { NULL,       0,                 NULL,  0  }
-    };
-    while ((c = getopt_long( argc, argv, HERCULES_OPTS_STRING, longopts, NULL )) != EOF)
-#else
-    while ((c = getopt( argc, argv, HERCULES_OPTS_STRING )) != EOF)
-#endif
-    {
-        switch (c) {
-        case 'h':
-            arg_error = 1;
-            break;
-        case 'f':
-            cfgfile = optarg;
-            break;
-        case 'r':
-            rcname = optarg;
-            break;
-#if defined(OPTION_CONFIG_SYMBOLS)
-        case 's':
-            {
-            char *sym        = NULL;
-            char *value      = NULL;
-            char *strtok_str = NULL;
-                if ( strlen( optarg ) >= 3 )
-                {
-                    sym   = strtok_r( optarg, "=", &strtok_str);
-                    value = strtok_r( NULL,   "=", &strtok_str);
-                    if ( sym != NULL && value != NULL )
-                    {
-                    int j;
-                        for( j = 0; j < (int)strlen( sym ); j++ )
-                            if ( islower( sym[j] ) )
-                            {
-                                sym[j] = toupper( sym[j] );
-                            }
-                        set_symbol(sym, value);
-                    }
-                    else
-                        WRMSG(HHC01419, "E" );
-                }
-                else
-                    WRMSG(HHC01419, "E");
-            }
-            break;
-#endif /* defined(OPTION_CONFIG_SYMBOLS) */
-#if defined(OPTION_DYNAMIC_LOAD)
-        case 'p':
-            if(optarg)
-                hdl_setpath(strdup(optarg), FALSE);
-            break;
-        case 'l':
-            {
-            char *dllname, *strtok_str = NULL;
-                for(dllname = strtok_r(optarg,", ",&strtok_str);
-                    dllname;
-                    dllname = strtok_r(NULL,", ",&strtok_str))
-                {
-                    if (dll_count < MAX_DLL_TO_LOAD - 1)
-                        dll_load[++dll_count] = strdup(dllname);
-                    else
-                    {
-                        WRMSG(HHC01406, "W", MAX_DLL_TO_LOAD);
-                        break;
-                    }
-                }
-            }
-            break;
-#endif /* defined(OPTION_DYNAMIC_LOAD) */
-        case 'b':
-            sysblk.logofile = optarg;
-            break;
-        case 'v':
-            sysblk.msglvl |= MLVL_VERBOSE;
-            break;
-        case 'd':
-            sysblk.daemon_mode = 1;
-            break;
-        default:
-            arg_error = 1;
-
-        } /* end switch(c) */
-    } /* end while */
-    } /* end Process the command line options */
-
-    /* Treat filename None as special */
-    if(!strcasecmp(cfgfile,"None"))
-        cfgfile = NULL;
-
-    if (optind < argc)
-        arg_error = 1;
-
-    /* Terminate if invalid arguments were detected */
-    if (arg_error)
-    {
-        char pgm[MAX_PATH];
-        char* strtok_str = NULL;
-        strncpy(pgm, sysblk.hercules_pgmname, sizeof(pgm));
-
-        /* Show them all of our command-line arguments... */
-
-        WRMSG (HHC01414, "S", "");   // (blank line)
-        WRMSG (HHC01414, "S", "");   // (blank line)
-
-#if defined(OPTION_DYNAMIC_LOAD)
-        // "Usage: %s [-f config-filename] [-d] [-b logo-filename] [-s sym=val]%s [> logfile]"
-        WRMSG (HHC01407, "S", strtok_r(pgm,".",&strtok_str),
-                             " [-p dyn-load-dir] [[-l dynmod-to-load]...]");
-#else
-        WRMSG (HHC01407, "S", strtok_r(pgm,".", &strtok_str), "");
-#endif /* defined(OPTION_DYNAMIC_LOAD) */
-
-        WRMSG (HHC01414, "S", "");   // (blank line)
-        WRMSG (HHC01414, "S", "");   // (blank line)
-
-        fflush(stderr);
-        fflush(stdout);
-        usleep(100000);
-        return(1);
+        // "Hercules is running in test mode."
+        WRMSG (HHC00019, "W" );
+        if (sysblk.scrfactor != 1.0)
+            // "Test timeout factor = %3.1f"
+            WRMSG( HHC00021, "I", sysblk.scrfactor );
     }
+
+    /* Set default TCP keepalive values */
+
+#if !defined( HAVE_BASIC_KEEPALIVE )
+
+    WARNING("TCP keepalive headers not found; check configure.ac")
+    WARNING("TCP keepalive support will NOT be generated")
+    // "This build of Hercules does not support TCP keepalive"
+    WRMSG( HHC02321, "E" );
+
+#else // basic, partial or full: must attempt setting keepalive
+
+  #if !defined( HAVE_FULL_KEEPALIVE ) && !defined( HAVE_PARTIAL_KEEPALIVE )
+
+    WARNING("This build of Hercules will only have basic TCP keepalive support")
+    // "This build of Hercules has only basic TCP keepalive support"
+    WRMSG( HHC02322, "W" );
+
+  #elif !defined( HAVE_FULL_KEEPALIVE )
+
+    WARNING("This build of Hercules will only have partial TCP keepalive support")
+    // "This build of Hercules has only partial TCP keepalive support"
+    WRMSG( HHC02323, "W" );
+
+  #endif // (basic or partial)
+
+    /*
+    **  Note: we need to try setting them to our desired values first
+    **  and then retrieve the set values afterwards to detect systems
+    **  which do not allow some values to be changed to ensure SYSBLK
+    **  gets initialized with proper working default values.
+    */
+    {
+        int rc, sfd, idle, intv, cnt;
+
+        /* Need temporary socket for setting/getting */
+        sfd = socket( AF_INET, SOCK_STREAM, 0 );
+        if (sfd < 0)
+        {
+            WRMSG( HHC02219, "E", "socket()", strerror( HSO_errno ));
+            idle = 0;
+            intv = 0;
+            cnt  = 0;
+        }
+        else
+        {
+            idle = KEEPALIVE_IDLE_TIME;
+            intv = KEEPALIVE_PROBE_INTERVAL;
+            cnt  = KEEPALIVE_PROBE_COUNT;
+
+            /* First, try setting the desired values */
+            rc = set_socket_keepalive( sfd, idle, intv, cnt );
+
+            if (rc < 0)
+            {
+                WRMSG( HHC02219, "E", "set_socket_keepalive()", strerror( HSO_errno ));
+                idle = 0;
+                intv = 0;
+                cnt  = 0;
+            }
+            else
+            {
+                /* Report partial success */
+                if (rc > 0)
+                {
+                    // "Not all TCP keepalive settings honored"
+                    WRMSG( HHC02320, "W" );
+                }
+
+                sysblk.kaidle = idle;
+                sysblk.kaintv = intv;
+                sysblk.kacnt  = cnt;
+
+                /* Retrieve current values from system */
+                if (get_socket_keepalive( sfd, &idle, &intv, &cnt ) < 0)
+                    WRMSG( HHC02219, "E", "get_socket_keepalive()", strerror( HSO_errno ));
+            }
+            close_socket( sfd );
+        }
+
+        /* Initialize SYSBLK with default values */
+        sysblk.kaidle = idle;
+        sysblk.kaintv = intv;
+        sysblk.kacnt  = cnt;
+    }
+
+#endif // (KEEPALIVE)
 
     /* Initialize runtime opcode tables */
     init_opcode_tables();
@@ -919,11 +1000,10 @@ int     dll_count;                      /* index into array          */
     }
 #endif /* defined(OPTION_DYNAMIC_LOAD) */
 
-#ifdef EXTERNALGUI
-    /* Set GUI flag if specified as final argument */
-    if (e_gui)
+#if defined( EXTERNALGUI ) && defined( OPTION_DYNAMIC_LOAD )
+    /* Load DYNGUI module if needed */
+    if (extgui)
     {
-#if defined(OPTION_DYNAMIC_LOAD)
         if (hdl_load("dyngui",HDL_LOAD_DEFAULT) != 0)
         {
             usleep(10000); /* (give logger thread time to issue
@@ -932,9 +1012,8 @@ int     dll_count;                      /* index into array          */
             delayed_exit(-1);
             return(1);
         }
-#endif /* defined(OPTION_DYNAMIC_LOAD) */
     }
-#endif /*EXTERNALGUI*/
+#endif /* defined( EXTERNALGUI ) && defined( OPTION_DYNAMIC_LOAD ) */
 
     /* Register the SIGINT handler */
     if ( signal (SIGINT, sigint_handler) == SIG_ERR )
@@ -947,6 +1026,7 @@ int     dll_count;                      /* index into array          */
     /* Register the SIGTERM handler */
     if ( signal (SIGTERM, sigterm_handler) == SIG_ERR )
     {
+        // "Cannot register %s handler: %s"
         WRMSG(HHC01410, "S", "SIGTERM", strerror(errno));
         delayed_exit(-1);
         return(1);
@@ -956,9 +1036,39 @@ int     dll_count;                      /* index into array          */
     /* Register the Window console ctrl handlers */
     if (!IsDebuggerPresent())
     {
+        TID dummy;
+        BOOL bSuccess = FALSE;
+
         if (!SetConsoleCtrlHandler( console_ctrl_handler, TRUE ))
         {
+            // "Cannot register %s handler: %s"
             WRMSG( HHC01410, "S", "Console-ctrl", strerror( errno ));
+            delayed_exit(-1);
+            return(1);
+        }
+
+        g_hWndEvt = CreateEvent( NULL, TRUE, FALSE, NULL );
+
+        if ((rc = create_thread( &dummy, DETACHED,
+            WinMsgThread, (void*) &bSuccess, "WinMsgThread" )) != 0)
+        {
+            // "Error in function create_thread(): %s"
+            WRMSG( HHC00102, "E", strerror( rc ));
+            CloseHandle( g_hWndEvt );
+            delayed_exit(-1);
+            return(1);
+        }
+
+        // (wait for thread to create window)
+        WaitForSingleObject( g_hWndEvt, INFINITE );
+        CloseHandle( g_hWndEvt );
+
+        // Was message window successfully created?
+
+        if (!g_hMsgWnd)
+        {
+            // "Error in function %s: %s"
+            WRMSG( HHC00136, "E", "WinMsgThread", "CreateWindowEx() failed");
             delayed_exit(-1);
             return(1);
         }
@@ -998,6 +1108,9 @@ int     dll_count;                      /* index into array          */
         sa.sa_flags = 0;
 #endif
 
+        /* Explictily initialize sa_mask to its default.        @PJJ */
+        sigemptyset(&sa.sa_mask);
+
         if( sigaction(SIGILL, &sa, NULL)
          || sigaction(SIGFPE, &sa, NULL)
          || sigaction(SIGSEGV, &sa, NULL)
@@ -1011,42 +1124,6 @@ int     dll_count;                      /* index into array          */
         }
     }
 #endif /*!defined(NO_SIGABEND_HANDLER)*/
-
-    if(cfgfile)
-    {
-        /* attempt to get lock on config file */
-        hostpath(pathname, cfgfile, sizeof(pathname));
-
-#if defined( OPTION_LOCK_CONFIG_FILE )
-
-        /* Test that we can get a read the file */
-
-        if ( ( fd_cfg = HOPEN( pathname, O_RDONLY, S_IRUSR | S_IRGRP ) ) < 0 )
-        {
-            if ( errno == EACCES )
-            {
-                WRMSG( HHC01453, "S", cfgfile, strerror( errno ) );
-                delayed_exit(-1);
-                return(1);
-            }
-        }
-        else
-        {
-            if ( lseek(fd_cfg, 0L, 2) < 0 )
-            {
-                if ( errno == EACCES )
-                {
-                    WRMSG( HHC01453, "S", cfgfile, strerror( errno ) );
-                    delayed_exit(-1);
-                    return(1);
-                }
-            }
-            close( fd_cfg );
-        }
-
-        /* File was not lock, therefore we can proceed */
-#endif // OPTION_LOCK_CONFIG_FILE
-    }
 
     /* System initialisation time */
     sysblk.todstart = hw_clock() << 8;
@@ -1063,137 +1140,519 @@ int     dll_count;                      /* index into array          */
     }
 #endif /*!defined(NO_SIGABEND_HANDLER)*/
 
-    if(log_callback)
-    {
-        // 'herclin' called us. IT'S in charge. Create its requested
-        // logmsg intercept callback function and return back to it.
-        rc = create_thread(&logcbtid,DETACHED,
-                      log_do_callback,NULL,"log_do_callback");
-        if (rc)
-            WRMSG(HHC00102, "E", strerror(rc));
-        return(0);
-    }
-
     hdl_adsc("release_config", release_config, NULL);
 
     /* Build system configuration */
-    if ( build_config (cfgfile) )
+    if ( build_config (cfgorrc[want_cfg].filename) )
     {
         delayed_exit(-1);
         return(1);
     }
 
-    /* Start up the RC file processing thread */
-    rc = create_thread(&rctid,DETACHED,
-                  process_rc_file,NULL,"process_rc_file");
-    if (rc)
-        WRMSG(HHC00102, "E", strerror(rc));
-
-
-#if defined( OPTION_LOCK_CONFIG_FILE )
-    if(cfgfile)
+    /* Process  the  .rc  file  synchronously  when  in daemon mode. */
+    /* Otherwise Start up the RC file processing thread.             */
+    if (cfgorrc[want_rc].filename)
     {
-        if ( ( fd_cfg = HOPEN( pathname, O_RDONLY, S_IRUSR | S_IRGRP ) ) < 0 )
-        {
-            WRMSG( HHC01432, "S", pathname, "open()", strerror( errno ) );
-            delayed_exit(-1);
-            return(1);
-        }
+        if (sysblk.daemon_mode) process_rc_file(NULL);
         else
         {
-#if defined( _MSVC_ )
-            if( ( rc = _locking( fd_cfg, _LK_NBRLCK, 1L ) ) < 0 )
-            {
-                int rc = errno;
-                WRMSG( HHC01454, "S", pathname, "_locking()", strerror( errno ) );
-                delayed_exit(-1);
-                return(1);
-            }
-#else
-            fl_cfg.l_type = F_RDLCK;
-            fl_cfg.l_whence = SEEK_SET;
-            fl_cfg.l_start = 0;
-            fl_cfg.l_len = 1;
-
-            if ( fcntl(fd_cfg, F_SETLK, &fl_cfg) == -1 )
-            {
-                if (errno == EACCES || errno == EAGAIN)
-                {
-                    WRMSG( HHC01432, "S", pathname, "fcntl()", strerror( errno ) );
-                    delayed_exit(-1);
-                    return(1);
-                }
-            }
-#endif
+            rc = create_thread(&rctid,DETACHED,
+                          process_rc_file,NULL,"process_rc_file");
+            if (rc)
+                WRMSG(HHC00102, "E", strerror(rc));
         }
     }
-#endif // OPTION_LOCK_CONFIG_FILE
 
-    //---------------------------------------------------------------
-    // The below functions will not return until Hercules is shutdown
-    //---------------------------------------------------------------
+    if (log_callback)
+    {
+        // 'herclin' called us. IT iS in charge. Create its requested
+        // logmsg intercept callback function and return back to it.
+        rc = create_thread( &logcbtid, DETACHED,
+                      log_do_callback, NULL, "log_do_callback" );
+        if (rc)
+            // "Error in function create_thread(): %s"
+            WRMSG( HHC00102, "E", strerror( rc ));
+
+        return (rc);
+    }
 
     /* Activate the control panel */
-    if(!sysblk.daemon_mode)
-        panel_display ();
+    if (!sysblk.daemon_mode)
+        panel_display();  /* Returns only AFTER Hercules is shutdown */
     else
     {
 #if defined(OPTION_DYNAMIC_LOAD)
-        if(daemon_task)
-            daemon_task ();
+        if (daemon_task)
+            daemon_task();/* Returns only AFTER Hercules is shutdown */
         else
 #endif /* defined(OPTION_DYNAMIC_LOAD) */
         {
-            /* Tell RC file and HAO threads they may now proceed */
-            sysblk.panel_init = 1;
+            process_script_file("-", 1);
 
-            /* Retrieve messages from logger and write to stderr */
-            while (1)
-                if((msgcnt = log_read(&msgbuf, &msgnum, LOG_BLOCK)))
-                    if(isatty(STDERR_FILENO))
-                        fwrite(msgbuf,msgcnt,1,stderr);
+            /* We come here only when the user did ctl-d on a tty or */
+            /* end  of  file of the standard input.  No quit command */
+            /* has  been issued since that (via do_shutdown()) would */
+            /* not return.                                           */
+
+            if (sysblk.started_mask)  /* All quiesced?               */
+                usleep( 10 * 1000 );  /* Wait for CPUs to stop       */
+            quit_cmd(0, NULL, NULL);  /* Then pull the plug          */
         }
     }
 
-    //  -----------------------------------------------------
-    //      *** Hercules has been shutdown (PAST tense) ***
-    //  -----------------------------------------------------
-
-#if defined( OPTION_LOCK_CONFIG_FILE )
-    if(cfgfile)
-        close( fd_cfg );            // release config file lock
-#endif //    OPTION_LOCK_CONFIG_FILE
-
+    /*
+    **  PROGRAMMING NOTE: the following code is only ever reached
+    **  if Hercules is run in normal panel mode -OR- when it is run
+    **  under the control of an external GUI (i.e. daemon_task).
+    */
     ASSERT( sysblk.shutdown );  // (why else would we be here?!)
 
 #ifdef _MSVC_
-    SetConsoleCtrlHandler(console_ctrl_handler, FALSE);
+    SetConsoleCtrlHandler( console_ctrl_handler, FALSE );
     socket_deinit();
 #endif
-#if defined(OPTION_MSGCLR) || defined(OPTION_MSGHLD)
-    if ( sysblk.emsg & EMSG_TEXT )
-        fprintf(stdout, HHC01412 );
-    else
-#endif
-        fprintf(stdout, MSG(HHC01412, "I"));
-    fflush(stdout);
-    usleep(10000);
-    return 0;
-} /* end function main */
+    fflush( stdout );
+    usleep( 10000 );
+    return 0; /* return back to bootstrap.c */
+} /* end function impl */
 
+/*----------------------------------------------------------------------*/
+/*                                                                      */
+/*  getexepath(const char * cmdline) - get executable path              */
+/*                                                                      */
+/*  Return a malloc'd string pointer containing the name of the         */
+/*  directory containing the Hercules executable that is being run.     */
+/*  Slashes have been conformed to PATHSEPC.                            */
+/*                                                                      */
+/*  Three versions exist.  For Windows and macOS, the target system-    */
+/*  specific API is used to retrieve the name.  For UNIX-like systems,  */
+/*  argv[0] is interpreted against the current directory if relative,   */
+/*  used as is if absolute, and interpreted against the PATH variable   */
+/*  if just a basename exists.                                          */
+/*                                                                      */
+/*----------------------------------------------------------------------*/
+#if defined(_WIN32)
+
+char * getexepath(const char* cmdline)
+{
+    char candidatepath[MAX_PATH];   /* Cannonical candidate absolute path  */
+                                    /* ..of executable.                            */
+    char *resultpath;       /* Actual returned path in malloc'd space sized */
+                            /* for the returned string, or NULL if unable   */
+                            /* to determine the executable path.            */
+    int pathlen;            /* Length of path returned by GetModeFileName   */
+
+    resultpath = NULL;      /*  presume failure to get path for the nonce   */
+
+    pathlen = GetModuleFileName(NULL, candidatepath, MAX_PATH);
+    if (pathlen)           /* did we get a path back?                       */
+        resultpath = strdup(candidatepath);  /* ..yes, copy to result-sized space */
+
+    return resultpath;
+
+}
+
+
+#elif defined(HAVE__NSGETEXECUTABLEPATH)
+
+char * getexepath(const char* cmdline)
+{
+    char candidatepath[MAX_PATH];   /* Cannonical candidate absolute path  */
+                                    /* ..of executable.                            */
+    char *resultpath;       /* Actual returned path in malloc'd space sized */
+                            /* for the returned string, or NULL if unable   */
+                            /* to determine the executable path.            */
+    uint32_t pathlen = MAX_PATH;  /* buffer size to _NSGetExecutablePath    */
+    int rc;                 /* Length of path returned                      */
+
+    resultpath = NULL;      /*  presume failure to get path for the nonce   */
+
+    rc = _NSGetExecutablePath(candidatepath, &pathlen);
+    if (!rc)              /* rc = 0 means we got a path                   */
+        resultpath = realpath(candidatepath, NULL);
+
+    return resultpath;
+
+}
+
+#else    /*  !defined( _MSVC_ ) && !defined( HAVE__NSGETEXECUTABLEPATH )   */
+/************************************************************************/
+/* UNIX-like system.  These lack an API to retrieve the executable      */
+/* path name.  So this function does what a shell would do: interpret   */
+/* the command line relative to either the current working directory    */
+/* or the PATH environment variable.  This is not perfect, but it will  */
+/* have to do.                                                          */
+/* N.B., the returned char string is malloc'd by this routine and must  */
+/* be free'd by the caller.                                             */
+/************************************************************************/
+
+char * getexepath(const char* cmdline)
+{
+    char candidatepath[MAX_PATH];   /* Cannonical candidate absolute path  */
+                                    /* ..of executable.                            */
+    char *resultpath;       /* Actual returned path in malloc'd space sized */
+                            /* for the returned string, or NULL if unable   */
+                            /* to determine the executable path.            */
+
+    if (strchr(cmdline, '/'))    /* is command an asbolute path                  */
+                                 /* or path relative to working directory?       */
+    {                               /* ..yes, cannonicalize and test for executable */
+        realpath(cmdline, candidatepath);  /* convert to abs, test for existence  */
+
+        if (access(candidatepath, X_OK))  /* nz means file not an executable     */
+            return NULL;                     /* Not a valid path to executable      */
+    }
+
+    else
+    {
+        char *pathstr;          /* pointer to start of PATH string              */
+        char *pathstrend;       /* pointer to NUL at end of PATH string         */
+        char *pathdir;          /* Pointer to one directory within PATH         */
+        char testpath[MAX_PATH];  /* One directory from PATH plus executable name */
+        char *testdirend;       /* Last char+1 of directory name in testpath    */
+
+                                /* Note: getenv returns a pointer that is within the environment area.  */
+                                /* Do not change the string pointed to by the result of getenv().       */
+        pathstr = getenv("PATH");
+        pathstrend = strlen(pathstr) +pathstr;
+        pathdir = pathstr;      /* first PATH segment to test                   */
+
+        while (*pathdir)       /* process until end of PATH string             */
+        {
+            /* after memccpy, testdirend points at the start of the next substring  */
+            /* in the PATH variable, or is NULL if the last substring was copied.   */
+            /* The copy is count-controlled; the terminating zero is not copied.    */
+            /* The separating ':' is copied.                                        */
+            testdirend = memccpy(testpath, pathdir, ':', strlen(pathdir));
+
+            if (!testdirend)              /* no ':', last segment copied          */
+                testdirend = pathstrend;    /* point to NUL termination             */
+            pathdir = &pathdir[testdirend - testpath];    /* Start of next or '\0' */
+
+
+            if (testdirend[-1] == ':')    /* Did separator end memccpy?           */
+                testdirend--;               /* ..yes, back up to the separator      */
+            testdirend[0] = '/';
+            strcpy(testdirend + 1, cmdline);   /* append exe name to directory    */
+
+
+            if (!(realpath(testpath, candidatepath))) /* Path exists?  */
+                continue;                   /* ..No, NULL returned, try next dir    */
+
+                                            /* File exists.  See if it is an executable.  We do not care what kind. */
+                                            /* Systems using GNU-libtool use a shell script as a wrapper for the    */
+                                            /* executable.                                                          */
+            if (!(access(candidatepath, X_OK)))   /* Executable file?           */
+                break;                      /* ..yes, our work is done here.        */
+
+            *candidatepath = '\0';          /* ..no, null-out candidate, continue   */
+        }
+
+    }
+
+    if (!*candidatepath)                   /* Executable path not found?           */
+        return NULL;                        /* ..no, return NULL pointer            */
+
+    resultpath = strdup(candidatepath);   /* Resize storage for returned string   */
+    return resultpath;                      /* return pointer to malloc'd path      */
+
+}
+#endif      /* !defined( _MSVC_ ) && !defined( HAVE__NSGETEXECUTABLEPATH ) */
+
+
+/*********************************************************************/
+/* Process  arguments  up front, but build the command string before */
+/* getopt mangles argv[]                                             */
+/*********************************************************************/
+static int
+process_args(int argc, char *argv[])
+{
+int     arg_error = 0;                  /* 1=Invalid arguments       */
+int     c = 0;                        /* Next option flag            */
+char * real_path;                   /* absolute program executable path */
+char * real_path_dup;               /* .. copy for use with dirname     */
+
+    /* Set executable program name and executable directory name.       */
+    /* The directory name is used for the following:                    */
+    /* 1. A location to search for dynamically loaded modules.  See     */
+    /*    routine hdl_dlopen in hdl.c for details.                      */
+    /* 2. A location to search for the Hercules logo file herclogo.txt  */
+    /*    if a logo path was not specified on the command line.  See    */
+    /*    routine init_logo in console.c for details.                   */
+    /* 3. A location to search for the Hercules logo file when the      */
+    /*    herclogo command is processed.  See routine herclogo_cmd in   */
+    /*    hsccmd.c for details.                                         */
+    /* All uses function without failure, albeit perhaps without the    */
+    /* intended results, if the executables directory cannot be         */
+    /* determined.                                                      */
+
+    real_path = NULL;           /* assume unable to get executable path */
+
+    /* ZZFIXME: Windows and macOS do not require argv[0] to get the     */
+    /* executable path string.  The test below for existence of argv[0] */
+    /* should be reworked to accomodate this.                           */
+    if (argc > 0 && strlen(argv[0]))
+        real_path = getexepath(argv[0]);
+
+    /* real_path points to a string naming the executable path if one   */
+    /* can be determined from argv[0] or any API the target system may  */
+    /* offer (Windows, macOS), and is NULL if no path name could be     */
+    /* determined.                                                      */
+    /*                                                                  */
+    /* Note that basename and dirname on some systems corrupt the       */
+    /* input path name, so a copy is made.   Man pages warn about this. */
+    if ( real_path )
+    {
+        real_path_dup = strdup(real_path);
+        sysblk.hercules_pgmname = strdup(basename(real_path));
+        sysblk.hercules_pgmpath = strdup(dirname(real_path_dup));
+        free(real_path_dup);
+        free(real_path);
+    }
+    else                    /* Unable to determine executable path.     */
+    {
+        sysblk.hercules_pgmname = strdup("hercules");
+        sysblk.hercules_pgmpath = strdup(".");   /* make consistent with dirname behavior */
+    }
+
+    if ( argc > 0 )
+    {
+        int i;
+        size_t len;
+
+        for (len = 0, i = 0; i < argc; i++ )
+            len += strlen( argv[i] ) + 1;
+
+        sysblk.hercules_cmdline = (char *)malloc( len );
+
+        strlcpy( sysblk.hercules_cmdline, argv[0], len );
+        for ( i = 1; i < argc; i++ )
+        {
+            strlcat( sysblk.hercules_cmdline, " ", len );
+            strlcat( sysblk.hercules_cmdline, argv[i], len );
+        }
+    }
+
+    opterr = 0; /* We'll print our own error messages thankyouverymuch */
+
+    if (2 <= argc && !strcmp(argv[1], "-?"))
+    {
+        arg_error++;
+        goto error;
+    }
+
+    for (; EOF != c ;)
+    {
+        c =                       /* Work area for getopt        */
+#if defined(HAVE_GETOPT_LONG)
+            getopt_long( argc, argv, shortopts, longopts, NULL );
+#else
+            getopt( argc, argv, shortopts );
+#endif
+        switch (c) {
+        case EOF:
+            break;
+        case 0:         /* getopt_long() set a variable; keep going */
+            break;
+        case 'h':
+            arg_error++;
+            break;
+        case 'f':
+            cfgorrc[want_cfg].filename = optarg;
+            break;
+        case 'r':
+            cfgorrc[want_rc].filename = optarg;
+            break;
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+        case 's':
+            {
+            char *sym        = NULL;
+            char *value      = NULL;
+            char *strtok_str = NULL;
+                if ( strlen( optarg ) >= 3 )
+                {
+                    sym   = strtok_r( optarg, "=", &strtok_str);
+                    value = strtok_r( NULL,   "=", &strtok_str);
+                    if ( sym != NULL && value != NULL )
+                    {
+                    int j;
+                        for( j = 0; j < (int)strlen( sym ); j++ )
+                            if ( islower( sym[j] ) )
+                            {
+                                sym[j] = toupper( sym[j] );
+                            }
+                        set_symbol(sym, value);
+                    }
+                    else
+                        WRMSG(HHC01419, "E" );
+                }
+                else
+                    WRMSG(HHC01419, "E");
+            }
+            break;
+#endif
+
+#if defined(OPTION_DYNAMIC_LOAD)
+        case 'p':
+            if (optarg && !hdl_setpath(optarg, FALSE))
+                arg_error++;
+            break;
+        case 'l':
+            {
+            char *dllname, *strtok_str = NULL;
+                for(dllname = strtok_r(optarg,", ",&strtok_str);
+                    dllname;
+                    dllname = strtok_r(NULL,", ",&strtok_str))
+                {
+                    if (dll_count < MAX_DLL_TO_LOAD - 1)
+                        dll_load[++dll_count] = strdup(dllname);
+                    else
+                    {
+                        WRMSG(HHC01406, "W", MAX_DLL_TO_LOAD);
+                        break;
+                    }
+                }
+            }
+            break;
+#endif /* defined(OPTION_DYNAMIC_LOAD) */
+        case 'b':
+            sysblk.logofile = optarg;
+            break;
+        case 'v':
+            sysblk.msglvl |= MLVL_VERBOSE;
+            break;
+        case 'd':
+            sysblk.daemon_mode = 1;
+            break;
+#if defined( EXTERNALGUI )
+        case 'e':
+            extgui = 1;
+            break;
+#endif
+
+        case 't':
+            sysblk.scrtest = 1;
+            sysblk.scrfactor = 1.0;
+
+            if (optarg)
+            {
+                double scrfactor;
+                double max_factor = MAX_RUNTEST_FACTOR;
+                /* Round down to nearest 10th of a second */
+                max_factor = floor( max_factor * 10.0 ) / 10.0;
+                //logmsg("*** max_factor = %3.1f\n", max_factor );
+
+                scrfactor = atof( optarg );
+
+                if (scrfactor >= 1.0 && scrfactor <= max_factor)
+                    sysblk.scrfactor = scrfactor;
+                else
+                {
+                    // "Test timeout factor %s outside of valid range 1.0 to %3.1f"
+                    WRMSG( HHC00020, "S", optarg, max_factor );
+                    arg_error++;
+                }
+            }
+            break;
+
+        default:
+            {
+                char buf[16];
+                if (isprint( optopt ))
+                    MSGBUF( buf, "'-%c'", optopt );
+                else
+                    MSGBUF( buf, "(hex %2.2x)", optopt );
+                // "Invalid/unsupported option: %s"
+                WRMSG( HHC00023, "S", buf );
+                arg_error++;
+            }
+
+        } /* end switch(c) */
+    } /* end while */
+
+    while (optind < argc)
+    {
+        // "Unrecognized option: %s"
+        WRMSG( HHC00024, "S", argv[optind++] );
+        arg_error++;
+    }
+
+error:
+
+    /* Terminate if invalid arguments were detected */
+    if (arg_error)
+    {
+        char pgm[MAX_PATH];
+        char* strtok_str = NULL;
+        const char symsub[] =
+#if defined(ENABLE_BUILTIN_SYMBOLS)
+            " [-s sym=val]";
+#else
+            "";
+#endif
+        const char dlsub[] =
+#if defined(OPTION_DYNAMIC_LOAD)
+            " [-p dyn-load-dir] [[-l dynmod-to-load]...]";
+#else
+            "";
+#endif /* defined(OPTION_DYNAMIC_LOAD) */
+
+        /* Show them all of our command-line arguments... */
+        strncpy(pgm, sysblk.hercules_pgmname, sizeof(pgm));
+        /* "Usage: %s [-f config-filename] [-r rcfile-name] [-d] [-b logo-filename]%s [-t [factor]]%s [> logfile]"*/
+        WRMSG (HHC01414, "S", "");   // (blank line)
+        WRMSG (HHC01407, "S", strtok_r(pgm,".",&strtok_str), symsub, dlsub);
+        WRMSG (HHC01414, "S", "");   // (blank line)
+
+    }
+    else             /* Check for config and rc file, but don't open */
+    {
+        int i;
+        struct stat st;
+        int rv;
+
+        for (i = 0; cfgorrccount > i; i++)
+        {
+            if (!cfgorrc[i].filename) /* No value specified          */
+                cfgorrc[i].filename = getenv(cfgorrc[i].envname);
+            if (!cfgorrc[i].filename) /* No environment var          */
+            {
+                rv = stat(cfgorrc[i].defaultfile, &st);
+                if (!rv) cfgorrc[i].filename = cfgorrc[i].defaultfile;
+                continue;
+            }
+            if (!cfgorrc[i].filename[0]                 /* Null name */
+                || !strcasecmp(cfgorrc[i].filename, "None"))
+            {
+               cfgorrc[i].filename = NULL;          /* Suppress file */
+               continue;
+            }
+
+            /* File specified explicitly or by environment           */
+            rv = stat(cfgorrc[i].filename, &st);
+            if (-1 == rv)
+            {
+                /* HHC02342 "%s file %s not found:  %s"              */
+                WRMSG (HHC02342, "S", cfgorrc[i].whatfile,
+                    cfgorrc[i].filename, strerror(errno));
+                arg_error++;
+            }
+        }
+    }
+    fflush(stderr);
+    fflush(stdout);
+    return arg_error;
+}
 
 /*-------------------------------------------------------------------*/
 /* System cleanup                                                    */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT void system_cleanup (void)
+DLL_EXPORT void system_cleanup()
 {
     /*
         Currently only called by hdlmain,c's HDL_FINAL_SECTION
         after the main 'hercules' module has been unloaded, but
         that could change at some time in the future.
-
-        The above and below logmsg's are commented out since this
-        function currently doesn't do anything yet. Once it DOES
-        something, they should be uncommented.
     */
 }

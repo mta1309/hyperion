@@ -19,16 +19,20 @@
 
 /*-------------------------------------------------------------------*/
 /* Ivan Warren 20040227                                              */
-/* This table is used by channel.c to determine if a CCW code is an  */
-/* immediate command or not                                          */
-/* The tape is addressed in the DEVHND structure as 'DEVIMM immed'   */
-/* 0 : Command is NOT an immediate command                           */
-/* 1 : Command is an immediate command                               */
-/* Note : An immediate command is defined as a command which returns */
-/* CE (channel end) during initialisation (that is, no data is       */
-/* actually transfered. In this case, IL is not indicated for a CCW  */
-/* Format 0 or for a CCW Format 1 when IL Suppression Mode is in     */
-/* effect                                                            */
+/*                                                                   */
+/* This table is used by channel.c to determine if a CCW code        */
+/* is an immediate command or not.                                   */
+/*                                                                   */
+/* The table is addressed in the DEVHND structure as 'DEVIMM immed'  */
+/*                                                                   */
+/*     0:  ("false")  Command is *NOT* an immediate command          */
+/*     1:  ("true")   Command *IS* an immediate command              */
+/*                                                                   */
+/* Note: An immediate command is defined as a command which returns  */
+/* CE (channel end) during initialization (that is, no data is       */
+/* actually transfered). In this case, IL is not indicated for a     */
+/* Format 0 or Format 1 CCW when IL Suppression Mode is in effect.   */
+/*                                                                   */
 /*-------------------------------------------------------------------*/
 
 /* Printer Specific : 1403 */
@@ -664,7 +668,7 @@ static void printer_query_device (DEVBLK *dev, char **devclass,
 {
     BEGIN_DEVICE_CLASS_QUERY( "PRT", dev, devclass, buflen, buffer );
 
-    snprintf (buffer, buflen-1, "%s%s%s%s%s%s%s IO[%" I64_FMT "u]",
+    snprintf (buffer, buflen-1, "%s%s%s%s%s%s%s IO[%"PRIu64"]",
                  dev->filename,
                 (dev->bs         ? " sockdev"      : ""),
                 (dev->crlf       ? " crlf"         : ""),
@@ -1086,7 +1090,6 @@ char            wbuf[150];
             write_buffer(dev, nls, coun, unitstat);
             if (*unitstat == 0)
                 *unitstat = CSW_CE | CSW_DE;
-            return;
         }
         else  /*code >  0x80*/ /* chan control */
         {
@@ -1104,9 +1107,8 @@ char            wbuf[150];
             SKIP_TO_CHAN();
             if (*unitstat == 0)
                 *unitstat = CSW_CE | CSW_DE;
-            return;
         }
-        break;
+        return;
 
     case 0x63:
     /*---------------------------------------------------------------*/
@@ -1138,6 +1140,7 @@ char            wbuf[150];
 
             dev->lpi = 6;
             dev->index = 0;
+            i = 0;
             if (iobuf[0] & 0xc0)
             {
                 /* First byte is a print position index */

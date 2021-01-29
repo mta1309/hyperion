@@ -17,6 +17,22 @@
 #include "hercules.h"
 
 /*-------------------------------------------------------------------*/
+/* Maximum CPU Engines                                               */
+/*-------------------------------------------------------------------*/
+
+#ifndef MAX_CPU_ENGINES
+  #ifdef HAVE___UINT128_T
+    #define MAX_CPU_ENGINES     128
+  #else
+    #define MAX_CPU_ENGINES      64
+  #endif
+#endif
+
+#define PREF_DEF_MAXCPU           8     /*  Default sysblk.maxcpu
+                                            to 8 according to old
+                                            MAX_CPU_ENGINES default  */
+
+/*-------------------------------------------------------------------*/
 /* Miscellaneous system related constants we could be missing...     */
 /*-------------------------------------------------------------------*/
 
@@ -206,11 +222,24 @@
 #endif
 
 /*-------------------------------------------------------------------*/
-/* Console tn3270/telnet session TCP "Keep-Alive" values...          */
+/* Default console tn3270/telnet session TCP keepalive values        */
 /*-------------------------------------------------------------------*/
+#if !defined( HAVE_BASIC_KEEPALIVE )
+/* No TCP keepalive support at all */
+#define  KEEPALIVE_IDLE_TIME        0   /* Idle time to first probe  */
+#define  KEEPALIVE_PROBE_INTERVAL   0   /* Probe timeout value       */
+#define  KEEPALIVE_PROBE_COUNT      0   /* Max probe timeouts        */
+#elif !defined( HAVE_PARTIAL_KEEPALIVE )
+/* Basic TCP keepalive support */
+#define  KEEPALIVE_IDLE_TIME        7200/* Idle time to first probe  */
+#define  KEEPALIVE_PROBE_INTERVAL   1   /* Probe timeout value       */
+#define  KEEPALIVE_PROBE_COUNT      10  /* Max probe timeouts        */
+#else
+/* Partial or Full TCP keepalive support */
 #define  KEEPALIVE_IDLE_TIME        3   /* Idle time to first probe  */
 #define  KEEPALIVE_PROBE_INTERVAL   1   /* Probe timeout value       */
 #define  KEEPALIVE_PROBE_COUNT      10  /* Max probe timeouts        */
+#endif // (KEEPALIVE)
 
 /*-------------------------------------------------------------------*/
 /* Miscellaneous Hercules-related constants...                       */
@@ -327,5 +356,21 @@
 #define CTC_VMNET       8               /* CTC link via wfk's vmnet  */
 #define CTC_CFC         9               /* Coupling facility channel */
 #define CTC_PTP        10               /* PTP link to TCP/IP stack  */
+#define CTC_CTCE       11               /* Enhanced CTC link via TCP */
 
+/*-------------------------------------------------------------------*/
+/* Minimum, maximum and default scripting timeout values             */
+/*-------------------------------------------------------------------*/
+
+#define MIN_PAUSE_TIMEOUT       0.001   /* Minimum pause seconds     */
+#define DEF_PAUSE_TIMEOUT         1.0   /* Default pause seconds     */
+#define MAX_PAUSE_TIMEOUT       999.0   /* Maximum pause seconds     */
+
+#define MIN_RUNTEST_DUR         0.001   /* Minimum runtest seconds   */
+#define DEF_RUNTEST_DUR          30.0   /* Default runtest seconds   */
+#define MAX_RUNTEST_DUR         300.0   /* Maximum runtest seconds   */
+
+#define MAX_RUNTEST_FACTOR  (((4.0 * 1024.0 * 1024.0 * 1024.0) - 1.0) \
+                            / 1000000.0 /* (usecs) */                 \
+                            / MAX_RUNTEST_DUR)
 #endif // _HCONSTS_H

@@ -535,22 +535,6 @@ do { \
     if( ((_r1) & 2) || ((_r2) & 2) || ((_r3) & 2) ) \
         (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
 
-    /* Program check if fpc is not valid contents for FPC register */
-#if defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)          /*810*/
- #define FPC_BRM FPC_BRM_3BIT
- #define FPC_CHECK(_fpc, _regs) \
-    if(((_fpc) & FPC_RESV_FPX) \
-     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV4 \
-     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV5 \
-     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV6) \
-        (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
-#else /*!defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)*/   /*810*/
- #define FPC_BRM FPC_BRM_2BIT
- #define FPC_CHECK(_fpc, _regs) \
-    if((_fpc) & FPC_RESERVED) \
-        (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
-#endif /*!defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)*/  /*810*/
-
 #define SSID_CHECK(_regs) \
     if((!((_regs)->GR_LHH(1) & 0x0001)) \
     || (_regs)->GR_LHH(1) > (0x0001|(FEATURE_LCSS_MAX-1))) \
@@ -616,6 +600,26 @@ do { \
 #include "machdep.h"
 
 #endif /*!defined(_OPCODE_H)*/
+
+/* Program check if fpc is not valid contents for FPC register */
+#undef FPC_BRM
+#undef FPC_CHECK
+#if defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)          /*810*/
+#define FPC_BRM FPC_BRM_3BIT
+#define FPC_CHECK(_fpc, _regs) \
+    if(((_fpc) & FPC_RESV_FPX) \
+     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV4 \
+     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV5 \
+     || ((_fpc) & FPC_BRM_3BIT) == BRM_RESV6) \
+        (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
+#else /*!defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)*/   /*810*/
+#define FPC_BRM FPC_BRM_2BIT
+#define FPC_CHECK(_fpc, _regs) \
+    if((_fpc) & FPC_RESERVED) \
+        (_regs)->program_interrupt( (_regs), PGM_SPECIFICATION_EXCEPTION)
+#endif /*!defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)*/  /*810*/
+
+
 
 #undef SIE_ACTIVE
 #if defined(FEATURE_INTERPRETIVE_EXECUTION)
@@ -967,6 +971,52 @@ do { \
 
 #define E_DECODER(_inst, _regs, _len, _ilc) \
         { \
+            INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
+            UNREFERENCED(_inst); \
+        }
+
+/* IE extended op code with two 4-bit immediate fields */       /*912*/
+#undef IE
+#undef IE0
+
+#define IE(_inst, _regs, _i1, _i2)  \
+        IE_DECODER(_inst, _regs, _i1, _i2, 4, 4)
+#define IE0(_inst, _regs, _i1, _i2) \
+        IE_DECODER(_inst, _regs, _i1, _i2, 4, 0)
+
+#define IE_DECODER(_inst, _regs, _i1, _i2, _len, _ilc) \
+        { \
+            int i = (_inst)[3]; \
+            (_i1) = i >> 4; \
+            (_i2) = i & 0x0F; \
+            INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
+        }
+
+/* MII mask with 12-bit and 24-bit relative address fields */   /*912*/
+#undef MII_A
+#undef MII_A0
+
+#define MII_A(_inst, _regs, _m1, _addr2, _addr3) \
+        MII_A_DECODER(_inst, _regs, _m1, _addr2, _addr3, 6, 6)
+#define MII_A0(_inst, _regs, _m1, _addr2, _addr3) \
+        MII_A_DECODER(_inst, _regs, _m1, _addr2, _addr3, 6, 0)
+
+#define MII_A_DECODER(_inst, _regs, _m1, _addr2, _addr3, _len, _ilc) \
+        { \
+            U32 ri2, ri3; S64 offset; \
+            U32 temp = fetch_fw(&(_inst)[2]); \
+            int i = (_inst)[1]; \
+            (_m1) = (i >> 4) & 0x0F; \
+            ri2 = (i << 4) | (temp >> 24); \
+            ri3 = temp & 0xFFFFFF; \
+            offset = 2LL*(S32)ri2; \
+            (_addr2) = (likely(!(_regs)->execflag)) ? \
+                    PSW_IA((_regs), offset) : \
+                    ((_regs)->ET + offset) & ADDRESS_MAXWRAP((_regs)); \
+            offset = 2LL*(S32)ri3; \
+            (_addr3) = (likely(!(_regs)->execflag)) ? \
+                    PSW_IA((_regs), offset) : \
+                    ((_regs)->ET + offset) & ADDRESS_MAXWRAP((_regs)); \
             INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
         }
 
@@ -1883,6 +1933,26 @@ do { \
             INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
         }
 
+/* RSL register and storage with extended op code, 8-bit L field, and mask */
+#undef RSL_RM
+
+#define RSL_RM(_inst, _regs, _r1, _l2, _b2, _effective_addr2, _m3) \
+        RSL_RM_DECODER(_inst, _regs, _r1, _l2, _b2, _effective_addr2, _m3, 6, 6)
+
+#define RSL_RM_DECODER(_inst, _regs, _r1, _l2, _b2, _effective_addr2, _m3, _len, _ilc) \
+    {   U32 temp = fetch_fw(&(_inst)[1]); \
+            (_m3) = temp & 0xf; \
+            (_r1) = (temp >> 4) & 0xf; \
+            (_effective_addr2) = (temp >> 8) & 0xfff; \
+            (_b2) = (temp >> 20) & 0xf; \
+            (_l2) = (temp >> 24) & 0xff; \
+            if((_b2)) { \
+                (_effective_addr2) += (_regs)->GR((_b2)); \
+                (_effective_addr2) &= ADDRESS_MAXWRAP((_regs)); \
+            } \
+            INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
+    }
+
 /* RSI register and immediate with additional R3 field */
 #undef RSI
 #undef RSI0
@@ -2351,6 +2421,36 @@ do { \
                 (_effective_addr1) += (_regs)->GR((_b1)); \
                 (_effective_addr1) &= ADDRESS_MAXWRAP((_regs)); \
             } \
+            INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
+    }
+
+/* SMI storage with mask and 16-bit relative address */         /*912*/
+#undef SMI_A
+#undef SMI_A0
+
+#define SMI_A(_inst, _regs, _m1, _addr2, _b3, _addr3) \
+        SMI_A_DECODER(_inst, _regs, _m1, _addr2, _b3, _addr3, 6, 6)
+#define SMI_A0(_inst, _regs, _m1, _addr2, _b3, _addr3) \
+        SMI_A_DECODER(_inst, _regs, _m1, _addr2, _b3, _addr3, 6, 0)
+
+#define SMI_A_DECODER(_inst, _regs, _m1, _addr2, _b3, _addr3, _len, _ilc) \
+    { \
+            U32 ri2; S64 offset; \
+            U32 temp = fetch_fw(&(_inst)[2]); \
+            int i = (_inst)[1]; \
+            (_m1) = (i >> 4) & 0x0F; \
+            ri2 = temp & 0xFFFF; \
+            (_addr3) = (temp >> 16) & 0xFFF; \
+            (_b3) = (temp >> 28) & 0x0F; \
+            if((_b3)) \
+            { \
+                (_addr3) += (_regs)->GR((_b3)); \
+                (_addr3) &= ADDRESS_MAXWRAP((_regs)); \
+            } \
+            offset = 2LL*(S32)ri2; \
+            (_addr2) = (likely(!(_regs)->execflag)) ? \
+                    PSW_IA((_regs), offset) : \
+                    ((_regs)->ET + offset) & ADDRESS_MAXWRAP((_regs)); \
             INST_UPDATE_PSW((_regs), (_len), (_ilc)); \
     }
 
@@ -3114,7 +3214,7 @@ DEF_INST(trace_svc_return);
 
 /* Instructions in cmpsc.c */
 #if defined(FEATURE_COMPRESSION)
-DEF_INST(compression_call);
+DEF_INST(cmpsc_2012);
 #endif /*defined(FEATURE_COMPRESSION)*/
 
 
@@ -4048,6 +4148,25 @@ DEF_INST(subtract_logical_distinct_long_register);              /*810*/
 DEF_INST(population_count);                                     /*810*/
 #endif /*defined(FEATURE_POPULATION_COUNT_FACILITY)*/
 
+#if defined(FEATURE_LOAD_AND_TRAP_FACILITY)
+DEF_INST(load_and_trap);                                        /*912*/
+DEF_INST(load_long_and_trap);                                   /*912*/
+DEF_INST(load_fullword_high_and_trap);                          /*912*/
+DEF_INST(load_logical_long_fullword_and_trap);                  /*912*/
+DEF_INST(load_logical_long_thirtyone_and_trap);                 /*912*/
+#endif /*defined(FEATURE_LOAD_AND_TRAP_FACILITY)*/
+
+#if defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)
+DEF_INST(compare_logical_and_trap);                             /*912*/
+DEF_INST(compare_logical_and_trap_long);                        /*912*/
+DEF_INST(rotate_then_insert_selected_bits_long_reg_n);          /*912*/
+#endif /*defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)*/
+
+#if defined(FEATURE_EXECUTION_HINT_FACILITY)
+DEF_INST(branch_prediction_preload);                            /*912*/
+DEF_INST(branch_prediction_relative_preload);                   /*912*/
+DEF_INST(next_instruction_access_intent);                       /*912*/
+#endif /*defined(FEATURE_EXECUTION_HINT_FACILITY)*/
 
 /* Instructions in io.c */
 #if defined(FEATURE_CHANNEL_SUBSYSTEM)
@@ -4473,27 +4592,20 @@ DEF_INST(ecpsvm_prefmach_assist);
 
 /* Instructions in ieee.c */
 #if defined(FEATURE_FPS_EXTENSIONS)
-DEF_INST(convert_bfp_long_to_float_long_reg);
-DEF_INST(convert_bfp_short_to_float_long_reg);
+DEF_INST(convert_bfp_to_float_long_reg);
 DEF_INST(convert_float_long_to_bfp_long_reg);
 DEF_INST(convert_float_long_to_bfp_short_reg);
 #endif /*defined(FEATURE_FPS_EXTENSIONS)*/
 
 #if defined(FEATURE_BINARY_FLOATING_POINT)
 DEF_INST(add_bfp_ext_reg);
-DEF_INST(add_bfp_long_reg);
 DEF_INST(add_bfp_long);
-DEF_INST(add_bfp_short_reg);
 DEF_INST(add_bfp_short);
 DEF_INST(compare_bfp_ext_reg);
-DEF_INST(compare_bfp_long_reg);
 DEF_INST(compare_bfp_long);
-DEF_INST(compare_bfp_short_reg);
 DEF_INST(compare_bfp_short);
 DEF_INST(compare_and_signal_bfp_ext_reg);
-DEF_INST(compare_and_signal_bfp_long_reg);
 DEF_INST(compare_and_signal_bfp_long);
-DEF_INST(compare_and_signal_bfp_short_reg);
 DEF_INST(compare_and_signal_bfp_short);
 DEF_INST(convert_fix32_to_bfp_ext_reg);
 DEF_INST(convert_fix32_to_bfp_long_reg);
@@ -4508,9 +4620,7 @@ DEF_INST(convert_bfp_long_to_fix64_reg);
 DEF_INST(convert_bfp_short_to_fix64_reg);
 DEF_INST(convert_bfp_short_to_fix32_reg);
 DEF_INST(divide_bfp_ext_reg);
-DEF_INST(divide_bfp_long_reg);
 DEF_INST(divide_bfp_long);
-DEF_INST(divide_bfp_short_reg);
 DEF_INST(divide_bfp_short);
 DEF_INST(divide_integer_bfp_long_reg);
 DEF_INST(divide_integer_bfp_short_reg);
@@ -4520,11 +4630,8 @@ DEF_INST(load_and_test_bfp_short_reg);
 DEF_INST(load_fp_int_bfp_ext_reg);
 DEF_INST(load_fp_int_bfp_long_reg);
 DEF_INST(load_fp_int_bfp_short_reg);
-DEF_INST(load_lengthened_bfp_short_to_long_reg);
 DEF_INST(load_lengthened_bfp_short_to_long);
-DEF_INST(load_lengthened_bfp_long_to_ext_reg);
 DEF_INST(load_lengthened_bfp_long_to_ext);
-DEF_INST(load_lengthened_bfp_short_to_ext_reg);
 DEF_INST(load_lengthened_bfp_short_to_ext);
 DEF_INST(load_negative_bfp_ext_reg);
 DEF_INST(load_negative_bfp_long_reg);
@@ -4539,31 +4646,17 @@ DEF_INST(load_rounded_bfp_long_to_short_reg);
 DEF_INST(load_rounded_bfp_ext_to_long_reg);
 DEF_INST(load_rounded_bfp_ext_to_short_reg);
 DEF_INST(multiply_bfp_ext_reg);
-DEF_INST(multiply_bfp_long_to_ext_reg);
 DEF_INST(multiply_bfp_long_to_ext);
-DEF_INST(multiply_bfp_long_reg);
 DEF_INST(multiply_bfp_long);
-DEF_INST(multiply_bfp_short_to_long_reg);
 DEF_INST(multiply_bfp_short_to_long);
-DEF_INST(multiply_bfp_short_reg);
 DEF_INST(multiply_bfp_short);
-DEF_INST(multiply_add_bfp_long_reg);
-DEF_INST(multiply_add_bfp_long);
-DEF_INST(multiply_add_bfp_short_reg);
-DEF_INST(multiply_add_bfp_short);
-DEF_INST(multiply_subtract_bfp_long_reg);
-DEF_INST(multiply_subtract_bfp_long);
-DEF_INST(multiply_subtract_bfp_short_reg);
-DEF_INST(multiply_subtract_bfp_short);
+DEF_INST(multiply_addsub_bfp_long);
+DEF_INST(multiply_addsub_bfp_short);
 DEF_INST(squareroot_bfp_ext_reg);
-DEF_INST(squareroot_bfp_long_reg);
 DEF_INST(squareroot_bfp_long);
-DEF_INST(squareroot_bfp_short_reg);
 DEF_INST(squareroot_bfp_short);
 DEF_INST(subtract_bfp_ext_reg);
-DEF_INST(subtract_bfp_long_reg);
 DEF_INST(subtract_bfp_long);
-DEF_INST(subtract_bfp_short_reg);
 DEF_INST(subtract_bfp_short);
 DEF_INST(test_data_class_bfp_short);
 DEF_INST(test_data_class_bfp_long);
@@ -4670,9 +4763,20 @@ DEF_INST(test_data_group_dfp_long);
 DEF_INST(test_data_group_dfp_short);
 #endif /*defined(FEATURE_DECIMAL_FLOATING_POINT)*/
 
+#if defined(FEATURE_DFP_ZONED_CONVERSION_FACILITY)
+DEF_INST(convert_zoned_to_dfp_ext);                             /*912*/
+DEF_INST(convert_zoned_to_dfp_long);                            /*912*/
+DEF_INST(convert_dfp_ext_to_zoned);                             /*912*/
+DEF_INST(convert_dfp_long_to_zoned);                            /*912*/
+#endif /*defined(FEATURE_DFP_ZONED_CONVERSION_FACILITY)*/
+
 /* Instructions in pfpo.c */
 #if defined(FEATURE_PFPO)
 DEF_INST(perform_floating_point_operation);
 #endif /*defined(FEATURE_PFPO)*/
+
+#if defined(FEATURE_PROCESSOR_ASSIST)
+DEF_INST(perform_processor_assist);
+#endif	/* defined(FEATURE_PROCESSOR_ASSIST) */
 
 /* end of OPCODE.H */

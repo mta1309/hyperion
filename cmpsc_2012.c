@@ -1,4 +1,4 @@
-/* CMPSC_2012.C (c) Copyright "Fish" (David B. Trout), 2012          */
+/* CMPSC_2012.C (c) Copyright "Fish" (David B. Trout), 2012-2014     */
 /*              (c) Bernard van der Helm, 2000-2012                  */
 /*              S/390 Compression Call Instruction Functions         */
 /*                                                                   */
@@ -42,6 +42,8 @@
 
 #include "hstdinc.h"    // (MUST be first #include in EVERY source file)
 
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
 #if !defined(_HENGINE_DLL_)
 #define _HENGINE_DLL_
 #endif
@@ -50,8 +52,6 @@
 #include "hercules.h"
 #include "opcode.h"
 #include "inline.h"
-#else                                             // (building utility)
-#define alt_cmpsc           cmpsc_2012
 #endif
 #include "cmpsc.h"                                // (Master header for both)
 
@@ -59,10 +59,10 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Symbols Cache Control Entry
 
-#ifndef EXP_ONCE                    // (we only need to define this once)
-#define EXP_ONCE                    // (we only need to define this once)
+#ifndef EXP_ONCE                    // (we only need to define these once)
+#define EXP_ONCE                    // (we only need to define these once)
 
-#ifdef CMPSC_SYMCACHE
+#ifdef CMPSC_SYMCACHE               // (Symbol caching option)
 
 struct SYMCTL                       // Symbol Cache Control Entry
 {
@@ -78,11 +78,11 @@ typedef struct SYMCTL SYMCTL;
 
 struct EXPBLK                 // EXPAND Index Symbol parameters block
 {
-#ifdef CMPSC_SYMCACHE
+#ifdef CMPSC_SYMCACHE                        // (Symbol caching option)
     SYMCTL  symcctl[ MAX_DICT_ENTRIES ];     // Symbols cache control entries
     U8      symcache[ CMPSC_SYMCACHE_SIZE ]; // Previously expanded symbols
     U16     symindex;                        // Next available cache location
-#endif // CMPSC_SYMCACHE
+#endif // CMPSC_SYMCACHE                     // (Symbol caching option)
     DCTBLK      dctblk;       // GetDCT parameters block
     ECEBLK      eceblk;       // GetECE parameters block
     MEMBLK      op1blk;       // Operand-1 memory access control block
@@ -95,7 +95,7 @@ struct EXPBLK                 // EXPAND Index Symbol parameters block
 };
 typedef struct EXPBLK EXPBLK;
 
-#endif // EXP_ONCE
+#endif // EXP_ONCE                  // (we only need to define these once)
 
 ///////////////////////////////////////////////////////////////////////////////
 // ZeroPadOp1 only if facility was enabled for this build architecture...
@@ -163,6 +163,9 @@ static CMPSC_INLINE void (CMPSC_FASTCALL ARCH_DEP( ZeroPadOp1 ))( CMPSCBLK* pCMP
 #ifndef CMPSC_RETFUNCS              // (one time if Utility, each time if Herc)
 #define CMPSC_RETFUNCS              // (one time if Utility, each time if Herc)
 
+PUSH_GCC_WARNINGS()
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
 static CMPSC_INLINE U8 (CMPSC_FASTCALL ARCH_DEP( ERR ))( CMPSCBLK* pCMPSCBLK, MEMBLK* pOp1MemBlk )
 {
     UNREFERENCED( pOp1MemBlk );
@@ -214,6 +217,8 @@ static CMPSC_INLINE U8 (CMPSC_FASTCALL ARCH_DEP( EXPCC0 ))( CMPSCBLK* pCMPSCBLK,
 {
     pEXPBLK->rc = ARCH_DEP( CC0 )( pCMPSCBLK, &pEXPBLK->op1blk ); return FALSE; // (break)
 }
+
+POP_GCC_WARNINGS()
 
 //-----------------------------------------------------------------------------
 // (define simpler macros to make calling the return functions much easier)
@@ -554,6 +559,7 @@ U8 (CMPSC_FASTCALL ARCH_DEP( cmpsc_Compress ))( CMPSCBLK* pCMPSCBLK )
 {
     U64         nCPUAmt;            // CPU determined processing limit
     U64         pBegOp2;            // Ptr to beginning of operand-2
+    PutGetCBN*  pPutGetCBN;         // Ptr to PutGetCBN function for this CDSS-1
     PutIndex**  ppPutIndex;         // Ptr to PutNextIndex table for this CDSS-1
     PutIndex*   pPutIndex;          // Ptr to PutNextIndex function for this CBN
     U64         pSymTab;            // Symbol-Translation Table
@@ -574,16 +580,19 @@ U8 (CMPSC_FASTCALL ARCH_DEP( cmpsc_Compress ))( CMPSCBLK* pCMPSCBLK )
     U16         max_index;          // Maximum Index value
     U16         children;           // Counts children
     U8          ccnum, scnum, byt;  // (work variables)
-    U8          eodst, equal;       // (work flags)
+    U8          eodst, flag;        // (work flags)
     U8          bits;               // Number of bits per index
     U8          wrk[ MAX_SYMLEN ];  // (work buffer)
 
     bits       = 8 + pCMPSCBLK->cdss;
     max_index  = (0xFFFF >> (16 - bits));
+    pPutGetCBN = ARCH_DEP( PutGetCBNTab    )[ pCMPSCBLK->cdss - 1 ];
     ppPutIndex = ARCH_DEP( PutIndexCDSSTab )[ pCMPSCBLK->cdss - 1 ];
     pPutIndex  = ppPutIndex[ pCMPSCBLK->cbn ];
     pSymTab    = pCMPSCBLK->st ? pCMPSCBLK->pDict + ((U32)pCMPSCBLK->stt << 7) : 0;
     pGetSD     = pCMPSCBLK->f1 ? ARCH_DEP( GetSD1 ) : ARCH_DEP( GetSD0 );
+
+#define PUTSETCBN()     pCMPSCBLK->cbn = pPutGetCBN( pPutIndex )
 
     memset( &dctblk,  0, sizeof( dctblk ) );
     memset( &dctblk2, 0, sizeof( dctblk ) );
@@ -649,7 +658,10 @@ cmp1:
     // No, set CC0 and endop.
 
     if (unlikely( !pCMPSCBLK->nLen2 ))
+    {
+        PUTSETCBN();
         RETCC0( &op1blk );
+    }
 
 cmp2:
 
@@ -657,10 +669,16 @@ cmp2:
     // No, set CC1 and endop.
 
     if (unlikely( eodst ))
+    {
+        PUTSETCBN();
         RETCC1( &op1blk );
+    }
 
     if (unlikely( nCPUAmt >= (U64) pCMPSCBLK->nCPUAmt ))  // (max bytes processed?)
+    {
+        PUTSETCBN();
         RETCC3( &op1blk );                                // (return cc3 to caller)
+    }
 
     children = 0;
 
@@ -672,7 +690,10 @@ cmp2:
 
     cceblk.pCCE = &parent;
     if (unlikely( !ARCH_DEP( GetCCE )( parent_index, &cceblk )))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
 
     nCPUAmt++;
     pCMPSCBLK->pOp2++;
@@ -695,7 +716,7 @@ cmp3:
 
     // Set flag=1.
 
-    equal = 1;
+    flag = TRUE;
 
     // Another SRC char exists?
     // No, goto cmp13;
@@ -718,7 +739,7 @@ cmp5:
         goto cmp10;
 
     // Set flag=0;
-    equal = 0;
+    flag = FALSE;
 
     // Another CC?
     // Yes, goto cmp5;
@@ -735,7 +756,7 @@ cmp5:
         goto cmp10;
 
     // Set flag=0;
-//  equal = 0;      // (already done by UNROLL #1)
+//  flag = FALSE;   // (already done by UNROLL #1)
 
     // Another CC?
     // Yes, goto cmp5;
@@ -752,7 +773,7 @@ cmp5:
         goto cmp10;
 
     // Set flag=0;
-//  equal = 0;      // (already done by UNROLL #1)
+//  flag = FALSE;   // (already done by UNROLL #1)
 
     // Another CC?
     // Yes, goto cmp5;
@@ -769,7 +790,7 @@ cmp5:
         goto cmp10;
 
     // Set flag=0;
-//  equal = 0;      // (already done by UNROLL #1)
+//  flag = FALSE;   // (already done by UNROLL #1)
 
     // Another CC?
     // Yes, goto cmp5;
@@ -786,7 +807,7 @@ cmp5:
         goto cmp10;
 
     // Set flag=0;
-//  equal = 0;      // (already done by UNROLL #1)
+//  flag = FALSE;   // (already done by UNROLL #1)
 
     // Another CC?
     // Yes, goto cmp5;
@@ -810,7 +831,10 @@ cmp5E:
 
     sdeblk.pCCE = &parent;
     if (unlikely( !pGetSD( sibling_index, &sdeblk )))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     scnum = 0;
 
     // (REPEAT FOR EACH SC IN SD)...
@@ -931,7 +955,10 @@ cmp7E:
 
     sdeblk.pCCE = NULL;
     if (unlikely( !pGetSD( sibling_index, &sdeblk )))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     scnum = 0;
 
     // goto cmp7;
@@ -945,7 +972,10 @@ cmp8:
     // goto cmp2;
 
     if (unlikely( (pCMPSCBLK->pOp2 - pBegOp2) > MAX_SYMLEN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     pBegOp2  =  pCMPSCBLK->pOp2;
 
     piblk.index = (!pCMPSCBLK->st) ? parent_index
@@ -960,7 +990,10 @@ cmp9:
     // goto cmp1;
 
     if (unlikely( (pCMPSCBLK->pOp2 - pBegOp2) > MAX_SYMLEN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     pBegOp2  =  pCMPSCBLK->pOp2;
 
     piblk.index = (!pCMPSCBLK->st) ? parent_index
@@ -971,7 +1004,10 @@ cmp9:
 cmp10:
 
     if (unlikely( ++children > MAX_CHILDREN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
 
     // Set child index = CPTR + CC number (0-origin numbering).
 
@@ -988,7 +1024,10 @@ cmp10:
 
     cceblk.pCCE = &child;
     if (unlikely( !ARCH_DEP( GetCCE )( child_index, &cceblk )))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
 
     if (!child.act)
         goto cmp15;
@@ -1014,7 +1053,7 @@ cmp11:
     // Flag=1?
     // No, goto cmp8;
 
-    if (equal != 1)
+    if (!flag)
         goto cmp8;
 
     // Another CC?
@@ -1030,7 +1069,10 @@ cmp11:
 cmp12:
 
     if (unlikely( ++children > MAX_CHILDREN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
 
     // Set child index = SD index + SC number (1-origin numbering).
 
@@ -1047,7 +1089,10 @@ cmp12:
 
     cceblk.pCCE = &child;
     if (unlikely( !ARCH_DEP( GetCCE )( child_index, &cceblk )))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
 
     if (!child.act)
         goto cmp15;
@@ -1079,12 +1124,16 @@ cmp13:
     // Set CC0 and endop.
 
     if (unlikely( (pCMPSCBLK->pOp2 - pBegOp2) > MAX_SYMLEN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     pBegOp2  =  pCMPSCBLK->pOp2;
 
     piblk.index = (!pCMPSCBLK->st) ? parent_index
           : fetch_dct_hw( pSymTab + (parent_index << 1), pCMPSCBLK );
     pPutIndex( &piblk );
+    PUTSETCBN();
     RETCC0( &op1blk );
 
 cmp14:
@@ -1099,7 +1148,10 @@ cmp14:
     pCMPSCBLK->nLen2--;
 
     if (unlikely( (pCMPSCBLK->pOp2 - pBegOp2) > MAX_SYMLEN ))
+    {
+        PUTSETCBN();
         RETERR( &op1blk );
+    }
     pBegOp2  =  pCMPSCBLK->pOp2;
 
     piblk.index = (!pCMPSCBLK->st) ? child_index
@@ -1141,10 +1193,10 @@ cmp16:
 /*---------------------------------------------------------------------------*/
 /* B263 CMPSC - Compression Call                                       [RRE] */
 /*---------------------------------------------------------------------------*/
-DEF_INST( alt_cmpsc )
+DEF_INST( cmpsc_2012 )
 {
     CMPSCBLK cmpsc;                     /* Compression Call parameters block */
-    int  r1, r2, rc;                    /* Operand reg numbers, return code  */
+    int  r1, r2;                        /* Operand register numbers          */
     RRE( inst, regs, r1, r2 );          /* Decode the instruction...         */
 
     /* Build our internal Compression Call parameters block */
@@ -1163,9 +1215,9 @@ DEF_INST( alt_cmpsc )
     {
         /* Perform the Compression or Expansion */
 
-        rc = (regs->GR_L(0) & 0x100)
-            ? ARCH_DEP( cmpsc_Expand   )( &cmpsc )
-            : ARCH_DEP( cmpsc_Compress )( &cmpsc );
+        int rc = (regs->GR_L(0) & 0x100)
+               ? ARCH_DEP( cmpsc_Expand   )( &cmpsc )
+               : ARCH_DEP( cmpsc_Compress )( &cmpsc );
 
         /* Update register context with results */
 
@@ -1217,34 +1269,5 @@ static const U32 g_nDictSize[ MAX_CDSS ] =
     #define _GEN_ARCH _ARCHMODE3
     #include "cmpsc_2012.c"
   #endif /* #ifdef _ARCHMODE3 */
-
-#if !defined( NOT_HERC )        // (building Hercules?)
-
-HDL_DEPENDENCY_SECTION;
-{
-    HDL_DEPENDENCY( HERCULES );
-    HDL_DEPENDENCY( REGS );
-}
-END_DEPENDENCY_SECTION;
-
-HDL_INSTRUCTION_SECTION;
-{
-    char info[256];
-    const char* fn = NULL;
-    if (!fn) fn = strrchr( __FILE__, '\\' );
-    if (!fn) fn = strrchr( __FILE__ , '/' );
-    if (!fn) fn =          __FILE__        ; else fn++;
-#ifdef __TIMESTAMP__
-    MSGBUF( info, "%s version %s last updated on %s", fn, VERSION, __TIMESTAMP__ );
-#else
-    MSGBUF( info, "%s version %s compiled on %s at %s", fn, VERSION, __DATE__, __TIME__ );
-#endif
-    WRMSG( HHC01417, "I", info );
-
-    HDL_DEFINST( HDL_INSTARCH_390 | HDL_INSTARCH_900, 0xB263, alt_cmpsc );
-}
-END_INSTRUCTION_SECTION;
-
-#endif // !defined( NOT_HERC )  // (building Hercules?)
 
 #endif /* #ifndef _GEN_ARCH */

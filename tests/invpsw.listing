@@ -1,0 +1,84 @@
+1                               High Level Assembler Option Summary                                             Page    1
+-                                                                                           jHLASM 1.0   2016/01/16 12.11
+0  No Overriding ASMAOPT Parameters                                                                                      
+   Overriding Parameters-  term                                                                                          
+   No Process Statements                                                                                                 
+                                                                                                                         
+                                                                                                                         
+   Options for this Assembly                                                                                             
+0  NOADATA                                                                                                               
+     ALIGN                                                                                                               
+   NOASA                                                                                                                 
+     BATCH                                                                                                               
+     CODEPAGE(047C)                                                                                                      
+   NOCOMPAT                                                                                                              
+   NODBCS                                                                                                                
+   NODECK                                                                                                                
+     DXREF                                                                                                               
+     ESD                                                                                                                 
+   NOEXIT                                                                                                                
+     FLAG(0,ALIGN,CONT,EXLITW,NOIMPLEN,NOPAGE0,PUSH,RECORD,NOSUBSTR,USING0)                                              
+   NOFOLD                                                                                                                
+   NOGOFF                                                                                                                
+   NOINFO                                                                                                                
+     LANGUAGE(EN)                                                                                                        
+   NOLIBMAC                                                                                                              
+     LINECOUNT(60)                                                                                                       
+     LIST(121)                                                                                                           
+     MACHINE(,NOLIST)                                                                                                    
+     MXREF(SOURCE)                                                                                                       
+     OBJECT                                                                                                              
+     OPTABLE(UNI,NOLIST)                                                                                                 
+   NOPCONTROL                                                                                                            
+   NOPESTOP                                                                                                              
+   NOPROFILE                                                                                                             
+   NORA2                                                                                                                 
+   NORENT                                                                                                                
+     RLD                                                                                                                 
+     RXREF                                                                                                               
+     SECTALGN(8)                                                                                                         
+     SIZE(MAX)                                                                                                           
+   NOSUPRWARN                                                                                                            
+     SYSPARM()                                                                                                           
+ 3   TERM                                                                                                                
+   NOTEST                                                                                                                
+     THREAD                                                                                                              
+   NOTRANSLATE                                                                                                           
+     TYPECHECK(MAGNITUDE,REGISTER)                                                                                       
+     USING(NOLIMIT,MAP,WARN(15))                                                                                         
+   NOWORKFILE                                                                                                            
+     XREF(SHORT,UNREFS)                                                                                                  
+                                                                                                                         
+   No Overriding DD Names                                                                                                
+1INVPSW                                        External Symbol Dictionary                                       Page    2
+-Symbol   Type   Id     Address  Length   Owner Id Flags Alias-of                           jHLASM 1.0   2016/01/16 12.11
+0INV       SD 00000001 00000000 000001E0             00                                                                  
+1INVPSW   invalid program new PSW                                                                               Page    3
+   Active Usings: None                                                                                                   
+0  Loc    Object Code      Addr1    Addr2    Stmt  Source Statement                         jHLASM 1.0   2016/01/16 12.11
+0                                               3 * This file was put into the public domain 2015-11-12                  
+                                                4 * by John P. Hartmann.  You can use it for anything you like,          
+                                                5 * as long as this notice remains.                                      
+0                                               7  punch ':test invpsw'                                                  
+ 00000000                00000000 000001E0      8 inv start 0                                                            
+ 00000000                00000000 000001D0      9  org inv+x'1d0' Program new with two errors                            
+ 000001D0 0000000100000000                     10  dc x'0000000100000000',ad(x'deaddead')                                
+                                               11  punch '* runtest .1'                                                  
+                                               12  punch '* *Program 1'                                                  
+                                               13  punch '* *Done'                                                       
+                                               14  END  ,                                                                
+1INVPSW                         Ordinary Symbol and Literal Cross Reference                                     Page    4
+-Symbol   Length   Value     Id    R Type Asm  Program   Defn References                    jHLASM 1.0   2016/01/16 12.11
+0inv           1 00000000 00000001     J                    8    9                                                       
+1INVPSW                            Diagnostic Cross Reference and Assembler Summary                             Page    5
+-                                                                                           jHLASM 1.0   2016/01/16 12.11
+0     No Statements Flagged in this Assembly                                                                             
+0John's High Level Assembler Release 1.0, Oct  7 2015 15:59:07                                                           
+0System:  Linux release 3.19.0-43-generic on jbox (i686)                                                                 
+0Data Sets Allocated for this Assembly                                                                                   
+  Con DDname   Data Set Name                                Volume  Member                                               
+   P1 SYSIN    invpsw.assemble                                                                                           
+0Assembly Start Time: 12.11.11 Stop Time: 12.11.11 Processor Time: 00.00.00.0051.
+ 
+                                     
+ Return Code 000                                                                                                         

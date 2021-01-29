@@ -1059,6 +1059,9 @@ static CPCONV cpconv[] = {
 
 static CPCONV *codepage_conv = cpconv;
 
+DLL_EXPORT unsigned char *h2g_tab() { return codepage_conv->h2g; }
+DLL_EXPORT unsigned char *g2h_tab() { return codepage_conv->g2h; }
+
 DLL_EXPORT char * query_codepage(void)
 {
     return codepage_conv->name;
@@ -1535,27 +1538,27 @@ DLL_EXPORT unsigned char guest_to_host (unsigned char byte)
     return codepage_conv->g2h[byte];
 }
 
-DLL_EXPORT void buf_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+DLL_EXPORT BYTE* buf_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
 {
     u_int count;
 
     for( count = 0; count < ilength; count++ )
         psoutbuf[count] = host_to_guest(psinbuf[count]);
 
-    return;
+    return psoutbuf;
 }
 
-DLL_EXPORT void buf_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+DLL_EXPORT BYTE* buf_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
 {
     u_int count;
 
     for( count = 0; count < ilength; count++ )
         psoutbuf[count] = guest_to_host(psinbuf[count]);
 
-    return;
+    return psoutbuf;
 }
 
-DLL_EXPORT void str_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+DLL_EXPORT BYTE* str_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
 {
     u_int   count;
     int     pad = FALSE;
@@ -1574,10 +1577,10 @@ DLL_EXPORT void str_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_
         }
     }
 
-    return;
+    return psoutbuf;
 }
 
-DLL_EXPORT void str_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+DLL_EXPORT BYTE* str_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
 {
     u_int count;
 
@@ -1586,10 +1589,10 @@ DLL_EXPORT void str_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_
 
     psoutbuf[count] = '\0';
 
-    return;
+    return psoutbuf;
 }
 
-DLL_EXPORT void prt_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+DLL_EXPORT BYTE* prt_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
 {
     u_int count;
     BYTE  c;
@@ -1603,7 +1606,31 @@ DLL_EXPORT void prt_guest_to_host( const BYTE *psinbuf, BYTE *psoutbuf, const u_
     }
     psoutbuf[count] = '\0';
 
-    return;
+    return psoutbuf;
+}
+
+DLL_EXPORT BYTE* prt_host_to_guest( const BYTE *psinbuf, BYTE *psoutbuf, const u_int ilength )
+{
+    u_int   count;
+    int     pad = FALSE;
+
+    for( count = 0; count < ilength; count++ )
+    {
+        if ( !pad && psinbuf[count] == '\0' )
+            pad = TRUE;
+        if ( !pad )
+        {
+            psoutbuf[count] = isprint      (psinbuf[count]) ?
+                              host_to_guest(psinbuf[count]) :
+                              host_to_guest('.');
+        }
+        else
+        {
+            psoutbuf[count] = host_to_guest(' ');
+        }
+    }
+
+    return psoutbuf;
 }
 
 static int import_file(char *fn, char *buf, int buflen)

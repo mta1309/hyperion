@@ -24,6 +24,8 @@
 /*-------------------------------------------------------------------*/
 #define OSA_GROUP_SIZE          3     /* Devices per OSA Adapter     */
 #define OSA_PORTNO              0     /* OSA Port Number             */
+#define OSA_MAXIPV4            32     /* Max supported IPv4 addresses*/
+#define OSA_MAXIPV6            32     /* Max supported IPv6 addresses*/
 #define OSA_MAXMAC             32     /* Max supported MAC addresses */
 #define OSA_TIMEOUTUS       50000     /* Read select timeout (usecs) */
 
@@ -95,10 +97,22 @@ struct _OSA_BHR;                        /* OSA Buffer Header         */
 typedef struct _OSA_BHR   OSA_BHR,  *POSA_BHR;
 struct _OSA_BHR {                       /* OSA Buffer Header         */
     OSA_BHR*  next;                     /* Pointer to next OSA_BHR   */
+    char*     content;                  /* Pointer to content string */
     int       arealen;                  /* Data area length          */
     int       datalen;                  /* Data length               */
 };                                      /*                           */
 #define SizeBHR  sizeof(OSA_BHR)        /* Size of OSA_BHR           */
+
+
+/*-------------------------------------------------------------------*/
+/* OSA Buffer Anchor                                                 */
+/*-------------------------------------------------------------------*/
+typedef struct _OSA_BAN {
+    LOCK      lockbhr;          /* Lock for buffer chain             */
+    OSA_BHR*  firstbhr;         /* First OSA_BHR in chain            */
+    OSA_BHR*  lastbhr;          /* Last OSA_BHR in chain             */
+    int       numbhr;           /* Number of OSA_BHRs on chain       */
+} OSA_BAN;
 
 
 /*-------------------------------------------------------------------*/
@@ -120,6 +134,28 @@ typedef struct _OSA_MAC {
 
 
 /*-------------------------------------------------------------------*/
+/* OSA IPv4 address structure                                        */
+/*-------------------------------------------------------------------*/
+typedef struct _OSA_IPV4 {
+        BYTE    addr[4];
+        int     type;
+#define IPV4_TYPE_NONE  0
+#define IPV4_TYPE_INUSE 1
+} OSA_IPV4;
+
+
+/*-------------------------------------------------------------------*/
+/* OSA IPv6 address structure                                        */
+/*-------------------------------------------------------------------*/
+typedef struct _OSA_IPV6 {
+        BYTE    addr[16];
+        int     type;
+#define IPV6_TYPE_NONE  0
+#define IPV6_TYPE_INUSE 1
+} OSA_IPV6;
+
+
+/*-------------------------------------------------------------------*/
 /* OSA Group Structure                                               */
 /*-------------------------------------------------------------------*/
 typedef struct _OSA_GRP {
@@ -127,10 +163,9 @@ typedef struct _OSA_GRP {
     COND    qdcond;             /* Condition for halt data device    */
     LOCK    qlock;              /* Lock for above conditions         */
 
-    LOCK      qblock;           /* Lock for IDX read buffer chain    */
-    OSA_BHR*  firstbhr;         /* First OSA_BHR in chain            */
-    OSA_BHR*  lastbhr;          /* Last OSA_BHR in chain             */
-    int       numbhr;           /* Number of OSA_BHRs on chain       */
+    OSA_BAN  idx;               /* IDX buffer anchor                 */
+
+    OSA_BAN  l3r;               /* Layer 3 response buffer anchor    */
 
     char *tuntap;               /* Interface path name               */
     char  ttifname[IFNAMSIZ];   /* Interface network name            */
@@ -138,7 +173,6 @@ typedef struct _OSA_GRP {
     char *tthwaddr;             /* MAC address of the interface      */
     char *ttmtu;                /* MTU of the interface              */
 
-    char *ottipaddr;            /* Original 'ipaddr' option value    */
     char *ttipaddr;             /* IPv4 address of the interface     */
     char *ttpfxlen;             /* IPv4 Prefix length of interface   */
     char *ttnetmask;            /* IPv4 Netmask of the interface     */
@@ -148,16 +182,45 @@ typedef struct _OSA_GRP {
 
     char *ttchpid;              /* chpid                             */
 
-    BYTE  pfxmask6[16];         /* IPv6 prefix mask (zeroes then ff) */
-    BYTE  ipaddr6[16];          /* Network format IPv6 address       */
-    U32   pfxmask4;             /* IPv4 prefix mask (zeroes then ff) */
-    U32   hipaddr4;             /* Host format IPv4 address          */
+    BYTE  confipaddr4[4];       /* IPv4 address of the interface in  */
+                                /* host byte order. This variable    */
+                                /* contains the binary equivalent of */
+                                /* the ttipaddr string.              */
+    BYTE  confpfxmask4[4];      /* IPv4 prefix mask (zeroes then ff) */
+    BYTE  confipaddr6[16];      /* IPv6 address of the interface in  */
+                                /* host byte order. This variable    */
+                                /* contains the binary equivalent of */
+                                /* the ttipaddr6 string.             */
+    BYTE  confpfxmask6[16];     /* IPv6 prefix mask (zeroes then ff) */
 
-    OSA_MAC mac[OSA_MAXMAC];    /* Locally recognised MAC addresses  */
+ OSA_IPV4 ipaddr4[OSA_MAXIPV4]; /* Locally recognised IPv4 address   */
+ OSA_IPV6 ipaddr6[OSA_MAXIPV6]; /* Locally recognised IPv6 addresses */
+  OSA_MAC mac[OSA_MAXMAC];      /* Locally recognised MAC addresses  */
+
     int   promisc;              /* Adapter is in promiscuous mode    */
 
     int   enabled;              /* Interface is enabled (IFF_UP)     */
-    int   debug;                /* Adapter in IFF_DEBUG mode         */
+    u_int debugmask;            /* Debug mask                        */
+#define DBGQETHPACKET   0x00000001  /* Packet                        */
+                                    /* (i.e. the Ethernet frames     */
+                                    /* or IP packets sent to or      */
+                                    /* received from the TAP device  */
+                                    /* in network byte order)        */
+#define DBGQETHDATA     0x00000002  /* Data                          */
+                                    /* (i.e. the messages presented  */
+                                    /* to or accepted from the QETH  */
+                                    /* devices in network byte order */
+                                    /* Note: a maximun of 256 bytes  */
+                                    /* is displayed)                 */
+#define DBGQETHEXPAND   0x00000004  /* Data expanded                 */
+                                    /* (i.e. the messages presented  */
+                                    /* to or accepted from the QETH  */
+                                    /* devices in network byte order */
+                                    /* showing the MPC_TH etc.       */
+                                    /* Note: a maximun of 64 bytes   */
+                                    /* of data is displayed)         */
+#define DBGQETHUPDOWN   0x00000010  /* Connection up and down        */
+#define DBGQETHCCW      0x00000020  /* CCWs executed                 */
     int   l3;                   /* Adapter in layer 3 mode           */
     int   rdpack;               /* Adapter in read packing mode      */
     int   wrpack;               /* Adapter in write packing mode     */
@@ -171,8 +234,11 @@ typedef struct _OSA_GRP {
     U32   seqnumis;             /* MPC_RRH sequence number issuer    */
     U32   seqnumcm;             /* MPC_RRH sequence number cm        */
 
-    U32   ipas;                 /* Supported IP assist mask          */
-    U32   ipae;                 /* Enabled IP assist mask            */
+    U32   ipas4;                /* Supported IP assist mask IPv4     */
+    U32   ipas6;                /* Supported IP assist mask IPv6     */
+    U32   ipae0;                /* Enabled IP assist mask            */
+    U32   ipae4;                /* Enabled IP assist mask IPv4       */
+    U32   ipae6;                /* Enabled IP assist mask IPv6       */
     U32   iir;                  /* Interface ID record               */
 
     BYTE  iMAC[IFHWADDRLEN];    /* MAC of the interface              */
@@ -184,6 +250,13 @@ typedef struct _OSA_GRP {
     BYTE  gtcmconn[4];          /* Guest token cm connection         */
     BYTE  gtulpfilt[4];         /* Guest token ulp filter            */
     BYTE  gtulpconn[4];         /* Guest token ulp connection        */
+
+#if defined(ENABLE_IPV6)
+    BYTE  iaDriveMACAddr[IFHWADDRLEN];   /* MAC address (Driver)     */
+    char  szDriveMACAddr[24];            /* MAC address (Driver)     */
+    struct in6_addr iaDriveLLAddr6;      /* IPv6 Link Local address (Driver) */
+    char            szDriveLLAddr6[48];  /* IPv6 Link Local address (Driver) */
+#endif /* defined(ENABLE_IPV6) */
 
 } OSA_GRP;
 

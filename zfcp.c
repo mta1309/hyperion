@@ -29,6 +29,9 @@
 /*                                                                   */
 
 #include "hstdinc.h"
+
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
 #include "hercules.h"
 #include "devtype.h"
 #include "chsc.h"
@@ -100,7 +103,7 @@ static BYTE zfcp_immed_commands [256] =
 {
 /* 0 1 2 3 4 5 6 7 8 9 A B C D E F */
    0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0, /* 00 */
-   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 10 */
+   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1, /* 10 */
    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 20 */
    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 30 */
    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 40 */
@@ -137,6 +140,8 @@ static BYTE zfcp_immed_commands [256] =
 
 
 #if defined(ZFCP_DEBUG)
+#if 0
+dead code
 static inline void DUMP(DEVBLK *dev, char* name, void* ptr, int len)
 {
 int i;
@@ -153,6 +158,7 @@ int i;
     }
     logmsg(_("\n"));
 }
+#endif
 #define DBGTRC(_dev, ...)                          \
 do {                                               \
   if(((ZFCP_GRP*)((_dev)->group->grp_data))->debug) \
@@ -181,7 +187,8 @@ static inline void set_alsi(DEVBLK *dev, BYTE bits)
     }
 }
 
-
+#if 0
+dead code
 /*-------------------------------------------------------------------*/
 /* Clear Adapter Local Summary Indicator bits                        */
 /*-------------------------------------------------------------------*/
@@ -197,6 +204,7 @@ static inline void clr_alsi(DEVBLK *dev, BYTE bits)
         release_lock(&sysblk.mainlock);
     }
 }
+#endif
 
 
 /*-------------------------------------------------------------------*/
@@ -219,6 +227,8 @@ static inline void set_dsci(DEVBLK *dev, BYTE bits)
 }
 
 
+#if 0
+dead code
 /*-------------------------------------------------------------------*/
 /* Clear Device State Change Indicator bits                          */
 /*-------------------------------------------------------------------*/
@@ -234,6 +244,7 @@ static inline void clr_dsci(DEVBLK *dev, BYTE bits)
         release_lock(&sysblk.mainlock);
     }
 }
+#endif
 #endif /*defined(_FEATURE_QDIO_THININT)*/
 
 
@@ -249,7 +260,7 @@ static void raise_adapter_interrupt(DEVBLK *dev)
     dev->pciscsw.flag2 |= SCSW2_Q | SCSW2_FC_START;
     dev->pciscsw.flag3 |= SCSW3_SC_INTER | SCSW3_SC_PEND;
     dev->pciscsw.chanstat = CSW_PCI;
-    QUEUE_IO_INTERRUPT(&dev->pciioint);
+    QUEUE_IO_INTERRUPT(&dev->pciioint,FALSE);
     release_lock (&dev->lock);
 
     /* Update interrupt status */
@@ -276,7 +287,6 @@ static void process_input_queue(DEVBLK *dev)
 ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
 int iq = dev->qdio.i_qpos;
 int mq = dev->qdio.i_qcnt;
-int nobuff = 1;
 
     DBGTRC(dev, "Input Qpos(%d) Bpos(%d)\n",dev->qdio.i_qpos,dev->qdio.i_bpos[dev->qdio.i_qpos]);
 
@@ -295,9 +305,8 @@ int nobuff = 1;
                 U64 sa; U32 len; BYTE *buf;
                 U64 la;
                 QDIO_SBAL *sbal;
-                int olen = 0; int tlen = 0;
+                int tlen = 0;
                 int ns;
-                int mactype = 0;
 
                     DBGTRC(dev, _("Input Queue(%d) Buffer(%d)\n"),iq,ib);
 
@@ -310,7 +319,7 @@ int nobuff = 1;
                         set_alsi(dev,ALSI_ERROR);
 #endif /*defined(_FEATURE_QDIO_THININT)*/
                         grp->reqpci = TRUE;
-                        DBGTRC(dev, _("STORCHK ERROR sa(%llx), key(%2.2x)\n"),sa,dev->qdio.i_slk[iq]);
+                        DBGTRC(dev, _("STORCHK ERROR sa(%16.16"PRIx64"), key(%2.2x)\n"),sa,dev->qdio.i_slk[iq]);
                         return;
                     }
                     sbal = (QDIO_SBAL*)(dev->mainstor + sa);
@@ -329,7 +338,7 @@ int nobuff = 1;
                             set_alsi(dev,ALSI_ERROR);
 #endif /*defined(_FEATURE_QDIO_THININT)*/
                             grp->reqpci = TRUE;
-                            DBGTRC(dev, _("STORCHK ERROR la(%llx), len(%d), key(%2.2x)\n"),la,len,dev->qdio.i_sbalk[iq]);
+                            DBGTRC(dev, _("STORCHK ERROR la(%16.16"PRIx64"), len(%d), key(%2.2x)\n"),la,len,dev->qdio.i_sbalk[iq]);
                             return;
                         }
                         buf = (BYTE*)(dev->mainstor + la);
@@ -425,7 +434,7 @@ int mq = dev->qdio.o_qcnt;
                         set_alsi(dev,ALSI_ERROR);
 #endif /*defined(_FEATURE_QDIO_THININT)*/
                         grp->reqpci = TRUE;
-                        DBGTRC(dev, _("STORCHK ERROR sa(%llx), key(%2.2x)\n"),sa,dev->qdio.o_slk[oq]);
+                        DBGTRC(dev, _("STORCHK ERROR sa(%16.16"PRIx64"), key(%2.2x)\n"),sa,dev->qdio.o_slk[oq]);
                         return;
                     }
                     sbal = (QDIO_SBAL*)(dev->mainstor + sa);
@@ -444,7 +453,7 @@ int mq = dev->qdio.o_qcnt;
                             set_alsi(dev,ALSI_ERROR);
 #endif /*defined(_FEATURE_QDIO_THININT)*/
                             grp->reqpci = TRUE;
-                            DBGTRC(dev, _("STORCHK ERROR la(%llx), len(%d), key(%2.2x)\n"),la,len,dev->qdio.o_sbalk[oq]);
+                            DBGTRC(dev, _("STORCHK ERROR la(%16.16"PRIx64"), len(%d), key(%2.2x)\n"),la,len,dev->qdio.o_sbalk[oq]);
                             return;
                         }
                         buf = (BYTE*)(dev->mainstor + la);
@@ -502,11 +511,52 @@ ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
     if(dev->scsw.flag2 & SCSW2_Q)
     {
         dev->scsw.flag2 &= ~SCSW2_Q;
-        write_pipe(grp->ppfd[1],"*",1);
+        VERIFY(1 == write_pipe(grp->ppfd[1],"*",1));
     }
     else
         if(dev->group->acount == ZFCP_GROUP_SIZE)
             signal_condition(&grp->qcond);
+}
+
+
+/*-------------------------------------------------------------------*/
+/* Read Configuration Data function                                  */
+/*-------------------------------------------------------------------*/
+static int zfcp_read_configuration_data( DEVBLK* dev, BYTE* buffer, int bufsz )
+{
+    int   copylen;
+    BYTE  work[ sizeof( configuration_data ) ];
+
+    NED *dev_ned = (NED*)&work[0];  /* Device NED is first       */
+    NED *ctl_ned = dev_ned + 1;     /* Control Unit NED is next  */
+    NED *tkn_ned = ctl_ned + 1;     /* Token NED is last NED     */
+    NEQ *gen_neq = (NEQ*)tkn_ned+1; /* General NEQ always last   */
+    DEVBLK *cua;                    /* Our Control Unit device   */
+
+    /* Copy configuration data from tempate */
+    memcpy (work, configuration_data, sizeof( work ));
+
+    /* The first device in the group is the control unit */
+    cua = dev->group->memdev[0];
+
+    /* Insert the Channel Path ID (CHPID) into all of the NEDs */
+    dev_ned->tag[0] = dev->pmcw.chpid[0];
+    ctl_ned->tag[0] = cua->pmcw.chpid[0];
+    tkn_ned->tag[0] = cua->pmcw.chpid[0];
+
+    /* Insert the device's device number into its device NED. */
+    dev_ned->tag[1] = dev->devnum & 0xFF;
+
+    /* Insert the control unit address into the General NEQ */
+    gen_neq->iid[0] = cua->pmcw.chpid[0];
+    gen_neq->iid[1] = cua->devnum & 0xFF;
+
+    /* Finally, copy the work area into the caller's buffer */
+    copylen = bufsz < (int) sizeof( work ) ? bufsz : (int) sizeof( work );
+    memcpy( buffer, work, copylen );
+
+    /* Return to them the number of bytes we provided */
+    return copylen;
 }
 
 
@@ -523,6 +573,8 @@ logmsg(_("ZFCP Experimental Driver - Incomplete - Work In Progress\n"));
 
     if(!dev->group)
     {
+        dev->rcd = &zfcp_read_configuration_data;
+
         dev->numdevid = sizeof(sense_id_bytes);
         memcpy(dev->devid, sense_id_bytes, sizeof(sense_id_bytes));
 
@@ -539,7 +591,8 @@ logmsg(_("ZFCP Experimental Driver - Incomplete - Work In Progress\n"));
             initialize_lock(&grp->qlock);
 
             /* Open write signalling pipe */
-            create_pipe(grp->ppfd);
+            /* Check your retrun codes, Jan.                         */
+            VERIFY(!create_pipe(grp->ppfd));
             grp->ttfd = grp->ppfd[0]; // ZZ TEMP
 
             /* Set Non-Blocking mode */
@@ -627,8 +680,6 @@ logmsg(_("ZFCP Experimental Driver - Incomplete - Work In Progress\n"));
 static void zfcp_query_device (DEVBLK *dev, char **devclass,
                 int buflen, char *buffer)
 {
-ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
-
     BEGIN_DEVICE_CLASS_QUERY( "FCP", dev, devclass, buflen, buffer );
 
     snprintf( buffer, buflen, "%s%s"
@@ -984,30 +1035,8 @@ U32 num;                                /* Number of bytes to move   */
     /* READ CONFIGURATION DATA                                       */
     /*---------------------------------------------------------------*/
     {
-        U32 len = sizeof(configuration_data);
-        NED *dev_ned = (NED*)iobuf;     /* Device NED is first       */
-        NED *ctl_ned = dev_ned + 1;     /* Control Unit NED is next  */
-        NED *tkn_ned = ctl_ned + 1;     /* Token NED is last NED     */
-        NEQ *gen_neq = (NEQ*)tkn_ned+1; /* General NEQ always last   */
-        DEVBLK *cua;                    /* Our Control Unit device   */
-
-        /* Copy configuration data from tempate */
-        memcpy (iobuf, configuration_data, len);
-
-        /* The first device in the group is the control unit */
-        cua = dev->group->memdev[0];
-
-        /* Insert the Channel Path ID (CHPID) into all of the NEDs */
-        dev_ned->tag[0] = dev->pmcw.chpid[0];
-        ctl_ned->tag[0] = cua->pmcw.chpid[0];
-        tkn_ned->tag[0] = cua->pmcw.chpid[0];
-
-        /* Insert the device's device number into its device NED. */
-        dev_ned->tag[1] = dev->devnum & 0xFF;
-
-        /* Insert the control unit address into the General NEQ */
-        gen_neq->iid[0] = cua->pmcw.chpid[0];
-        gen_neq->iid[1] = cua->devnum & 0xFF;
+        /* Build the configuration data area */
+        U32 len = dev->rcd (dev, iobuf, count);
 
         /* Calculate residual byte count */
         num = (count < len ? count : len);
@@ -1238,7 +1267,7 @@ U32 num;                                /* Number of bytes to move   */
             if(FD_ISSET(grp->ppfd[0],&readset))
             {
             char c;
-                read_pipe(grp->ppfd[0],&c,1);
+                VERIFY(1 == read_pipe(grp->ppfd[0],&c,1));
 
                 if(dev->qdio.o_qmask)
                 {
@@ -1327,7 +1356,7 @@ int noselrd;
 
     /* Send signal to QDIO thread */
     if(noselrd && dev->qdio.i_qmask)
-        write_pipe(grp->ppfd[1],"*",1);
+        VERIFY(1 == write_pipe(grp->ppfd[1],"*",1));
 
     return 0;
 }
@@ -1365,7 +1394,7 @@ ZFCP_GRP *grp = (ZFCP_GRP*)dev->group->grp_data;
 
     /* Send signal to QDIO thread */
     if(dev->qdio.o_qmask)
-        write_pipe(grp->ppfd[1],"*",1);
+        VERIFY(1 == write_pipe(grp->ppfd[1],"*",1));
 
     return 0;
 }

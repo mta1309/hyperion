@@ -362,17 +362,16 @@ U64  syslevel;
 
     WRMSG(HHC00004, "I",systype,sysname,sysplex,syslevel);
 
-#if defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS)
+#if defined(ENABLE_BUILTIN_SYMBOLS)
     {
         char buf[128];
-
-        MSGBUF(buf, "%"I64_FMT"X", syslevel );
+        MSGBUF(buf, "%"PRIX64, syslevel );
         set_symbol("SYSTYPE", systype);
         set_symbol("SYSNAME", sysname);
         set_symbol("SYSPLEX", sysplex);
         set_symbol("SYSLEVEL", buf);
     }
-#endif /* defined(OPTION_CONFIG_SYMBOLS) && defined(OPTION_BUILTIN_SYMBOLS) */
+#endif
 
 #if defined(OPTION_LPP_RESTRICT)
     losc_check(systype);
@@ -538,7 +537,7 @@ BYTE            cmdcode;                /* 3270 read/write command   */
     dev = sysblk.sysgdev;
     if (dev == NULL)
     {
-        PTT(PTT_CL_ERR,"*SERVC",(U32)cmdcode,(U32)sysg_len,0);
+        PTT_ERR("*SERVC",(U32)cmdcode,(U32)sysg_len,0);
 
         /* Set response code X'05F0' in SCCB header */
         sccb->reas = SCCB_REAS_IMPROPER_RSC;
@@ -581,7 +580,7 @@ BYTE            cmdcode;                /* 3270 read/write command   */
         /* If unit check occured, set response code X'0040' */
         if (unitstat & CSW_UC)
         {
-            PTT(PTT_CL_ERR,"*SERVC",(U32)more,(U32)unitstat,residual);
+            PTT_ERR("*SERVC",(U32)more,(U32)unitstat,residual);
 
             /* Set response code X'0040' in SCCB header */
             sccb->reas = SCCB_REAS_NONE;
@@ -655,7 +654,7 @@ U32             residual;               /* Residual data count       */
             /* Set response code X'0040' if unit check occurred */
             if (unitstat & CSW_UC)
             {
-                PTT(PTT_CL_ERR,"*SERVC",(U32)more,(U32)unitstat,residual);
+                PTT_ERR("*SERVC",(U32)more,(U32)unitstat,residual);
 
                 /* Set response code X'0040' in SCCB header */
                 sccb->reas = SCCB_REAS_NONE;
@@ -666,7 +665,7 @@ U32             residual;               /* Residual data count       */
             /* Set response code X'75F0' if SCCB length exceeded */
             if (more)
             {
-                PTT(PTT_CL_ERR,"*SERVC",(U32)more,(U32)unitstat,residual);
+                PTT_ERR("*SERVC",(U32)more,(U32)unitstat,residual);
 
                 sccb->reas = SCCB_REAS_EXCEEDS_SCCB;
                 sccb->resp = SCCB_RESP_EXCEEDS_SCCB;
@@ -717,8 +716,7 @@ U32             residual;               /* Residual data count       */
 /* SCP to issue a SCLP_READ_EVENT_DATA service call to retrieve      */
 /* the input data.                                                   */
 /*-------------------------------------------------------------------*/
-SERV_DLL_IMPORT
-void sclp_sysg_attention()
+DLL_EXPORT void sclp_sysg_attention()
 {
 
     OBTAIN_INTLOCK(NULL);
@@ -1100,7 +1098,8 @@ U32             r1, r2;                 /* Values of R fields        */
 U32             sclp_command;           /* SCLP command code         */
 U32             sccb_real_addr;         /* SCCB real address         */
 int             i;                      /* Array subscripts          */
-U32             realmb;                 /* Real storage size in MB   */
+U32             realinc;                /* Storage size in increments*/
+U32             incsizemb;              /* Increment size in MB      */
 U32             sccb_absolute_addr;     /* Absolute address of SCCB  */
 U32             sccblen;                /* Length of SCCB            */
 SCCB_HEADER    *sccb;                   /* -> SCCB header            */
@@ -1157,7 +1156,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_INF,"SERVC",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+    PTT_INF("SERVC",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
 
     /* R1 is SCLP command word */
     sclp_command = regs->GR_L(r1);
@@ -1220,11 +1219,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
         /* READ_SCP_INFO is only valid for processor type CP */
         if(sysblk.ptyp[regs->cpuad] != SCCB_PTYP_CP)
         {
-#ifdef OPTION_MSGCLR
-            WRCMSG("<pnl,color(lightred,black)>", HHC00005, "W");
-#else
             WRMSG(HHC00005, "W");
-#endif
             goto docheckstop;
             /*
              * Replace the following 2 lines with
@@ -1262,10 +1257,30 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
         sccbscp = (SCCB_SCP_INFO*)(sccb+1);
         memset (sccbscp, 0, sizeof(SCCB_SCP_INFO));
 
-        /* Set main storage size in SCCB */
-        realmb = sysblk.mainsize >> 20;
-        STORE_HW(sccbscp->realinum, realmb);
-        sccbscp->realiszm = 1;
+        /* Set main storage size in SCCB...
+         *
+         * PROGRAMMING NOTE: Hercules can support main storage sizes
+         * up to slightly less than 16 EB (16384 PB = 16777216 TB),
+         * even if the host operating system cannot.
+         *
+         * The guest architecural limit however is constrained by the
+         * width of the realinum and realiszm SCCB fields (number of
+         * increments and increment size in MB) which are only 16 bits
+         * and 8 bits wide respectively. Thus the guest's maximum
+         * storage size is architecturally limited to slightly less
+         * than 16 TB (65535 increments * 255 MB increment size).
+         *
+         * This means if our main storage size is >= 64GB we must set
+         * the increment size to a value which ensures the resulting
+         * number of increments remains <= 65535.
+         */
+
+        ASSERT( sysblk.mainsize <= MAX_SCP_STORSIZE );
+        incsizemb = (sysblk.mainsize + (MAX_1MINCR_STORSIZE - 1)) / MAX_1MINCR_STORSIZE;
+        realinc = sysblk.mainsize / (incsizemb << SHIFT_MEGABYTE);
+
+        STORE_HW(sccbscp->realinum, realinc);
+        sccbscp->realiszm = (incsizemb & 0xFF);
         sccbscp->realbszk = 4;
         STORE_HW(sccbscp->realiint, 1);
 
@@ -1275,7 +1290,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
         /* realiszm is valid */
         STORE_FW(sccbscp->grzm, 0);
         /* Number of storage increments installed in esame mode */
-        STORE_DW(sccbscp->grnmx, realmb);
+        STORE_DW(sccbscp->grnmx, realinc);
 #endif /*defined(_900) || defined(FEATURE_ESAME)*/
 
 #ifdef FEATURE_EXPANDED_STORAGE
@@ -1381,7 +1396,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
             ARCH_DEP(checkstop_config)();
             RELEASE_INTLOCK(regs);
             longjmp(regs->progjmp,SIE_NO_INTERCEPT);
-            break;
+            UNREACHABLE_CODE( return );
 
     case SCLP_READ_CHP_INFO:
 
@@ -1520,78 +1535,65 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
         case SCCB_EVD_TYPE_MSG:
         case SCCB_EVD_TYPE_PRIOR:
 
-            /* Point to the Message Control Data Block */
-            mcd_bk = (SCCB_MCD_BK*)(evd_hdr+1);
-            FETCH_HW(mcd_len,mcd_bk->length);
-
-            obj_hdr = (SCCB_OBJ_HDR*)(mcd_bk+1);
-
-            while (mcd_len > sizeof(SCCB_MCD_BK))
+            while (sccblen > sizeof(SCCB_HEADER))
             {
-                FETCH_HW(obj_len,obj_hdr->length);
-                if (obj_len == 0)
+                FETCH_HW(evd_len,evd_hdr->totlen);
+
+                /* Point to the Message Control Data Block */
+                mcd_bk = (SCCB_MCD_BK*)(evd_hdr+1);
+                FETCH_HW(mcd_len,mcd_bk->length);
+
+                obj_hdr = (SCCB_OBJ_HDR*)(mcd_bk+1);
+
+                while (mcd_len > sizeof(SCCB_MCD_BK))
                 {
-                    sccb->reas = SCCB_REAS_BUFF_LEN_ERR;
-                    sccb->resp = SCCB_RESP_BUFF_LEN_ERR;
-                    break;
-                }
-                FETCH_HW(obj_type,obj_hdr->type);
-                if (obj_type == SCCB_OBJ_TYPE_MESSAGE)
-                {
-                    mto_bk = (SCCB_MTO_BK*)(obj_hdr+1);
-                    event_msg = (BYTE*)(mto_bk+1);
-                    event_msglen = obj_len -
-                            (sizeof(SCCB_OBJ_HDR) + sizeof(SCCB_MTO_BK));
-                    if (event_msglen < 0)
+                    FETCH_HW(obj_len,obj_hdr->length);
+                    if (obj_len == 0)
                     {
                         sccb->reas = SCCB_REAS_BUFF_LEN_ERR;
                         sccb->resp = SCCB_RESP_BUFF_LEN_ERR;
                         break;
                     }
-
-                    /* Print line unless it is a response prompt */
-                    if (!(mto_bk->ltflag[0] & SCCB_MTO_LTFLG0_PROMPT))
+                    FETCH_HW(obj_type,obj_hdr->type);
+                    if (obj_type == SCCB_OBJ_TYPE_MESSAGE)
                     {
-                        for (i = 0; i < event_msglen; i++)
+                        mto_bk = (SCCB_MTO_BK*)(obj_hdr+1);
+                        event_msg = (BYTE*)(mto_bk+1);
+                        event_msglen = obj_len -
+                                (sizeof(SCCB_OBJ_HDR) + sizeof(SCCB_MTO_BK));
+                        if (event_msglen < 0)
                         {
-                            message[i] = isprint(guest_to_host(event_msg[i])) ?
-                                guest_to_host(event_msg[i]) : 0x20;
+                            sccb->reas = SCCB_REAS_BUFF_LEN_ERR;
+                            sccb->resp = SCCB_RESP_BUFF_LEN_ERR;
+                            break;
                         }
-                        message[i] = '\0';
-#ifdef OPTION_MSGCLR
-                        if(evd_hdr->type == SCCB_EVD_TYPE_MSG)
-                        {
-                          if(mto_bk->presattr[3] == SCCB_MTO_PRATTR3_HIGH)
-    #ifdef OPTION_SCP_MSG_PREFIX
-                            WRCMSG("<pnl,color(lightyellow,black),keep>", HHC00001, "I", message);
-                          else
-                            WRCMSG("<pnl,color(green,black)>", HHC00001, "I", message);
-                        }
-                        else
-                          WRCMSG("<pnl,color(lightred,black),keep>", HHC00001, "I", message);
-    #else
-                            logmsg("<pnl,color(lightyellow,black),keep>%s\n", message);
-                          else
-                            logmsg("<pnl,color(green,black)>%s\n", message);
-                        }
-                        else
-                          logmsg("<pnl,color(lightred,black),keep>%s\n", message);
-    #endif /* OPTION_SCP_MSG_PREFIX */
-#else
-    #ifdef OPTION_SCP_MSG_PREFIX
-                        WRMSG(HHC00001, "I", message);
-    #else
-                        logmsg("%s\n",message);
-    #endif /* OPTION_SCP_MSG_PREFIX */
-#endif
-                    }
-                }
-                mcd_len -= obj_len;
-                obj_hdr=(SCCB_OBJ_HDR *)((BYTE*)obj_hdr + obj_len);
-            }
 
-            /* Indicate Event Processed */
-            evd_hdr->flag |= SCCB_EVD_FLAG_PROC;
+                        /* Print line unless it is a response prompt */
+                        if (!(mto_bk->ltflag[0] & SCCB_MTO_LTFLG0_PROMPT))
+                        {
+                            for (i = 0; i < event_msglen; i++)
+                            {
+                                message[i] = isprint(guest_to_host(event_msg[i])) ?
+                                    guest_to_host(event_msg[i]) : 0x20;
+                            }
+                            message[i] = '\0';
+#ifdef OPTION_SCP_MSG_PREFIX
+                            WRMSG(HHC00001, "I", "", message);
+#else
+                            LOGMSG("%s\n",message);
+#endif /* OPTION_SCP_MSG_PREFIX */
+                        }
+                    }
+                    mcd_len -= obj_len;
+                    obj_hdr=(SCCB_OBJ_HDR *)((BYTE*)obj_hdr + obj_len);
+                }
+
+                /* Indicate Event Processed */
+                evd_hdr->flag |= SCCB_EVD_FLAG_PROC;
+
+                sccblen -= evd_len;
+                evd_hdr = (SCCB_EVD_HDR *)((BYTE*)evd_hdr + evd_len);
+            }
 
             /* Set response code X'0020' in SCCB header */
             sccb->reas = SCCB_REAS_NONE;
@@ -1636,7 +1638,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
 
         default:
 
-            PTT(PTT_CL_ERR,"*SERVC",regs->GR_L(r1),regs->GR_L(r2),evd_hdr->type);
+            PTT_ERR("*SERVC",regs->GR_L(r1),regs->GR_L(r2),evd_hdr->type);
 
             if( HDC3(debug_sclp_unknown_event, evd_hdr, sccb, regs) )
                 break;
@@ -1726,7 +1728,7 @@ BYTE            *xstmap;                /* Xstore bitmap, zero means
             break;
         }
 
-        PTT(PTT_CL_ERR,"*SERVC",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+        PTT_ERR("*SERVC",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
 
         if( HDC3(debug_sclp_event_data, evd_hdr, sccb, regs) )
             break;

@@ -6,25 +6,20 @@
 
 #include "hstdinc.h"
 
+DISABLE_GCC_WARNING( "-Wunused-function" )
+
 #include "hercules.h"
-
 #include "opcode.h"
-
 #include "inline.h"
-
 #include "service.h"
-
 
 #if defined(_FEATURE_HARDWARE_LOADER)
 
 #if !defined(_SCEHWL_C)
+
 #define _SCEHWL_C
-
-
 #define BOOT_PARM_ADDR             0x01FFD000
-
 #define SDIAS_STORE_STATUS_MAXSIZE 0x02000000
-
 #define HWL_MAXFILETYPE            8    /* Number of supported files */
 
 
@@ -126,7 +121,8 @@ static TID   hwl_tid;                   /* Thread id of the hardware
                                            loader                    */
 static char  *hwl_fn[HWL_MAXFILETYPE];  /* Files by type             */
 
-
+#if 0
+all of this is dead code
 #if 1
 static inline void DUMP(char* name, void* ptr, int len)
 {
@@ -143,6 +139,7 @@ int i;
 }
 #else
  #define DUMP(_name, _ptr, _len)
+#endif
 #endif
 
 #endif /*defined(_FEATURE_HARDWARE_LOADER)*/
@@ -618,10 +615,10 @@ int scp_len;
     xml += sprintf((char*)xml,   "<ipl_platform_loader>\n" );
     xml += sprintf((char*)xml,    "<fcp_ipl>\n" );
     xml += sprintf((char*)xml,     "<devno>0x%4.4X</devno>\n", dev->devnum);
-    xml += sprintf((char*)xml,     "<wwpn>0x%16.16"I64_FMT"X</wwpn>\n", scsi_lddev_wwpn[ldind]);
-    xml += sprintf((char*)xml,     "<lun>0x%16.16"I64_FMT"X</lun>\n", scsi_lddev_lun[ldind]);
+    xml += sprintf((char*)xml,     "<wwpn>0x%16.16"PRIX64"</wwpn>\n", scsi_lddev_wwpn[ldind]);
+    xml += sprintf((char*)xml,     "<lun>0x%16.16"PRIX64"</lun>\n", scsi_lddev_lun[ldind]);
     xml += sprintf((char*)xml,     "<boot_program_selector>0x%8.8X</boot_program_selector>\n", scsi_lddev_prog[ldind]);
-    xml += sprintf((char*)xml,     "<br_lba>0x%16.16"I64_FMT"X</br_lba>\n", scsi_lddev_brlba[ldind]);
+    xml += sprintf((char*)xml,     "<br_lba>0x%16.16"PRIX64"</br_lba>\n", scsi_lddev_brlba[ldind]);
     xml += sprintf((char*)xml,    "</fcp_ipl>\n" );
     xml += sprintf((char*)xml,   "</ipl_platform_loader>\n" );
     if(scp_len)
@@ -782,25 +779,25 @@ int  ldind;  /* Load / Dump indicator */
         {
             if(!strcasecmp("portname",argv[i]) && (i+1) < argc)
             {
-                if(sscanf(argv[++i], "%"I64_FMT"x%c", &scsi_lddev_wwpn[ldind], &c) != 1)
+                if(sscanf(argv[++i], "%"SCNx64"%c", &scsi_lddev_wwpn[ldind], &c) != 1)
                     logmsg(_("HHCSB002 Invalid PORTNAME\n"));
                 continue;
             }
             else if(!strcasecmp("lun",argv[i]) && (i+1) < argc)
             {
-                if(sscanf(argv[++i], "%"I64_FMT"x%c", &scsi_lddev_lun[ldind], &c) != 1)
+                if(sscanf(argv[++i], "%"SCNx64"%c", &scsi_lddev_lun[ldind], &c) != 1)
                     logmsg(_("HHCSB003 Invalid LUN\n"));
                 continue;
             }
             else if(!strcasecmp("bootprog",argv[i]) && (i+1) < argc)
             {
-                if(sscanf(argv[++i], "%x%c", &scsi_lddev_prog[ldind], &c) != 1)
+                if(sscanf(argv[++i], "%"SCNx32"%c", &scsi_lddev_prog[ldind], &c) != 1)
                     logmsg(_("HHCSB004 Invalid BOOTPROG\n"));
                 continue;
             }
             else if(!strcasecmp("br_lba",argv[i]) && (i+1) < argc)
             {
-                if(sscanf(argv[++i], "%"I64_FMT"x%c", &scsi_lddev_brlba[ldind], &c) != 1)
+                if(sscanf(argv[++i], "%"SCNx64"%c", &scsi_lddev_brlba[ldind], &c) != 1)
                     logmsg(_("HHCSB005 Invalid BR_LBA\n"));
                 continue;
             }
@@ -824,13 +821,13 @@ int  ldind;  /* Load / Dump indicator */
     else
     {
         if(scsi_lddev_wwpn[ldind])
-            logmsg(_("portname %16.16"I64_FMT"x\n"),scsi_lddev_wwpn[ldind]);
+            logmsg(_("portname %16.16"PRIx64"\n"),scsi_lddev_wwpn[ldind]);
         if(scsi_lddev_lun[ldind])
-            logmsg(_("lun      %16.16"I64_FMT"x\n"),scsi_lddev_lun[ldind]);
+            logmsg(_("lun      %16.16"PRIx64"\n"),scsi_lddev_lun[ldind]);
         if(scsi_lddev_prog[ldind])
             logmsg(_("bootprog %8.8x\n"),scsi_lddev_prog[ldind]);
         if(scsi_lddev_brlba[ldind])
-            logmsg(_("br_lba   %16.16"I64_FMT"x\n"),scsi_lddev_brlba[ldind]);
+            logmsg(_("br_lba   %16.16"PRIx64"\n"),scsi_lddev_brlba[ldind]);
         if(scsi_lddev_scpdata[ldind])
             logmsg(_("scpdata  %s\n"),scsi_lddev_scpdata[ldind]);
     }

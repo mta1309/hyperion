@@ -23,6 +23,12 @@
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////////
+// Determine whether process is running "elevated" or not.
+// (returns 1==true running elevated, 0==false otherwise)
+
+W32_DLL_IMPORT  int is_elevated();
+
+//////////////////////////////////////////////////////////////////////////////////////////
 // Translates a Win32 '[WSA]GetLastError()' value into a 'errno' value (if possible
 // and/or if needed) that can then be used in the below 'w32_strerror' string function...
 
@@ -128,6 +134,8 @@ W32_DLL_IMPORT char* strtok_r ( char* s, const char* sep, char** lasts);
     struct timeval  ru_stime;       // System time used
   };
   W32_DLL_IMPORT int getrusage ( int who, struct rusage* r_usage );
+  W32_DLL_IMPORT int pthread_getcpuclockid ( TID tid, clockid_t* clk_id );
+  #define _POSIX_THREAD_CPUTIME (1) // Indicate pthread_getcpuclockid() presence 
 #endif
 
 #if !defined(HAVE_DECL_LOGIN_NAME_MAX) || !HAVE_DECL_LOGIN_NAME_MAX
@@ -183,8 +191,14 @@ W32_DLL_IMPORT int socket_set_blocking_mode( int sfd, int blocking_mode );
 W32_DLL_IMPORT int socket_is_socket( int sfd );
 
 // Set the SO_KEEPALIVE option and timeout values for a
-// socket connection to detect when client disconnects */
-W32_DLL_IMPORT void socket_keepalive( int sfd, int idle_time, int probe_interval, int probe_count );
+// socket connection to detect when client disconnects.
+// Returns 0==success, +1==warning(*), -1==failure.
+// (*) Warning failure means function only partially
+//     succeeded (not all requested values were set)
+W32_DLL_IMPORT int set_socket_keepalive( int sfd, int idle_time, int probe_interval, int probe_count );
+
+// Function to retrieve keepalive values. 0==success, -1=failure
+W32_DLL_IMPORT int get_socket_keepalive( int sfd, int* idle_time, int* probe_interval, int* probe_count );
 
 // Retrieve directory where process was loaded from...
 // (returns >0 == success, 0 == failure)
@@ -196,17 +210,34 @@ W32_DLL_IMPORT int expand_environ_vars( const char* inbuff, char* outbuff, DWORD
 // Initialize Hercules HOSTINFO structure
 W32_DLL_IMPORT void w32_init_hostinfo( HOST_INFO* pHostInfo );
 
-W32_DLL_IMPORT int   w32_socket   ( int af, int type, int protocol );
-W32_DLL_IMPORT void  w32_FD_SET   ( int fd, fd_set* pSet );
-W32_DLL_IMPORT int   w32_FD_ISSET ( int fd, fd_set* pSet );
-W32_DLL_IMPORT int   w32_select   ( int nfds,
-                     fd_set* pReadSet,
-                     fd_set* pWriteSet,
-                     fd_set* pExceptSet,
-                     const struct timeval* pTimeVal,
-                     const char* pszSourceFile,
-                     int nLineNumber
-                   );
+W32_DLL_IMPORT int   w32_socket      ( int af, int type, int protocol );
+W32_DLL_IMPORT int   w32_accept      ( int lsock, struct sockaddr* addr, int* addrlen );
+W32_DLL_IMPORT int   w32_close_socket( int fd );
+W32_DLL_IMPORT void  w32_FD_SET      ( int fd, fd_set* pSet );
+W32_DLL_IMPORT int   w32_FD_ISSET    ( int fd, fd_set* pSet );
+
+// PROGRAMMING NOTE: w32_select can only be used with sockets, not files.
+W32_DLL_IMPORT int   w32_select      ( int                    nfds,
+                                       fd_set*                pReadSet,
+                                       fd_set*                pWriteSet,
+                                       fd_set*                pExceptSet,
+                                       const struct timeval*  pTimeVal,
+                                       const char*            pszSourceFile,
+                                       int                    nLineNumber
+                                     );
+
+// PROGRAMMING NOTE: w32_pselect can only be used with sockets, not files.
+// PROGRAMMING NOTE: w32_pselect does not support the sigmask parameter.
+typedef unsigned long sigset_t;
+W32_DLL_IMPORT int   w32_pselect     ( int                    nfds,
+                                       fd_set*                pReadSet,
+                                       fd_set*                pWriteSet,
+                                       fd_set*                pExceptSet,
+                                       const struct timespec* pTimeout,
+                                       const sigset_t*        pSigmask,
+                                       const char*            pszSourceFile,
+                                       int                    nLineNumber
+                                     );
 
 W32_DLL_IMPORT unsigned w32_if_nametoindex ( const char* ifname );
 W32_DLL_IMPORT const char* w32_inet_ntop ( int af, const void* src, char* dst, socklen_t size );
@@ -214,7 +245,11 @@ W32_DLL_IMPORT int      w32_inet_pton ( int af, const char* src, void* dst );
 
 W32_DLL_IMPORT FILE*  w32_fdopen ( int their_fd, const char* their_mode );
 W32_DLL_IMPORT size_t w32_fwrite ( const void* buff, size_t size, size_t count, FILE* stream );
-W32_DLL_IMPORT int    w32_fprintf( FILE* stream, const char* format, ... );
+
+W32_DLL_IMPORT int    w32_vsnprintf( char *bfr, size_t cnt, const char *fmt, va_list vargs ) ATTR_PRINTF(3,0);
+W32_DLL_IMPORT int    w32_snprintf ( char *bfr, size_t cnt, const char *fmt, ... )           ATTR_PRINTF(3,4);
+W32_DLL_IMPORT int    w32_fprintf( FILE* stream, const char* format, ... )                   ATTR_PRINTF(2,3);
+
 W32_DLL_IMPORT int    w32_fclose ( FILE* stream );
 W32_DLL_IMPORT int    w32_get_stdin_char ( char* pCharBuff, int wait_millisecs );
 W32_DLL_IMPORT pid_t  w32_poor_mans_fork ( char*  pszCommandLine, int* pnWriteToChildStdinFD );

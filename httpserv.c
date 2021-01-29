@@ -286,7 +286,7 @@ static char *http_unescape(char *buffer)
 
         *pointer = (highnibble<<4) | lownibble;
 
-        memcpy(pointer+1, pointer+3, strlen(pointer+3)+1);
+        memmove(pointer+1, pointer+3, strlen(pointer+3)+1);
 
         pointer++;
     }
@@ -807,18 +807,11 @@ struct timeval      timeout;            /* timeout value             */
 
     hdl_adsc("http_shutdown",http_shutdown, NULL);
 
-    /* Set root mode in order to set priority */
-    SETMODE(ROOT);
-
     /* Set server thread priority; ignore any errors */
-    if(setpriority(PRIO_PROCESS, 0, sysblk.srvprio))
-       WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-
-    /* Back to user mode */
-    SETMODE(USER);
+    set_thread_priority(0, sysblk.srvprio);
 
     /* Display thread started message on control panel */
-    WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "HTTP server");
+    WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), "HTTP server");
 
     /* make sure root path is built */
     if ( http_root() == NULL )
@@ -938,7 +931,7 @@ http_server_stop:
         hdl_rmsc(http_shutdown, NULL);
 
     /* Display thread started message on control panel */
-    WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "HTTP server");
+    WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), "HTTP server");
 
     sysblk.httptid = 0;
 

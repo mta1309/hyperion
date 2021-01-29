@@ -109,6 +109,7 @@ struct hifr
 };
 typedef struct hifr hifr;
 
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__SOLARIS__)
   #define  hifr_name       ifreq.ifr_name
   #define  hifr_addr       ifreq.ifr_addr
   #define  hifr_netmask    ifreq.ifr_netmask

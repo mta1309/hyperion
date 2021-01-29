@@ -31,6 +31,9 @@
 #if defined( _MSVC_ )
   #define BREAK_INTO_DEBUGGER()     __debugbreak()
 #else
+  /* On  UNIX,  this  essentially works as assert(), except that you */
+  /* get  no  message; it allows an already connected gdb session to */
+  /* gain control.  Its use is questionable.  jph.                   */
   #define BREAK_INTO_DEBUGGER()     raise( SIGTRAP )
 #endif
 
@@ -59,8 +62,8 @@
 
 #if !_ENABLE_TRACING_STMTS_IMPL
   #define VERIFY(a)       ((void)(a))
-  #define ASSERT          __noop
-  #define TRACE           __noop
+  #define ASSERT(a)
+  #define TRACE(...)
 #else /* _ENABLE_TRACING_STMTS_IMPL */
   #if defined( _MSVC_ )
     #define TRACE(...) do { \
@@ -91,7 +94,7 @@
   #ifndef _ENABLE_TRACING_STMTS_DEBUGGERTRACE_DEFINED
   #define _ENABLE_TRACING_STMTS_DEBUGGERTRACE_DEFINED
   /* Windows: also send to debugger window */
-  inline void DebuggerTrace(char* fmt, ...) {
+  static inline void DebuggerTrace(char* fmt, ...) {
       const int chunksize = 512;
       int buffsize = 0;
       char* buffer = NULL;

@@ -1,0 +1,365 @@
+#!/bin/sh
+
+# Note: UNIX and REXX required.
+
+# This  file  was  put  into  the  public  domain 2015-10-05 by John P.
+# Hartmann.   You  can  use  it  for anything you like, as long as this
+# notice remains.
+
+# Anything  said  in  comments in this file assumes that you have built
+# Hercules by git pull; autogen.sh; make.
+
+# This script is in support of "make check".  If run by hand, it should
+# be  invoked  from  the  top level object directory, "hyperion" if you
+# configured  in  the source tree; the external object directory if you
+# configured elsewhere.
+
+# Arguments flags:
+
+# -d <word>
+# Specify  the  path  to  the test directory.  The default is ${dirname
+# $0}, perhaps ../hyperion/tests
+
+# -e <word>
+# Specify  the  default extension for the input test files.  tst is the
+# default.   The  -e  flag is active for all -f flags until the next -e
+# flag if any.
+
+# -f <word>
+# Specify  the  input  file  name  perhaps including an extension.  The
+# default  is  "-f  *.tst"  to  get the current behaviour.  Multiple -f
+# flags  are  supported.  The default extension is appended if the word
+# does not contain a period.
+
+# -h <word>
+# Specify  the  object directory that contains the hercules executable.
+# The default is parent of -d if there is no hercules executable in the
+# current directory.
+
+# -l <word>
+# Specify the name of a module to load dynamically into hercules.  This
+# is passed to Hercules.  The configuration file loads
+# dyncrypt; if you manage to load that module, Hercules will abort.
+# You can specify multiple -l flags; they will be accumulated.
+
+# -p <word>
+# Specify the library path for loadable modules, e.g., device managers.
+# This is passed to Hercules.  The default is .libs since test cases
+# are run from the build rather than install directories.
+
+# -q
+# Pass "quiet" to redtest to suppress details about test cases.
+
+# -r <number>
+# Repeat  the  composite  test  script  n  times.   There is no need to
+# specify  -x  as  hercules terminates without an explicit quit when in
+# daemon mode.
+
+# -t <number>
+# Passed to hercules (timeout factor).
+
+# -v <word>
+# Set  variable  for redtest.rexx (in fact, arguments to redtest.rexx).
+# Use  -v ptrsize=4 when running a 32 bit executable on an 8 bit system
+# if no valid config.h can be found. You can also set private variables
+# this  way  (but  such  variables  will  be  unset  when running "make
+# check").  It  is  unspecified  whether  case is respected in variable
+# names. -v quiet will make redtest more terse.
+
+# -w <word>
+# Specify the work file name.  The default is allTests.
+
+# -x
+# Do not append the quit command the composite test script.
+
+#  Positional  arguments  for  compatibility  with the past.  These are
+#  inspected  only if the first argument is not of the form of a single
+#  hyphen followed by single lowercase letter
+
+# 1     Path  from the current directory to the tests source directory.
+#       Specify - (minus, hyphen) for the default ../hyperion/tests
+
+# 2     File  name  of  test  case  omitting  the .tst extension or the
+#       default  '*'  for  all .tst files.  Quote the asterisk to avoid
+#       premature file name expansion.  But see #4.
+
+# 3     Specify  noexit  to  suppress  the  exit  command that normally
+#       terminates  the test cases.  This will allow you to poke around
+#       with  console commands after the test script has run.  Anything
+#       else,  including nothing adds an exit command at the end of the
+#       composite script.
+
+# 4     File type of test cases.  Default .tst.
+
+# 5+    Passed to redtest.rexx.  "quiet" or <var>=<value>.
+
+# To run a specific test case:
+#       ../hyperion/tests/runtest - <fname>
+# Again, be sure to omit the extension.
+
+# Tests  are  normally  done alphabetically.  You can use the scripting
+# facilities  to  include specific test case files in any order, but do
+# not  give these embedded files the default extension (unless you want
+# them run twice!).
+
+# We  can  assume  that  the  tests  live in the same directory as this
+# script, but you cannot assume that the executable is in the directory
+# above.  Read INSTALL in the source directory.
+
+# This  script  must  be  run  from  the object directory, that is, the
+# directory  where the "make" command was issued and where the hercules
+# libtool  script  is  built.  Or the directory must contain a symbolic
+# link to the hercules executable.
+
+
+# Verify that the hercules file is indeed an executable file.  This means
+# it must be either a wrapper script for libtool or an ELF executable.
+# This function depends on file output emiting a phrase immediately after
+# the filename thus: <filename>: <phrase>, <more stuff>.   The first and
+# last words in the phrase are tested.  The comma after phrase is important.
+
+ver_exec_or_lt()
+{
+   fileop=$(file $1)
+   subtype=$(echo $fileop | sed -e 's/.*: // ; s/ .*$//')
+   type=$(echo $fileop | sed -e 's/.*: // ; s/, .*// ; s/.* //')
+# If we get a lot of tests, then convert this to a case/esac.
+# libtool wrapper on system with bash
+   if [ "$subtype $type" = "Bourne-Again script" ] ; then
+      return 1
+   fi
+# libtool wrapper on POSIX system (e.g., FreeBSD)
+   if [ "$subtype $type" = "POSIX script" ] ; then
+      return 1
+   fi
+# ELF Executable of whatever bitness
+   if [ "$subtype $type" = "ELF executable" ] ; then
+      return 1
+   fi
+# ELF shared object of whatever bitness (reported by Debian 9 file utility)
+   if [ "$subtype $type" = "ELF object" ] ; then
+      return 1
+   fi
+# ELF executable version 1 of whatever bitness (reported by Solaris 11.3 file utility)
+# "hercules: ELF 32-bit LSB executable 80386 Version 1, dynamically linked, not stripped"
+   if [ "$subtype $type" = "ELF 1" ] ; then
+      return 1
+   fi
+   echo $fileop
+   return 0
+}
+
+setvar()
+{
+        if [ $# -lt 3 ] ; then
+                echo "Value is missing for flag $2"
+                exit 17
+        fi
+        eval $1=$3
+}
+
+scanflags()
+{
+        while [ $# -gt 0 ]
+        do
+                case $1 in
+                        (-d) setvar testdir $1 $2 ; shift ;;
+                        (-e) setvar ftype   $1 $2 ; shift ;;
+                        (-f)
+                                setvar fname   $1 $2
+                                echo $fname|grep -q '\.'
+                                if [ $? -eq 1 ] ; then fname=$fname.$ftype; fi
+                                files="$files $testdir/$fname"
+                                shift ;;
+                        (-h) setvar hercexec $1 $2 ; shift ;;
+                        (-l|-t)
+                                setvar dummy    $1 $2
+                                hercargs="$hercargs $1 $2"
+                                shift ;;
+                        (-p) setvar modpath $1 $2 ; shift ;;
+                        (-r) setvar repeat  $1 $2 ; shift ;;
+                        (-q) vars="quiet $vars" ;;
+                        (-v)
+                                setvar dummy    $1 $2
+                                vars="$vars $2"
+                                shift ;;
+                        (-w) setvar wfn     $1 $2 ; shift ;;
+                        (-x)    exit=noexit ;;
+                        (*)  break;;
+                esac
+                shift 1
+        done
+        rest="$*"
+}
+
+scanold()
+{
+
+        dir=${1:-$testdir}
+        if [ "$dir" = "-" ] ; then
+                dir=$testdir
+        fi
+        if [ $# -gt 1 ] ; then
+                fns=$2
+        fi
+
+        if [ $# -gt 2 ] ; then
+                exit=$3
+        fi
+
+        if [ $# -gt 3 ] ; then
+                ftype=$4
+                shift 4
+                rest="$*"
+        fi
+
+        files=$dir/$fns.$ftype
+}
+
+wfn=allTests
+
+# Determine  the  relative path to the tests directory.  The default is
+# set on the assumption that this file is in the tests directory, which
+# is  where it is in the source tree.  If this is not the case, you are
+# advised to write your own derivative of this script.
+
+testdir=$(dirname $0)
+dir=$testdir
+modpath=.libs
+fns='*'
+exit=exit
+ftype=tst
+# hparms
+# Location of hercules executable
+hdir=.
+
+if [ $# -gt 0 ] ; then
+        echo $1|grep -q '^[-][a-z]$'
+        if [ $? -eq 0 ] ; then
+                scanflags $*
+        else
+                scanold $*
+        fi
+fi
+if [ -z "$files" ] ; then files="$testdir/*.$ftype"; fi
+
+
+# echo dir $testdir ft $ftype fn $fname files $files all $allfiles herc $hercexec rep $repeat work $wfn vars $vars
+
+if [ ! -x hercules ] ; then
+   if [ -x $dir/../hercules ] ; then
+        hdir=$dir/..
+   elif [ -x $hercexec/hercules ] ; then
+        hdir=$hercexec
+   else
+      echo 'Hercules executable (or the libtool front end) is not where expected.'
+      echo "... tried '$PWD', '$dir/..', and '$hercexec'"
+      exit 16
+   fi
+fi
+
+if [ -f $hdir/config.h ] ; then
+   ptrsize=$(grep "^#define [ ]*SIZEOF_INT_P" $hdir/config.h | tr -s ' '  | cut -d ' ' -f 3)
+   vars="$vars ptrsize=$ptrsize"
+   # echo Pointer size is set to $ptrsize
+else
+   echo "Unable to determine the size of a pointer.  Specify ptrsize=4 if on a 32-bit system."
+fi
+
+vars="$vars platform=$(uname -s)"
+
+# Verify that the configuration file and redtest.rexx are available.
+
+rv=0
+if [ ! -f $dir/tests.conf ] ; then
+   echo "Error: Hercules configuration file $dir/tests.conf not found."
+   rv=1
+fi
+
+if [ ! -f $dir/redtest.rexx ] ; then
+   echo "Error: Post processor redtest.rexx is not available."
+   rv=1
+fi
+
+if [ -z $(which rexx) ] ; then
+   echo "Error: REXX interpreter is not available."
+   rv=1
+fi
+
+ver_exec_or_lt $hdir/hercules
+vrv=$?
+if [ $vrv -eq 0 ] ; then
+   echo "Error:  Hercules executable is neither an ELF executable nor a libtool wrapper."
+   rv=1
+fi
+
+if [ 0 -ne $rv ] ; then
+   exit 12
+fi
+
+# Generate composite file of all test cases, but do not call it .tst as
+# that  would  cause  a  recursion  if executed in the tests directory.
+# File  name  expansion  sorts  it  alphabetically (some shell variants
+# ignore case and/or punctuation).
+
+# set -x
+
+echo Files: $files
+
+{
+        echo defsym testpath $dir
+        todo=$(echo $files)
+
+        for file in $todo; do
+
+                mod=$(stat $file|grep 'Modify'|cut -d ' ' -f 2-)
+                dir=$(dirname $file)
+                full=$(cd $dir;pwd)
+                first=$(echo $file|cut -c 1)
+                echo '* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *'
+                echo '*'
+                echo '* Start of test file' $file date $mod in $full
+                echo '*'
+                cat $file
+        done
+
+} >$wfn.testin
+
+rv=$?
+if [ $rv -ne 0 ] ; then
+        echo Unable to build input file rv=$rv
+        exit $rv
+fi
+if [ -n "$repeat" ] ; then
+        echo Repeating $repeat
+        while [ 0 -lt $repeat ]
+        do
+                cat $files >>$wfn.testin
+                eval repeat=$(($repeat - 1))
+        done
+fi
+
+# Run  the script through Hercules.  Redirecting standard output writes
+# a log file.  2>&1 disables the panel display and the ability to enter
+# panel commands.
+
+# set -x
+cmd="$hdir/hercules -p $modpath $hercargs -f $dir/tests.conf -r $wfn.testin -t"
+if [ "$exit" = "noexit" ] ; then
+        $cmd >$wfn.out
+        rv=$?
+else
+        # Run  Hercules  in  daemon mode by redirecting both stdout and
+        # stderr.
+        echo exit >>$wfn.testin
+        $cmd -d >$wfn.out 2>&1
+        rv=$?
+fi
+
+# Read entire file to allow redtest.rexx to parse the features list
+if [ $rv -eq 0 ] ; then
+   rexx $dir/redtest.rexx $wfn.out $vars $rest
+   rv=$?
+fi
+
+exit $rv

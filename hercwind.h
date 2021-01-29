@@ -82,9 +82,9 @@ typedef u_int32_t           in_addr_t;
 #include <signal.h>
 #include <direct.h>
 
-#define STDIN_FILENO    fileno(stdin)
-#define STDOUT_FILENO   fileno(stdout)
-#define STDERR_FILENO   fileno(stderr)
+#define STDIN_FILENO    0
+#define STDOUT_FILENO   1
+#define STDERR_FILENO   2
 
 /* Bit settings for open() and stat() functions */
 #define S_IRUSR         _S_IREAD
@@ -101,16 +101,16 @@ typedef u_int32_t           in_addr_t;
 #define W_OK            2
 #define R_OK            4
 
-#define strcasecmp      stricmp
-#define strncasecmp     strnicmp
+#define strcasecmp      _stricmp
+#define strncasecmp     _strnicmp
 
 #if !defined(_TRUNCATE)
 #define _TRUNCATE ((size_t)-1)      // normally #defined in <crtdefs.h>
 #endif
-// Using _snprintf_s(,,_TRUNCATE,...) ensures the buffer will ALWAYS be null terminated */
-#define snprintf(_buf, _size, ...)  _snprintf_s((_buf), (_size), _TRUNCATE, ## __VA_ARGS__ )
 
-#define vsnprintf       _vsnprintf
+#define snprintf        w32_snprintf
+#define vsnprintf       w32_vsnprintf
+
 #define strerror        w32_strerror
 #define strerror_r      w32_strerror_r
 
@@ -125,17 +125,22 @@ typedef u_int32_t           in_addr_t;
 #define HAVE_U_INT8_T
 #define HAVE_LIBMSVCRT
 #define HAVE_SYS_MTIO_H         // (ours is called 'w32mtio.h')
+#define HAVE_ASSERT_H
 
-#ifndef MAX_CPU_ENGINES
-#define MAX_CPU_ENGINES  8
+#if !defined(ENABLE_CONFIG_INCLUDE) && !defined(NO_CONFIG_INCLUDE)
+#define  ENABLE_CONFIG_INCLUDE          /* enable config file includes */
 #endif
 
-#if !defined(OPTION_CONFIG_SYMBOLS)
-#define OPTION_CONFIG_SYMBOLS
+#if !defined(ENABLE_SYSTEM_SYMBOLS) && !defined(NO_SYSTEM_SYMBOLS)
+#define  ENABLE_SYSTEM_SYMBOLS          /* access to system symbols  */
 #endif
 
-#if !defined(OPTION_ENHANCED_CONFIG_INCLUDE)
-#define OPTION_ENHANCED_CONFIG_INCLUDE
+#if !defined(ENABLE_BUILTIN_SYMBOLS) && !defined(NO_BUILTIN_SYMBOLS)
+#define  ENABLE_BUILTIN_SYMBOLS          /* Internal Symbols          */
+#endif
+
+#if defined(ENABLE_BUILTIN_SYMBOLS) && !defined(ENABLE_SYSTEM_SYMBOLS)
+  #error ENABLE_BUILTIN_SYMBOLS requires ENABLE_SYMBOLS_SYMBOLS
 #endif
 
 #define OPTION_FTHREADS
@@ -159,22 +164,15 @@ typedef u_int32_t           in_addr_t;
 //#include "getopt.h"
 #define HAVE_GETOPT_LONG
 
-#include <math.h>
-#define HAVE_SQRTL
-#define HAVE_LDEXPL
-#define HAVE_FABSL
-#define HAVE_FMODL
-#define HAVE_FREXPL
-
 // The following are needed by 'hostopts.h'...
 
-#define HAVE_DECL_SIOCSIFNETMASK  1     // (  supported by CTCI-W32)
-#define HAVE_DECL_SIOCSIFBRDADDR  1     // (  supported by CTCI-W32)
-#define HAVE_DECL_SIOCGIFHWADDR   1     // (  supported by CTCI-W32)
-#define HAVE_DECL_SIOCSIFHWADDR   1     // (  supported by CTCI-W32)
-#define HAVE_DECL_SIOCADDRT       0     // (UNsupported by CTCI-W32)
-#define HAVE_DECL_SIOCDELRT       0     // (UNsupported by CTCI-W32)
-#define HAVE_DECL_SIOCDIFADDR     0     // (UNsupported by CTCI-W32)
+#define HAVE_DECL_SIOCSIFNETMASK  1     // (  supported by CTCI-WIN)
+#define HAVE_DECL_SIOCSIFBRDADDR  1     // (  supported by CTCI-WIN)
+#define HAVE_DECL_SIOCGIFHWADDR   1     // (  supported by CTCI-WIN)
+#define HAVE_DECL_SIOCSIFHWADDR   1     // (  supported by CTCI-WIN)
+#define HAVE_DECL_SIOCADDRT       0     // (UNsupported by CTCI-WIN)
+#define HAVE_DECL_SIOCDELRT       0     // (UNsupported by CTCI-WIN)
+#define HAVE_DECL_SIOCDIFADDR     0     // (UNsupported by CTCI-WIN)
 
 // SCSI tape handling transparency/portability
 
@@ -204,5 +202,12 @@ typedef u_int32_t           in_addr_t;
 #define CLOCK_REALTIME_ALARM            8
 #define CLOCK_BOOTTIME_ALARM            9
 
+#if !defined( HQA_SCENARIO ) || HQA_SCENARIO < 19 || HQA_SCENARIO > 22
+
+  #undef  HAVE_FULL_KEEPALIVE
+  #define HAVE_PARTIAL_KEEPALIVE
+  #define HAVE_BASIC_KEEPALIVE
+
+#endif // (!TCP keepalive HQA_SCENARIO)
 
 #endif /*!defined(_HERCWIND_H)*/

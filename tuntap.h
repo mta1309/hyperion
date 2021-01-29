@@ -25,9 +25,9 @@
 //  TunTap ioctl codes and Standard and TUNSETIFF ifr interface flags
 // ====================================================================
 
-#if defined(__APPLE__) | defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__)
   /* Why tun0 rather than the clone device /dev/tun? jph             */
-  #define  HERCTUN_DEV  "/dev/tun0"     // Default TUN/TAP char dev
+  #define  HERCTUN_DEV  "/dev/tun"     // Default TUN/TAP char dev
 #else
   #define  HERCTUN_DEV  "/dev/net/tun"  // Default TUN/TAP char dev
 #endif
@@ -157,6 +157,7 @@ extern void build_herc_iface_mac ( BYTE* out_mac, const BYTE* in_ip );
 extern int  ParseMAC( char* pszMACAddr, BYTE* pbMACAddr );
 extern int  FormatMAC( char** ppszMACAddr, BYTE* mac );
 extern void packet_trace( BYTE *addr, int len, BYTE dir );
+extern void net_data_trace( DEVBLK* dev, BYTE* addr, int len, BYTE dir, BYTE sev, char* what, U32 opt );
 
 // ====================================================================
 //                      Helper Macros

@@ -51,7 +51,7 @@ static int  cdsk_valid_trk (int trk, BYTE *buf, int heads, int len);
 /*-------------------------------------------------------------------*/
 static BYTE  eighthexFF[] = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
 static char *spaces[] = { "none", "devhdr", "cdevhdr", "l1",  "l2",
-                          "trk",  "blkgrp", "free",    "eof" }; 
+                          "trk",  "blkgrp", "free",    "eof" };
 static char *comps[]  = { "none", "zlib",   "bzip2" };
 
 /*-------------------------------------------------------------------*/
@@ -91,14 +91,14 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
     /* Get file size */
     if (fstat (fd, &fst) < 0)
         goto cswp_fstat_error;
-    gui_fprintf (stderr, "SIZE=%"I64_FMT"u\n", (U64) fst.st_size);
+    gui_fprintf (stderr, "SIZE=%"PRIu64"\n", (U64) fst.st_size);
     hipos = fst.st_size;
 
     /* Device header */
     off = CCKD_DEVHDR_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto cswp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CCKD_DEVHDR_SIZE;
     if ((rc = read (fd, &cdevhdr, len)) != len)
         goto cswp_read_error;
@@ -107,7 +107,7 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
     cdevhdr.options |= CCKD_ORDWR;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto cswp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     if ((rc = write (fd, &cdevhdr, len)) != len)
         goto cswp_write_error;
     if (!swapend) cckd_swapend_chdr (&cdevhdr);
@@ -119,13 +119,13 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
     off = CCKD_L1TAB_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto cswp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     if ((rc = read (fd, l1, len)) != len)
         goto cswp_read_error;
     cckd_swapend_l1 (l1, (int)cdevhdr.numl1tab);
     if (lseek (fd, off, SEEK_SET) < 0)
         goto cswp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     if ((rc = write (fd, l1, len)) != len)
         goto cswp_write_error;
     if (!swapend) cckd_swapend_l1 (l1, (int)cdevhdr.numl1tab);
@@ -140,14 +140,14 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
         off = (off_t)l1[i];
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cswp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = CCKD_L2TAB_SIZE;
         if ((rc = read (fd, l2, len)) != len)
             goto cswp_read_error;
         cckd_swapend_l2 (l2);
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cswp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         if ((rc = write (fd, l2, len)) != len)
             goto cswp_write_error;
     }
@@ -162,7 +162,7 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
         off = (off_t)cdevhdr.free;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cswp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = CCKD_FREEBLK_SIZE;
         if ((rc = read (fd, &freeblk, len)) != len)
             goto cswp_read_error;
@@ -176,13 +176,13 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
                     break;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cswp_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = read (fd, &freeblk, len)) != len)
                     goto cswp_read_error;
                 cckd_swapend_free (&freeblk);
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cswp_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = write (fd, &freeblk, len)) != len)
                     goto cswp_write_error;
             } /* for each free space */
@@ -196,13 +196,13 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
                     break;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cswp_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = read (fd, &freeblk, len)) != len)
                     goto cswp_read_error;
                 cckd_swapend_free (&freeblk);
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cswp_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = write (fd, &freeblk, len)) != len)
                     goto cswp_write_error;
                 if (!swapend) cckd_swapend_free (&freeblk);
@@ -216,37 +216,37 @@ CCKD_FREEBLK      freeblk;              /* Free block                */
     /* error exits */
 cswp_fstat_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "fstat()", strerror(errno)));
     else
-        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "fstat()", strerror(errno));
     goto cswp_error;
 
 cswp_lseek_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "lseek()", off, strerror(errno)));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "lseek()", off, strerror(errno));
     goto cswp_error;
 
 cswp_read_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "read()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "read()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto cswp_error;
 
 cswp_write_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "write()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "write()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto cswp_error;
 
@@ -255,10 +255,10 @@ cswp_malloc_error:
         char buf[64];
         MSGBUF( buf, "malloc(%d)", len);
         if(dev->batch)
-            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     buf, strerror(errno)));
         else
-             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                    buf, strerror(errno));
         goto cswp_error;
     }
@@ -405,7 +405,7 @@ BYTE            buf[65536*4];           /* Buffer                    */
      *---------------------------------------------------------------*/
     if (fstat (fd, &fst) < 0)
         goto comp_fstat_error;
-    gui_fprintf (stderr, "SIZE=%"I64_FMT"u\n", (U64) fst.st_size);
+    gui_fprintf (stderr, "SIZE=%"PRIu64"\n", (U64) fst.st_size);
 
     /*---------------------------------------------------------------
      * Read device header
@@ -413,7 +413,7 @@ BYTE            buf[65536*4];           /* Buffer                    */
     off = 0;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto comp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CKDDASD_DEVHDR_SIZE;
     if ((rc = read (fd, &devhdr, len)) != len)
         goto comp_read_error;
@@ -437,7 +437,7 @@ comp_restart:
     off = CCKD_DEVHDR_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto comp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CCKD_DEVHDR_SIZE;
     if ((rc = read (fd, &cdevhdr, len)) != len)
         goto comp_read_error;
@@ -486,7 +486,7 @@ comp_restart:
     off = CCKD_L1TAB_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto comp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     if ((rc = read (fd, l1, len)) != len)
         goto comp_read_error;
 
@@ -555,7 +555,7 @@ comp_restart:
         off = (off_t)spctab[i].pos;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto comp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         if ((rc = read (fd, l2[l], len)) != len)
             goto comp_read_error;
         for (j = 0; j < 256; j++)
@@ -640,7 +640,7 @@ comp_restart:
             off = (off_t)spctab[i].pos;
             if (lseek (fd, off, SEEK_SET) < 0)
                 goto comp_lseek_error;
-            gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
             len = spctab[i].len;
             if ((rc = read (fd, p, len)) != len)
                 goto comp_read_error;
@@ -709,7 +709,7 @@ comp_restart:
         /* read the image(s) to be relocated */
         if (lseek (fd, off, SEEK_SET) < 0)
             goto comp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         if ((rc = read (fd, buf, len)) != len)
             goto comp_write_error;
 
@@ -717,7 +717,7 @@ comp_restart:
         off = (off_t)spctab[i].pos + spctab[i].len;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto comp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         if ((rc = write (fd, buf, len)) != len)
             goto comp_write_error;
     }
@@ -742,7 +742,7 @@ comp_restart:
 
         if (lseek (fd, off, SEEK_SET) < 0)
             goto comp_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = spctab[s].len;
         if ((rc = write (fd, p, len)) != len)
             goto comp_write_error;
@@ -798,7 +798,7 @@ comp_restart:
     off = CCKD_DEVHDR_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto comp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CCKD_DEVHDR_SIZE;
     if ((rc = write (fd, &cdevhdr, len)) != len)
         goto comp_write_error;
@@ -807,7 +807,7 @@ comp_restart:
     off = CCKD_L1TAB_POS;
     if (lseek (fd, off, SEEK_SET) < 0)
         goto comp_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = l1size;
     if ((rc = write (fd, l1, len)) != len)
         goto comp_write_error;
@@ -819,7 +819,7 @@ comp_restart:
             off = (off_t)l1[i];
             if (lseek (fd, off, SEEK_SET) < 0)
                 goto comp_lseek_error;
-            gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
             len = CCKD_L2TAB_SIZE;
             if ((rc = write (fd, l2[i], len)) != len)
                 goto comp_lseek_error;
@@ -829,7 +829,7 @@ comp_restart:
     off = (off_t)spctab[s-1].pos;
     if (off < fst.st_size)
     {
-        ftruncate (fd, off);
+        VERIFY(!ftruncate (fd, off));
         if(dev->batch)
             fprintf(stdout, MSG(HHC00359, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     fst.st_size - off));
@@ -854,7 +854,7 @@ comp_return_ok:
 
 comp_return:
 
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
 
     if (rbuf) free(rbuf);
     if (l2)
@@ -875,37 +875,37 @@ comp_return:
 
 comp_fstat_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "fstat()", strerror(errno)));
     else
-        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "fstat()", strerror(errno));
     goto comp_error;
 
 comp_lseek_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "lseek()", off, strerror(errno)));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "lseek()", off, strerror(errno));
     goto comp_error;
 
 comp_read_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "read()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "read()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto comp_error;
 
 comp_write_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "write()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "write()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto comp_error;
 
@@ -914,10 +914,10 @@ comp_malloc_error:
         char buf[64];
         MSGBUF( buf, "malloc(%d)", len);
         if(dev->batch)
-            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     buf, strerror(errno)));
         else
-            WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                   buf, strerror(errno));
         goto comp_error;
     }
@@ -926,10 +926,10 @@ comp_calloc_error:
         char buf[64];
         MSGBUF( buf, "calloc(%d)", n * len);
         if(dev->batch)
-            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     buf, strerror(errno)));
         else
-            WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                   buf, strerror(errno));
         goto comp_error;
     }
@@ -1034,7 +1034,7 @@ BYTE            buf[4*65536];           /* buffer                    */
     /* Get some file information */
     if ( fstat (fd, &fst) < 0 )
         goto cdsk_fstat_error;
-    gui_fprintf (stderr, "SIZE=%"I64_FMT"u\n", (U64) fst.st_size);
+    gui_fprintf (stderr, "SIZE=%"PRIu64"\n", (U64) fst.st_size);
     hipos = fst.st_size;
     maxsize = sizeof(off_t) == 4 ? 0x7fffffffll : 0xffffffffll;
     fdflags = get_file_accmode_flags(fd);
@@ -1062,7 +1062,7 @@ BYTE            buf[4*65536];           /* buffer                    */
     off = 0;
     if ( lseek (fd, off, SEEK_SET) < 0)
         goto cdsk_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CKDDASD_DEVHDR_SIZE;
     if ((rc = read (fd, &devhdr, len)) != len)
         goto cdsk_read_error;
@@ -1095,7 +1095,7 @@ BYTE            buf[4*65536];           /* buffer                    */
     off = CCKD_DEVHDR_POS;
     if ( lseek (fd, off, SEEK_SET) < 0)
         goto cdsk_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     len = CCKD_DEVHDR_SIZE;
     if ((rc = read (fd, &cdevhdr, len)) != len)
         goto cdsk_read_error;
@@ -1304,7 +1304,7 @@ BYTE            buf[4*65536];           /* buffer                    */
     off = CCKD_L1TAB_POS;
     if ( lseek (fd, off, SEEK_SET) < 0)
         goto cdsk_lseek_error;
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     if ((rc = read (fd, l1, len)) != len)
         goto cdsk_read_error;
     if (swapend) cckd_swapend_l1 (l1, (int)cdevhdr.numl1tab);
@@ -1431,7 +1431,7 @@ BYTE            buf[4*65536];           /* buffer                    */
         off = spctab[i].pos;
         if ( lseek (fd, off, SEEK_SET) < 0 )
             goto cdsk_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = CCKD_L2TAB_SIZE;
         if ((rc = read (fd, l2tab, len)) != len)
             goto cdsk_read_error;
@@ -1524,21 +1524,21 @@ BYTE            buf[4*65536];           /* buffer                    */
             if (!valid)
             {
                 if(dev->batch)
-                    fprintf(stdout, MSG(HHC00365, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                    fprintf(stdout, MSG(HHC00365, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                             space1, spctab[i].pos, spctab[i].siz));
                 else
-                    WRMSG(HHC00365, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                    WRMSG(HHC00365, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                           space1, spctab[i].pos, spctab[i].siz);
             }
             else
             {
                 if(dev->batch)
-                    fprintf(stdout, MSG(HHC00366, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                    fprintf(stdout, MSG(HHC00366, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                             space1, spctab[i].pos, spctab[i].siz, space2, spctab[i+1].pos));
                 else
-                    WRMSG(HHC00366, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                    WRMSG(HHC00366, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                           space1, spctab[i].pos, spctab[i].siz, space2, spctab[i+1].pos);
-            }              
+            }
 
             /* setup recovery */
             if (spctab[i].typ == SPCTAB_L2)
@@ -1570,10 +1570,10 @@ BYTE            buf[4*65536];           /* buffer                    */
 
             /* issue error message */
             if(dev->batch)
-                fprintf(stdout, MSG(HHC00367, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                fprintf(stdout, MSG(HHC00367, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                         spaces[trktyp], spctab[i].val, spctab[i].len, spctab[i].siz));
             else
-                WRMSG(HHC00367, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+                WRMSG(HHC00367, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                       spaces[trktyp], spctab[i].val, spctab[i].len, spctab[i].siz);
 
             /* setup recovery */
@@ -1630,7 +1630,7 @@ BYTE            buf[4*65536];           /* buffer                    */
              || (rc = read (fd, &freeblk, len)) != len)
                 break;
 
-            gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
 
             if (memcmp (&freeblk, "FREE_BLK", 8) == 0)
             {
@@ -1668,7 +1668,7 @@ BYTE            buf[4*65536];           /* buffer                    */
                     if (off < lopos || off > hipos) break;
                     if (lseek (fd, off, SEEK_SET) < 0)
                         goto cdsk_lseek_error;
-                    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                     if ((rc = read (fd, &freeblk, len)) != len)
                         goto cdsk_read_error;
                     if (swapend) cckd_swapend_free (&freeblk);
@@ -1721,7 +1721,7 @@ cdsk_space_check:
             off = spctab[i].pos;
             if ( lseek (fd, off, SEEK_SET) < 0 )
                 goto cdsk_lseek_error;
-            gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
             len = level < 3 ? CKDDASD_TRKHDR_SIZE : spctab[i].len;
             if ((rc = read (fd, buf, len)) != len)
                 goto cdsk_read_error;
@@ -1739,7 +1739,7 @@ cdsk_space_check:
             {
                 if(dev->batch)
                     fprintf(stdout, MSG(HHC00369, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
-                            spaces[trktyp], spctab[i].val, off, 
+                            spaces[trktyp], spctab[i].val, off,
                             buf[0],buf[1],buf[2],buf[3],buf[4]));
                 else
                     WRMSG(HHC00369, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
@@ -1755,7 +1755,7 @@ cdsk_space_check:
                 {
                     level = 3;
                     if(dev->batch)
-                        fprintf(stdout, MSG(HHC00364, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, 
+                        fprintf(stdout, MSG(HHC00364, "W", SSID_TO_LCSS(dev->ssid), dev->devnum,
                                 dev->filename, level));
                     else
                         WRMSG(HHC00364, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, level);
@@ -1782,7 +1782,7 @@ cdsk_space_check:
             {
                 if (!cdsk_valid_trk (trk, buf, heads, len))
                 {
-                    if(dev->batch)                  
+                    if(dev->batch)
                         fprintf(stdout, MSG(HHC00371, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                                 spaces[trktyp], trk, off, len));
                     else
@@ -1855,7 +1855,7 @@ cdsk_recovery:
                 off = (off_t)fpos;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = read (fd, buf, len)) != len)
                     goto cdsk_read_error;
 
@@ -2079,7 +2079,7 @@ cdsk_ckd_recover:
                 off = (off_t)fpos;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = read (fd, buf, len)) != len)
                     goto cdsk_read_error;
 
@@ -2390,7 +2390,7 @@ cdsk_fba_recover:
                         "missing compression"));
             else
                 WRMSG(HHC00375, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
-                      "missing compression");          
+                      "missing compression");
             goto cdsk_error;
         }
 
@@ -2398,7 +2398,7 @@ cdsk_fba_recover:
         off = CCKD_L1TAB_POS;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cdsk_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = l1size;
         if ((rc = write (fd, l1, len)) != len)
             goto cdsk_write_error;
@@ -2413,7 +2413,7 @@ cdsk_fba_recover:
             off = (off_t)l1[l1x];
             if (lseek (fd, off, SEEK_SET) < 0)
                 goto cdsk_lseek_error;
-            gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
             len = CCKD_L2TAB_SIZE;
             if ((rc = write (fd, l2[l1x], len)) != len)
                 goto cdsk_write_error;
@@ -2446,7 +2446,7 @@ cdsk_fba_recover:
         if(dev->batch)
               fprintf(stdout, MSG(HHC00376, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename));
           else
-              WRMSG(HHC00376, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename);      
+              WRMSG(HHC00376, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename);
     }
     else if (fsperr)
     {
@@ -2491,15 +2491,15 @@ cdsk_fsperr_retry:
                 off = (off_t)spctab[i].pos;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 len = spctab[i].siz;
-                if ((rc = read (fd, buf, len)) != len) 
+                if ((rc = read (fd, buf, len)) != len)
                     goto cdsk_read_error;
                 off -= l;
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
-                if ((rc = write (fd, buf, len)) != len) 
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                if ((rc = write (fd, buf, len)) != len)
                     goto cdsk_write_error;
                 spctab[i].pos -= l;
 
@@ -2511,15 +2511,15 @@ cdsk_fsperr_retry:
                     off = (off_t)l1[l1x] + l2x * CCKD_L2ENT_SIZE;
                     if (lseek (fd, off, SEEK_SET) < 0)
                         goto cdsk_lseek_error;
-                    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                     len = CCKD_L2ENT_SIZE;
-                    if ((rc = read (fd, &l2ent, len)) != len) 
+                    if ((rc = read (fd, &l2ent, len)) != len)
                         goto cdsk_read_error;
                     l2ent.pos -= l;
                     if (lseek (fd, off, SEEK_SET) < 0)
                         goto cdsk_lseek_error;
-                    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
-                    if ((rc = write (fd, &l2ent, len)) != len) 
+                    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                    if ((rc = write (fd, &l2ent, len)) != len)
                         goto cdsk_write_error;
                 } /* trk/blkgrp relocated */
                 else if (spctab[i].typ == SPCTAB_L2)
@@ -2566,7 +2566,7 @@ cdsk_fsperr_retry:
             /* size needed for new format free space */
             len = (cdevhdr.free_number+1) * CCKD_FREEBLK_SIZE;
 
-            /* look for existing free space to fit new format free space */   
+            /* look for existing free space to fit new format free space */
             for (i = off = 0; !off && spctab[i].typ != SPCTAB_EOF; i++)
                 if (spctab[i].typ == SPCTAB_FREE && len <= (int)spctab[i].siz)
                     off = (off_t)spctab[i].pos;
@@ -2593,7 +2593,7 @@ cdsk_fsperr_retry:
                 /* Write the free space */
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if ((rc = write (fd, fsp, len)) != len)
                     goto cdsk_write_error;
                 cdevhdr.free = (U32)off;
@@ -2616,7 +2616,7 @@ cdsk_fsperr_retry:
                         freeblk.pos = spctab[i].pos;
                         if (lseek (fd, off, SEEK_SET) < 0)
                             goto cdsk_lseek_error;
-                        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                         if (write (fd, &freeblk, len) != len)
                             goto cdsk_write_error;
                         off = (off_t)spctab[i].pos;
@@ -2625,7 +2625,7 @@ cdsk_fsperr_retry:
                     }
                 if (lseek (fd, off, SEEK_SET) < 0)
                     goto cdsk_lseek_error;
-                gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+                gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
                 if (write (fd, &freeblk, len) != len)
                     goto cdsk_write_error;
             } /* old format free space */
@@ -2635,7 +2635,7 @@ cdsk_fsperr_retry:
         off = CCKD_DEVHDR_POS;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cdsk_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = CCKD_DEVHDR_SIZE;
         if (write (fd, &cdevhdr, len) != len)
             goto cdsk_write_error;
@@ -2643,7 +2643,7 @@ cdsk_fsperr_retry:
         off = CCKD_L1TAB_POS;
         if (lseek (fd, off, SEEK_SET) < 0)
             goto cdsk_lseek_error;
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
         len = l1size;
         if (write (fd, l1, len) != len)
             goto cdsk_write_error;
@@ -2657,7 +2657,7 @@ cdsk_fsperr_retry:
         if(dev->batch)
             fprintf(stdout, MSG(HHC00377, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename));
         else
-            WRMSG(HHC00377, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename);      
+            WRMSG(HHC00377, "I", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename);
 
     } /* if (fsperr) */
 
@@ -2688,13 +2688,13 @@ cdsk_return_ok:
 
         off = CCKD_DEVHDR_POS;
         if (lseek (fd, CCKD_DEVHDR_POS, SEEK_SET) >= 0)
-            write (fd, &cdevhdr, CCKD_DEVHDR_SIZE);
-        gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+            VERIFY(CCKD_DEVHDR_SIZE == write (fd, &cdevhdr, CCKD_DEVHDR_SIZE));
+        gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
     }
 
 cdsk_return:
 
-    gui_fprintf (stderr, "POS=%"I64_FMT"u\n", (U64) lseek( fd, 0, SEEK_CUR ));
+    gui_fprintf (stderr, "POS=%"PRIu64"\n", (U64) lseek( fd, 0, SEEK_CUR ));
 
     /* free all space */
     if (l1)     free (l1);
@@ -2717,37 +2717,37 @@ cdsk_return:
 
 cdsk_fstat_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "fstat()", strerror(errno)));
     else
-        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "fstat()", strerror(errno));
     goto cdsk_error;
 
 cdsk_lseek_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "lseek()", off, strerror(errno)));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "lseek()", off, strerror(errno));
     goto cdsk_error;
 
 cdsk_read_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "read()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "read()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto cdsk_error;
 
 cdsk_write_error:
     if(dev->batch)
-        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        fprintf(stdout, MSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                 "write()", off, rc < 0 ? strerror(errno) : "incomplete"));
     else
-        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+        WRMSG(HHC00355, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
               "write()", off, rc < 0 ? strerror(errno) : "incomplete");
     goto cdsk_error;
 
@@ -2756,10 +2756,10 @@ cdsk_malloc_error:
         char buf[64];
         MSGBUF( buf, "malloc(%d)", len);
         if(dev->batch)
-            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     buf, strerror(errno)));
         else
-             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                    buf, strerror(errno));
     }
     goto cdsk_error;
@@ -2769,10 +2769,10 @@ cdsk_calloc_error:
         char buf[64];
         MSGBUF( buf, "calloc(%d)", n * len);
         if(dev->batch)
-            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+            fprintf(stdout, MSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                     buf, strerror(errno)));
         else
-             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, 
+             WRMSG(HHC00354, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename,
                    buf, strerror(errno));
     }
     goto cdsk_error;

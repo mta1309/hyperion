@@ -68,22 +68,28 @@
 /*-------------------------------------------------------------------*/
 /* Function to build system configuration                            */
 /*-------------------------------------------------------------------*/
-int build_config (char *hercules_cnf)
+int build_config (const char *hercules_cnf)
 {
 int     i;                              /* Array subscript           */
 int     devtmax;                        /* Max number device threads */
 
-    /* From impl.c, using system defaults of:
+    /*      From impl.c, using system defaults of:
      *
      * LPARNUM  1                       # LPAR 1 with LPAR ID 01
      * CPUIDFMT 0                       # CPU ID format 0
-     *
+     * XPNDSIZE 0                       # Expanded storage size
      */
 
-    /* XPNDSIZE 0                       # Expanded storage size      */
     sysblk.xpndsize = 0;
 
+    /* Set sysblk.maxcpu to our preferred default value, if possible */
+#if (PREF_DEF_MAXCPU <= MAX_CPU_ENGINES)
+    sysblk.maxcpu = PREF_DEF_MAXCPU;
+#else
+    WARNING( "sysblk.maxcpu reduced from " QSTR( PREF_DEF_MAXCPU ) " to " QSTR( MAX_CPU_ENGINES ))
     sysblk.maxcpu = MAX_CPU_ENGINES;
+#endif
+
 #ifdef    _FEATURE_VECTOR_FACILITY
     sysblk.numvec = sysblk.maxcpu;
 #else  //!_FEATURE_VECTOR_FACILITY

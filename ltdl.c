@@ -33,6 +33,9 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 02111-1307  USA
 
 */
+#ifndef UNREFERENCED
+#define UNREFERENCED(x)         do{}while(0 && x)
+#endif
 
 #if HAVE_CONFIG_H
   #include "config.h" // Hercules build configuration options/settings
@@ -141,9 +144,15 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
 #  include <dmalloc.h>
 #endif
 
+/* #include "hscutl.h" is not a good idea                            */
+/* but defining them without guarding is worse :-)                   */
+#ifndef HAVE_STRLCAT
+size_t strlcat(char *dst, const char *src, size_t siz);
+#endif
+#ifndef HAVE_STRLCPY
+size_t strlcpy(char *dst, const char *src, size_t siz);
+#endif
 
-
-
 /* --- WINDOWS SUPPORT --- */
 
 
@@ -184,7 +193,7 @@ typedef struct _DIR
 
 #endif /* LT_USE_WINDOWS_DIRENT_EMULATION */
 
-
+
 /* --- MANIFEST CONSTANTS --- */
 
 
@@ -211,7 +220,7 @@ typedef struct _DIR
 
 
 
-
+
 /* --- MEMORY HANDLING --- */
 
 
@@ -261,7 +270,7 @@ LT_GLOBAL_DATA void   (*lt_dlfree)  LT_PARAMS((lt_ptr ptr))
     if ((p) != (q)) { if (p) lt_dlfree (p); (p) = (q); (q) = 0; }   \
                         } LT_STMT_END
 
-
+
 /* --- REPLACEMENT FUNCTIONS --- */
 
 
@@ -275,15 +284,17 @@ strdup(str)
      const char *str;
 {
   char *tmp = 0;
+  size_t size;
 
   if (str)
+  {
+    size = strlen(str)+1;
+    tmp = LT_DLMALLOC (char, size);
+    if (tmp)
     {
-      tmp = LT_DLMALLOC (char, 1+ strlen (str));
-      if (tmp)
-    {
-      strlcpy(tmp, str, strlen(str)+1);
+      strlcpy(tmp, str, size);
     }
-    }
+  }
 
   return tmp;
 }
@@ -798,7 +809,7 @@ argz_stringify (argz, argz_len, sep)
 
 
 
-
+
 /* --- TYPE DEFINITIONS -- */
 
 
@@ -810,7 +821,7 @@ typedef struct {
 
 
 
-
+
 /* --- OPAQUE STRUCTURES DECLARED IN LTDL.H --- */
 
 
@@ -874,7 +885,7 @@ static  const char  sys_search_path[]   = LTDL_SYSSEARCHPATH;
 
 
 
-
+
 /* --- MUTEX LOCKING --- */
 
 
@@ -949,7 +960,7 @@ lt_dlmutex_register (lock, unlock, seterror, geterror)
 
 
 
-
+
 /* --- ERROR HANDLING --- */
 
 
@@ -1045,7 +1056,7 @@ lt_estrdup (str)
 
 
 
-
+
 /* --- DLOPEN() INTERFACE LOADER --- */
 
 
@@ -1107,8 +1118,8 @@ sys_dl_open (loader_data, filename)
      lt_user_data loader_data;
      const char *filename;
 {
+UNREFERENCED(loader_data);
   lt_module   module   = dlopen (filename, LT_GLOBAL | LT_LAZY_OR_NOW);
-  loader_data=loader_data;
 
   if (!module)
     {
@@ -1123,9 +1134,9 @@ sys_dl_close (loader_data, module)
      lt_user_data loader_data;
      lt_module module;
 {
+UNREFERENCED(loader_data);
   int errors = 0;
 
-  loader_data=loader_data;
   if (dlclose (module) != 0)
     {
       LT_DLMUTEX_SETERROR (DLERROR (CANNOT_CLOSE));
@@ -1141,8 +1152,9 @@ sys_dl_sym (loader_data, module, symbol)
      lt_module module;
      const char *symbol;
 {
+UNREFERENCED(loader_data);
   lt_ptr address = dlsym (module, symbol);
-  loader_data=loader_data;
+
 
   if (!address)
     {
@@ -1165,7 +1177,7 @@ static struct lt_user_dlloader sys_dl =
 #endif /* HAVE_LIBDL */
 
 
-
+
 /* --- SHL_LOAD() INTERFACE LOADER --- */
 
 #if HAVE_SHL_LOAD
@@ -1299,7 +1311,7 @@ static struct lt_user_dlloader sys_shl = {
 
 
 
-
+
 /* --- LOADLIBRARY() INTERFACE LOADER --- */
 
 #ifdef __WINDOWS__
@@ -1438,7 +1450,7 @@ static struct lt_user_dlloader sys_wll = {
 
 
 
-
+
 /* --- LOAD_ADD_ON() INTERFACE LOADER --- */
 
 
@@ -1518,7 +1530,7 @@ static struct lt_user_dlloader sys_bedl = {
 
 
 
-
+
 /* --- DLD_LINK() INTERFACE LOADER --- */
 
 
@@ -1934,7 +1946,7 @@ static struct lt_user_dlloader sys_dyld =
 
 #endif /* HAVE_DYLD */
 
-
+
 /* --- DLPREOPEN() INTERFACE LOADER --- */
 
 
@@ -1953,9 +1965,9 @@ static int
 presym_init (loader_data)
      lt_user_data loader_data;
 {
+UNREFERENCED(loader_data);
   int errors = 0;
 
-  loader_data=loader_data;
   LT_DLMUTEX_LOCK ();
 
   preloaded_symbols = 0;
@@ -1995,7 +2007,7 @@ static int
 presym_exit (loader_data)
      lt_user_data loader_data;
 {
-  loader_data=loader_data;
+UNREFERENCED(loader_data);
   presym_free_symlists ();
   return 0;
 }
@@ -2043,10 +2055,10 @@ presym_open (loader_data, filename)
      lt_user_data loader_data;
      const char *filename;
 {
+UNREFERENCED(loader_data);
   lt_dlsymlists_t *lists;
   lt_module    module = (lt_module) 0;
 
-  loader_data=loader_data;
   LT_DLMUTEX_LOCK ();
   lists = preloaded_symbols;
 
@@ -2094,9 +2106,8 @@ presym_close (loader_data, module)
      lt_user_data loader_data;
      lt_module module;
 {
-  /* Just to silence gcc -Wall */
-  loader_data=loader_data;
-  module = 0;
+UNREFERENCED(loader_data);
+  UNREFERENCED(module);
   return 0;
 }
 
@@ -2106,8 +2117,8 @@ presym_sym (loader_data, module, symbol)
      lt_module module;
      const char *symbol;
 {
+UNREFERENCED(loader_data);
   lt_dlsymlist *syms = (lt_dlsymlist*) module;
-  loader_data=loader_data;
 
   ++syms;
   while (syms->address)
@@ -2132,7 +2143,7 @@ static struct lt_user_dlloader presym = {
 
 
 
-
+
 /* --- DYNAMIC MODULE LOADING --- */
 
 
@@ -2779,10 +2790,10 @@ find_handle_callback (filename, data, ignored)
      lt_ptr data;
      lt_ptr ignored;
 {
+UNREFERENCED(ignored);
   lt_dlhandle  *handle      = (lt_dlhandle *) data;
   int       notfound    = access (filename, R_OK);
 
-  ignored=ignored;
   /* Bail out if file cannot be read...  */
   if (notfound)
     return 0;
@@ -2818,6 +2829,7 @@ load_deplibs (handle, deplibs)
      lt_dlhandle handle;
      char *deplibs;
 {
+UNREFERENCED(deplibs);
 #if LTDL_DLOPEN_DEPLIBS
   char  *p, *save_search_path = 0;
   int   depcount = 0;
@@ -2826,7 +2838,6 @@ load_deplibs (handle, deplibs)
 #endif
   int   errors = 0;
 
-  deplibs=deplibs;
   handle->depcount = 0;
 
 #if LTDL_DLOPEN_DEPLIBS
@@ -3646,7 +3657,7 @@ lt_argz_insertdir (pargz, pargz_len, dirnam, dp)
 
   strlcpy( buf, dirnam, buf_len+1);
   strlcat( buf, "/", buf_len+1);
-  strncat( buf, dp->d_name, end_offset);
+  strlcat( buf, dp->d_name, end_offset);
   buf[buf_len] = LT_EOS_CHAR;
 
   /* Try to insert (in order) into ARGZ/ARGZ_LEN.  */
@@ -4144,7 +4155,7 @@ lt_dlisresident (handle)
 
 
 
-
+
 /* --- MODULE INFORMATION --- */
 
 const lt_dlinfo *
@@ -4293,7 +4304,7 @@ lt_dlcaller_get_data  (key, handle)
 }
 
 
-
+
 /* --- USER MODULE LOADER API --- */
 
 

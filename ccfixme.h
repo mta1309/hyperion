@@ -7,6 +7,7 @@
 /*-------------------------------------------------------------------*/
 /*  This header file #defines a generic "FIXME" macro used to mark   */
 /*  suspicious code needing fixed or at least further investigated.  */
+/*  Sample usage: TODO( "Figure out a better way to calculate foo" ) */
 /*  It is designed to work identically for GCC as well as MSVC. The  */
 /*  only argument is the "fixme" message you wish to be issued. To   */
 /*  suppress a compiler warning, use the "DISABLE_xxx_WARNING" and   */
@@ -22,35 +23,28 @@
 
 #define Q( _s )                 #_s
 #define QSTR( _s )              Q( _s )
-#define QSTR2( _s1, _s2 )       QSTR( _s1 ## _s2 )
 #define QLINE                   __FILE__ "(" QSTR( __LINE__ ) ") : "
 
 #define WARN_LINE               QLINE "warning : "
 #define FIXME_LINE              QLINE "FIXME : "
 #define TODO_LINE               QLINE "TODO : "
+#define NOTE_LINE               QLINE "NOTE : "
 
 /*-------------------------------------------------------------------*/
 /* Macro to suppress compiler "unreferenced variable" warnings       */
 /*-------------------------------------------------------------------*/
 
-#define UNREFERENCED(x)         while(0 && x)
-#define UNREFERENCED_370(x)     while(0 && x)
-#define UNREFERENCED_390(x)     while(0 && x)
-#define UNREFERENCED_900(x)     while(0 && x)
+#define UNREFERENCED(x)         do{}while(0 && x)
+#define UNREFERENCED_370(x)     do{}while(0 && x)
+#define UNREFERENCED_390(x)     do{}while(0 && x)
+#define UNREFERENCED_900(x)     do{}while(0 && x)
 
 /*-------------------------------------------------------------------*/
 /* Determine GCC diagnostic pragma support level                     */
 /*-------------------------------------------------------------------*/
 
-#if defined( __GNUC__ )
-  #define GCC_VERSION ((__GNUC__ * 10000) + (__GNUC_MINOR__ * 100) + __GNUC_PATCHLEVEL__)
-  #if GCC_VERSION >= 40200
-    #define HAVE_GCC_DIAG_PRAGMA
-    #define QPRAGMA( x )                _Pragma( #x )
-    #if GCC_VERSION >= 40600
-      #define HAVE_GCC_DIAG_PUSHPOP
-    #endif
-  #endif
+#if defined(HAVE_GCC_DIAG_PRAGMA)
+  #define QPRAGMA( x )          _Pragma( #x )
 #endif
 
 /*-------------------------------------------------------------------*/
@@ -58,13 +52,13 @@
 /*-------------------------------------------------------------------*/
 
 #if defined( _MSVC_ )
-  #define FIXME( _msg )         __pragma( message( FIXME_LINE  _msg ))
+  #define FIXME( _str )         __pragma( message( FIXME_LINE  _str ))
 #elif defined( __GNUC__ ) && defined( HAVE_GCC_DIAG_PRAGMA )
-  #define FIXME( _msg )         QPRAGMA( message( _msg ))
+  #define FIXME( _str )         QPRAGMA( message(  FIXME_LINE  _str ))
 #endif
 
 #ifndef   FIXME
-  #define FIXME( _msg )         /* (do nothing) */
+  #define FIXME( _str )         /* (do nothing) */
 #endif
 
 /*-------------------------------------------------------------------*/
@@ -72,13 +66,13 @@
 /*-------------------------------------------------------------------*/
 
 #if defined( _MSVC_ )
-  #define TODO( _msg )          __pragma( message( TODO_LINE  _msg ))
+  #define TODO( _str )          __pragma( message( TODO_LINE  _str ))
 #elif defined( __GNUC__ ) && defined( HAVE_GCC_DIAG_PRAGMA )
-  #define TODO( _msg )          QPRAGMA( message( _msg ))
+  #define TODO( _str )          QPRAGMA( message(  TODO_LINE  _str ))
 #endif
 
 #ifndef   TODO
-  #define TODO( _msg )          /* (do nothing) */
+  #define TODO( _str )          /* (do nothing) */
 #endif
 
 /*-------------------------------------------------------------------*/
@@ -86,13 +80,27 @@
 /*-------------------------------------------------------------------*/
 
 #if defined( _MSVC_ )
-  #define WARNING( _msg )       __pragma( message( WARN_LINE  _msg ))
+  #define WARNING( _str )       __pragma( message( WARN_LINE  _str ))
 #elif defined( __GNUC__ ) && defined( HAVE_GCC_DIAG_PRAGMA )
-  #define WARNING( _msg )       QPRAGMA( message( _msg ))
+  #define WARNING( _str )       QPRAGMA( message(  WARN_LINE  _str ))
 #endif
 
 #ifndef   WARNING
-  #define WARNING( _msg )       /* (do nothing) */
+  #define WARNING( _str )       /* (do nothing) */
+#endif
+
+/*-------------------------------------------------------------------*/
+/* Same idea, but for issuing an informative note during compile     */
+/*-------------------------------------------------------------------*/
+
+#if defined( _MSVC_ )
+  #define NOTE( _str )          __pragma( message( NOTE_LINE  _str ))
+#elif defined( __GNUC__ ) && defined( HAVE_GCC_DIAG_PRAGMA )
+  #define NOTE( _str )          QPRAGMA( message(  NOTE_LINE  _str ))
+#endif
+
+#ifndef   NOTE
+  #define NOTE( _str )          /* (do nothing) */
 #endif
 
 #endif /* _CCFIXME_H_ */

@@ -42,6 +42,10 @@ void build_chp_reset_chrpt( BYTE chpid, int solicited, int found )
 {
 U32 crw_erc, crwarray[8], crwcount=0;
 
+    /* Just return if shutting down */
+    if (sysblk.shutdown)
+        return;
+
     chpid = ((U32)chpid) & CRW_RSID_MASK;
 
     /* If a subchannel was found on this path and was reset. Ref:
@@ -66,14 +70,20 @@ U32 crw_erc, crwarray[8], crwcount=0;
 void build_attach_chrpt( DEVBLK *dev )
 {
 U32 ssid, subchan, crwarray[8], crwcount=0;
+int devlock_obtained;
+
+    /* Just return if shutting down */
+    if (sysblk.shutdown)
+        return;
 
     /* Retrieve Source IDs */
-    obtain_lock( &dev->lock );
+    devlock_obtained = (try_obtain_lock( &dev->lock ) == 0);
     {
         ssid    = ((U32)SSID_TO_LCSS( dev->ssid )) & CRW_RSID_MASK;
         subchan = ((U32)dev->subchan)              & CRW_RSID_MASK;
     }
-    release_lock( &dev->lock );
+    if (devlock_obtained)
+        release_lock( &dev->lock );
 
     /* Build Subchannel Alert Channel Report */
     crwarray[crwcount++] =
@@ -104,14 +114,20 @@ U32 ssid, subchan, crwarray[8], crwcount=0;
 void build_detach_chrpt( DEVBLK *dev )
 {
 U32 ssid, subchan, crwarray[8], crwcount=0;
+int devlock_obtained;
+
+    /* Just return if shutting down */
+    if (sysblk.shutdown)
+        return;
 
     /* Retrieve Source IDs */
-    obtain_lock( &dev->lock );
+    devlock_obtained = (try_obtain_lock( &dev->lock ) == 0);
     {
         ssid    = ((U32)SSID_TO_LCSS( dev->ssid )) & CRW_RSID_MASK;
         subchan = ((U32)dev->subchan)              & CRW_RSID_MASK;
     }
-    release_lock( &dev->lock );
+    if (devlock_obtained)
+        release_lock( &dev->lock );
 
     /* Build Subchannel Alert Channel Report */
     crwarray[crwcount++] =
@@ -415,14 +431,22 @@ int i;
     if( signo == SIGUSR2 )
     {
     DEVBLK *dev;
-        if ( equal_threads( tid, sysblk.cnsltid ) ||
-             equal_threads( tid, sysblk.socktid ) ||
-             equal_threads( tid, sysblk.shrdtid ) ||
-             equal_threads( tid, sysblk.httptid ) )
+        if (0
+            || equal_threads( tid, sysblk.cnsltid )
+            || equal_threads( tid, sysblk.socktid )
+#if defined(OPTION_SHARED_DEVICES)
+            || equal_threads( tid, sysblk.shrdtid )
+#endif // defined(OPTION_SHARED_DEVICES)
+            || equal_threads( tid, sysblk.httptid )
+        )
             return;
         for (dev = sysblk.firstdev; dev != NULL; dev = dev->nextdev)
-            if ( equal_threads( dev->tid, tid ) ||
-                 equal_threads( dev->shrdtid, tid ) )
+            if (0
+                || equal_threads( dev->tid, tid )
+#if defined(OPTION_SHARED_DEVICES)
+                || equal_threads( dev->shrdtid, tid )
+#endif // defined(OPTION_SHARED_DEVICES)
+            )
                  break;
         if( dev == NULL)
         {

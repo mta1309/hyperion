@@ -5,7 +5,7 @@
 /* This file defines the architectural features which are included   */
 /* at compilation time for ESA/390 mode                              */
 /*-------------------------------------------------------------------*/
- 
+
 /* This file MUST NOT contain #undef statements */
 #if defined(OPTION_390_MODE)
 #define _ARCH_390_NAME "ESA/390"
@@ -54,6 +54,10 @@
 #define FEATURE_INCORRECT_LENGTH_INDICATION_SUPPRESSION
 #define FEATURE_INTEGRATED_3270_CONSOLE
 //#define FEATURE_INTEGRATED_ASCII_CONSOLE
+#if CAN_IAF2 != IAF2_ATOMICS_UNAVAILABLE
+   /* Feature is available in ESA mode on z processors */
+   #define FEATURE_INTERLOCKED_ACCESS_FACILITY_2
+#endif
 #define FEATURE_INTERPRETIVE_EXECUTION
 #define FEATURE_IO_ASSIST
 #define FEATURE_LOCK_PAGE
@@ -86,6 +90,8 @@
 #define FEATURE_SQUARE_ROOT
 #define FEATURE_STORAGE_KEY_ASSIST
 #define FEATURE_STORAGE_PROTECTION_OVERRIDE
+#define FEATURE_STORE_FACILITY_LIST
+#define FEATURE_STORE_FACILITY_LIST_EXTENDED
 #define FEATURE_STORE_SYSTEM_INFORMATION
 #define FEATURE_STRING_INSTRUCTION
 #define FEATURE_SUBSPACE_GROUP
@@ -93,10 +99,8 @@
 #define FEATURE_SYSTEM_CONSOLE
 #define FEATURE_TEST_BLOCK
 #define FEATURE_TRACING
-#define FEATURE_WAITSTATE_ASSIST
-#define FEATURE_STORE_FACILITY_LIST
-#define FEATURE_STORE_FACILITY_LIST_EXTENDED
 #define FEATURE_VM_BLOCKIO
+// #define FEATURE_WAITSTATE_ASSIST
 // #define FEATURE_VECTOR_FACILITY
 
 #endif /*defined(OPTION_390_MODE)*/

@@ -210,7 +210,7 @@ static char     name[8];                /* Name of dsorg             */
     else if (dsorg[0] & DSORG_PO)
         strcpy (name, "PO");
 
-    if (dsorg[0] & DSORG_U) strcat (name, "U");
+    if (dsorg[0] & DSORG_U) strlcat (name, "U", sizeof(name));
 
     return name;
 } /* end function dsorg_name */
@@ -234,9 +234,9 @@ static char     name[8];                /* Name of record format     */
         strcpy (name,"??");
     } /* end switch */
 
-    if (recfm[0] & RECFM_TRKOFLOW) strcat (name, "T");
-    if (recfm[0] & RECFM_BLOCKED) strcat (name, "B");
-    if (recfm[0] & RECFM_SPANNED) strcat (name, "S");
+    if (recfm[0] & RECFM_TRKOFLOW) strlcat (name, "T", sizeof(name));
+    if (recfm[0] & RECFM_BLOCKED)  strlcat (name, "B", sizeof(name));
+    if (recfm[0] & RECFM_SPANNED)  strlcat (name, "S", sizeof(name));
 
     switch (recfm[0] & RECFM_CTLCHAR) {
     case RECFM_CTLCHAR_A:
@@ -3652,10 +3652,8 @@ static int      stmtno = 0;             /* Statement number          */
             return -1;
         }
 
-#ifdef EXTERNALGUI
         /* Indicate input file progess */
-        if (extgui) fprintf (stderr, "IPOS=%" I64_FMT "d\n", (U64)ftell(cfp));
-#endif /*EXTERNALGUI*/
+        EXTGUIMSG( "IPOS=%"PRId64"\n", (U64) ftell( cfp ));
 
         /* Check for DOS end of file character */
         if (stmt[0] == '\x1A')
@@ -4211,12 +4209,11 @@ int             fsflag = 0;             /* 1=Free space message sent */
             fsflag = 1;
         }
 
-#ifdef EXTERNALGUI
         /* Indicate output file progess */
-        if (extgui)
-            if ((outcyl % 10) == 0)
-                fprintf (stderr, "OUTCYL=%d\n", outcyl);
-#endif /*EXTERNALGUI*/
+        if ((outcyl % 10) == 0)
+        {
+            EXTGUIMSG( "OUTCYL=%d\n", outcyl );
+        }
 
         /* Initialize track buffer with empty track */
         init_track (trklen, cif->trkbuf, outcyl, outhead, &outusedv);
@@ -4269,9 +4266,7 @@ int             fsflag = 0;             /* 1=Free space message sent */
 /*-------------------------------------------------------------------*/
 int main (int argc, char *argv[])
 {
-char           *pgmname;                /* prog name in host format  */
 char           *pgm;                    /* less any extension (.ext) */
-char            msgbuf[512];            /* message build work area   */
 int             rc = 0;                 /* Return code               */
 char           *cfname;                 /* -> Control file name      */
 char           *ofname;                 /* -> Output file name       */
@@ -4305,38 +4300,7 @@ int             lfs = 0;                /* 1 = Large file            */
 char            pathname[MAX_PATH];     /* cfname in host path format*/
 char           *strtok_str = NULL;      /* last token position       */
 
-    /* Set program name */
-    if ( argc > 0 )
-    {
-        if ( strlen(argv[0]) == 0 )
-        {
-            pgmname = strdup( UTILITY_NAME );
-        }
-        else
-        {
-            char path[MAX_PATH];
-#if defined( _MSVC_ )
-            GetModuleFileName( NULL, path, MAX_PATH );
-#else
-            strncpy( path, argv[0], sizeof( path ) );
-#endif
-            pgmname = strdup(basename(path));
-#if !defined( _MSVC_ )
-            strncpy( path, argv[0], sizeof(path) );
-#endif
-        }
-    }
-    else
-    {
-        pgmname = strdup( UTILITY_NAME );
-    }
-
-    pgm = strtok_r( strdup(pgmname), ".", &strtok_str);
-    INITIALIZE_UTILITY( pgmname );
-
-    /* Display the program identification message */
-    MSGBUF( msgbuf, MSG_C( HHC02499, "I", pgm, "Build DASD from TSO XMIT files" ) );
-    display_version (stderr, msgbuf+10, FALSE);
+    INITIALIZE_UTILITY( UTILITY_NAME, "Build DASD from TSO XMIT files", &pgm );
 
     /* Process optional arguments */
     for ( ; argc > 1 && argv[1][0] == '-'; argv++, argc--)
@@ -4460,9 +4424,7 @@ char           *strtok_str = NULL;      /* last token position       */
     XMINFF (0, MSG( HHC02520, "I", devtype, volser, outheads, outtrklv ) );
 
     /* Create the output file */
-#ifdef EXTERNALGUI
-    if (extgui) fprintf (stderr, "REQCYLS=%d\n", reqcyls);
-#endif /*EXTERNALGUI*/
+    EXTGUIMSG( "REQCYLS=%d\n", reqcyls );
     rc = create_ckd (ofname, devtype, outheads, outmaxdl, reqcyls,
                      volser, comp, lfs, 0, 0, 0, 1, 0 );
     if (rc < 0)
@@ -4478,6 +4440,9 @@ char           *strtok_str = NULL;      /* last token position       */
         XMERRF ( MSG( HHC02504, "E", ofname, "open_ckd_image()" ) );
         return -1;
     }
+
+    if (cif->devblk.cckd_ext)        /* have a compressed ckd extension?  */
+        cckdblk.batchml = infolvl;   /* yes, save message level in cckdblk for cckddasd   */
 
     /* Display progress message */
     XMINFF (0, MSG( HHC02521, "I", devtype, volser ) );

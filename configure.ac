@@ -1,25 +1,116 @@
 ###############################################################################
 # CONFIGURE.AC: Process this file with AutoConf to produce a configure script.
 ###############################################################################
-
+#
 #    AC is AutoConfigure, AM is AutoMake, and AH is AutoHeader. The
 #    'HC_XXXX..' macros are custom Hercules autoconf macros defined
 #    in the 'hercules.m4' file in the 'autoconf' subdirectory.
+#
+###############################################################################
 
-AC_INIT(hercules.h)                     # (package, version, bugreport email, etc)
-AC_REVISION($Revision$)                 # (the version of this configure.ac)
-AC_CONFIG_AUX_DIR(autoconf)             # (directory containing auxillary build tools)
-AM_INIT_AUTOMAKE(hercules,4.00)         # (the version of our software package)
-AC_CONFIG_HEADERS(config.h)             # (the file the resulting configure script will produce)
+AC_INIT([Hercules V4],[4.0.0], , ,[http://hercules-390.github.io/html/])
+
+#
+# When changing the version string (AC_INIT parameter two), be sure to change
+# the values of variables VERS_MAJ, VERS_INT, and VERS_MIN below, just before
+# AM_INIT_MAKEFILE.  The variables are used by the Windows build process.
+#
+
+
+AC_REVISION($Revision$)       # (the version of this configure.ac)
+AC_MSG_NOTICE( [build directory:    $(pwd)])
+AC_MSG_NOTICE( [source directory:   $(cd $(dirname $0) && pwd)] )
+AC_CONFIG_AUX_DIR(autoconf)   # (directory containing auxillary build tools)
+AC_CONFIG_HEADERS(config.h)   # (the file the resulting configure script will produce)
 AM_MAINTAINER_MODE()
-AC_CANONICAL_HOST()                     # (sets $host_cpu, $host_vendor, and $host_os)
-AC_CANONICAL_TARGET()                   # (sets $target_cpu, $target_vendor, and $target_os)
+AC_CANONICAL_HOST()           # (sets $host_cpu, $host_vendor, and $host_os)
+AC_CANONICAL_TARGET()         # (sets $target_cpu, $target_vendor, and $target_os)
+
+# The following two lines are an ugly kludgy hack to prevent a FORTRAN compiler
+# from poisoning a shared library build.  Hercules does not use FORTRAN sources
+# so there is no reason to test nor configure FORTRAN.  The hack neuters the
+# libtools.m4 macros that generate the F77 tests.  We do c++ at the same time;
+# if Hercules ever includes c++ code, remove the first ("CXX") line.
+m4_defun([_LT_AC_LANG_CXX_CONFIG], [:])
+m4_defun([_LT_AC_LANG_F77_CONFIG], [:])
+
+###############################################################################
+#  The following is a "global error" flag used to defer aborting configure
+#  until after ALL errors have been detected/reported.
+###############################################################################
+
+hc_error=no
+
+###############################################################################
+# Test for an in-source build and abort if such is attempted.  The
+# working directory for configure should be the build directory, not
+# the source directory.  If the working directory when configure is run
+# is the same as the path for configure, then we assume an in-source
+# build.  If configure.ac exists in the build directory, then we assume
+# an in-source build.
+###############################################################################
+
+AC_MSG_NOTICE( [build directory:    $(pwd)])
+AC_MSG_NOTICE( [source directory:   $(cd $(dirname $0) && pwd)] )
+if test "$(pwd)" = "$(cd $(dirname $0) && pwd)"; then
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ ERROR: source and build directories cannot be the same.                   ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ In-source build detected.  Hercules must be built out of source.          ] )
+    AC_MSG_WARN( [ See https://github.com/hercules-390/hyperion/blob/master/README.BuildUNIX.txt ] )
+    AC_MSG_WARN( [ for additional information.                                               ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_ERROR([in source build detected, aborting configure...])
+fi
+
+if test -e $(pwd)/configure.ac; then
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ ERROR: configure.ac found in build directory.  Suspect in-source build.   ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ Hercules must be built out of source.  If this is truly an out of source  ] )
+    AC_MSG_WARN( [ build, then remove configure.ac from the build directory.  See            ] )
+    AC_MSG_WARN( [ https://github.com/hercules-390/hyperion/blob/master/README.BuildUNIX.txt ] )
+    AC_MSG_WARN( [ for additional information.                                               ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_ERROR([in source build detected (configure.ac found), aborting configure...])
+fi
+
+###############################################################################
+# Building outside of the source directory.  Continue.
+###############################################################################
+
+# -----------------------------------------------------------------------------
+#  PROGRAMMING NOTE: The below VERS_MAJ, VERS_INT and VERS_MIN assignment
+#  statements must retain their existing variable names (VERS_MAJ, VERS_INT
+#  and VERS_MIN) since the *Nix "_dynamic_version" script and the Windows
+#  "_dynamic_version.cmd" script both expect those names. (They both parse
+#  this file (configure.ac) and extract VERS_MAJ, VERS_INT and VERS_MIN.)
+# -----------------------------------------------------------------------------
+#  PLEASE ALSO NOTE that each of them must be numeric values and must NOT
+#  be defined with any leading zeros as doing so would cause the C compiler
+#  to interpret them as octal values leading to a compiler error whenever
+#  any of them reaches '08' or '09' both of which are invalid octal values.
+# -----------------------------------------------------------------------------
+
+VERS_MAJ=4                    # first  digit of version
+VERS_INT=0                    # second digit of version
+VERS_MIN=0                    # third  digit of version
+
+AM_INIT_AUTOMAKE()
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
+# -----------------------------------------------------------------------------
+
+
 
 ###############################################################################
 #   Programs section...
 ###############################################################################
 
-AC_PROG_CC()                            # (back to using this again)
+AC_PROG_CC()                  # (back to using this again)
 
 ###############################################################################
 #   OS-specific settings that we can't figure out any other way (yet)
@@ -56,18 +147,14 @@ case "$target_os" in
         hc_cv_is_apple=no
         ;;
     darwin*)
+        hc_cv_is_darwin=yes
+        hc_cv_is_aix=no
+        hc_cv_is_nix=no
+        hc_cv_is_windows=no
+        hc_cv_is_mingw=no
         if test $target_vendor = apple; then
-            hc_cv_is_aix=no
-            hc_cv_is_nix=no
-            hc_cv_is_windows=no
-            hc_cv_is_mingw=no
             hc_cv_is_apple=yes
         else
-
-            hc_cv_is_aix=no
-            hc_cv_is_nix=no
-            hc_cv_is_windows=no
-            hc_cv_is_mingw=no
             hc_cv_is_apple=no
         fi
         ;;
@@ -91,27 +178,43 @@ esac
 #----------------------------------------------------------------------#
 #  Determine GCC level                                                 #
 #----------------------------------------------------------------------#
+hc_gcc_level="`${CC} -dumpversion`"
+AC_MSG_NOTICE( [Detected GCC equivalent level for ${CC} : ${hc_gcc_level}] )
 
-hc_gcc_level="`gcc -v 2>&1 | tail -1 | awk '{print $3}'`"
-AC_MSG_NOTICE( [Detected GCC level is: ${hc_gcc_level}] )
+#------------------------------------------#
+#  Check for broken '-O3' version of GCC   #
+#------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    AC_CACHE_CHECK( [if this is GCC with broken '-O3' option],
+
+        [hc_cv_broken_gcc_O3],
+        [
+            AS_VERSION_COMPARE( $hc_gcc_level, "4.9.2",
+                                [hc_cv_broken_gcc_O3=no],
+                                [hc_cv_broken_gcc_O3=yes],
+                                [hc_cv_broken_gcc_O3=no] )
+        ]
+    )
+else
+    hc_cv_broken_gcc_O3=no
+fi
 
 #------------------------#
 #  Fix CFLAGS if needed  #
 #------------------------#
 
-# Remove "-g" and "-O2" CFLAGS that "AC_PROG_CC" helpfully(?)
-# added for us that we don't want... (since we handle setting
-# the optimization flags ourselves; refer to near the end of
-# configure.ac where "$hc_cv_opt_optimization" is handled, in
-# the "AUTOMATIC DETERMINATION OF OPTIMIZATION FLAGS" section.
-
-CFLAGS="`echo $CFLAGS | sed -e 's/-g//'`"
-CFLAGS="`echo $CFLAGS | sed -e 's/-O2//'`"
-
-# Add the "-W -Wall" options to CFLAGS if we're using gcc...
-
 if test "$GCC" = "yes"; then
-  CFLAGS="-W -Wall $CFLAGS"
+
+  # Show us everything
+
+  CFLAGS="${CFLAGS} -W -Wall -O2"
+
+  # We prefer -O3 (the highest optimization level possible)
+  # as long as we can trust GCC to implement it correctly.
+  # Which we cannot, so can we put this to sleep?  jph
+
 fi
 
 #-------------------------------------------------------#
@@ -120,23 +223,16 @@ fi
 #-------------------------------------------------------#
 
 if test "$hc_cv_is_nix"        = "yes"; then
-
     hc_cv_build_hercifc=yes
-    hc_cv_non_unique_gettimeofday=no
 
 elif test "$hc_cv_is_windows"  = "yes"; then
-
     hc_cv_build_hercifc=no
-    hc_cv_non_unique_gettimeofday=yes
 
 elif test "$hc_cv_is_apple"    = "yes"; then
-
     hc_cv_build_hercifc=yes
-    hc_cv_non_unique_gettimeofday=no
 
 else
     hc_cv_build_hercifc=no
-    hc_cv_non_unique_gettimeofday=no
 fi
 
 #----------------------#
@@ -185,6 +281,72 @@ if test "$hc_cv_is_aix" = "yes"; then
   LDFLAGS="$LDFLAGS -L/usr/local/lib"
   CPPFLAGS="$CPPFLAGS -I/usr/local/include -D_LARGE_FILES -D_LFS_LARGEFILE -D_LINUX_SOURCE_COMPAT"
 fi
+
+###############################################################################
+#   Checks SoftFloat 3a For Hercules headers.  If an alternate library
+#   test that one.  After successful tests, the path name is converted
+#   to an absolute path.
+###############################################################################
+
+AC_ARG_ENABLE( s3fh-altdir,
+
+    AC_HELP_STRING( [--enable-s3fh-altdir=DIR],
+
+        [define an alternate location for the s3fh directory. Specify a relative
+         path from the build directory or an absolute path.]
+    ),
+    [
+        hc_cv_s3fh_dir=${enableval}
+
+        if test -d "$hc_cv_s3fh_dir" ; then
+          if test -e "$hc_cv_s3fh_dir/include/softfloat.h"          \
+             -a   -e  "$hc_cv_s3fh_dir/include/softfloat_types.h"   \
+             -a   -e  "$hc_cv_s3fh_dir/lib/libSoftFloat.a"        ; then
+            AC_MSG_NOTICE( [using alternate directory "${hc_cv_s3fh_dir}" for SoftFloat-3a] )
+          else
+            AC_MSG_WARN( [ERROR: --enable-s3fa-altdir= directory does not have SoftFloat-3a headers: $hc_cv_s3fh_dir] )
+            hc_cv_have_softfloat_h=no
+          fi
+        else
+          AC_MSG_WARN( [ERROR: --enable-s3fa-altdir= directory not found: $hc_cv_s3fh_dir] )
+          hc_cv_have_softfloat_h=no
+        fi
+
+    ],
+    [
+        hc_cv_s3fh_dir=../s3fh
+    ]
+)
+hc_cv_s3fh_dir=$(cd "$(dirname "$hc_cv_s3fh_dir")" && pwd)/$(basename "$hc_cv_s3fh_dir")
+
+AC_MSG_NOTICE( [looking for softfloat_types.h in ${hc_cv_s3fh_dir}/include] )
+
+hc_temp=$CFLAGS
+CFLAGS="$CFLAGS -I${hc_cv_s3fh_dir}/include"
+
+AC_CHECK_HEADER( softfloat_types.h,
+    [hc_cv_have_softfloat_h=yes],
+    [hc_cv_have_softfloat_h=no]
+)
+
+CFLAGS=$hc_temp
+
+if test "$hc_cv_have_softfloat_h" = "no" ; then
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ ERROR: Required header 'softfloat_types.h' not found.                     ] )
+    AC_MSG_WARN( [ Check for ${hc_cv_s3fh_dir} directory                                     ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [ Take note: SoftFloat-3a For Hercules must now be built separately.        ] )
+    AC_MSG_WARN( [ See https://github.com/hercules-390/SoftFloat-3a/blob/master/BUILDING.txt ] )
+    AC_MSG_WARN( [ for additional information.                                               ] )
+    AC_MSG_WARN( [                                                                           ] )
+    AC_MSG_WARN( [---------------------------------------------------------------------------] )
+    AC_MSG_ERROR( [configure aborted...])
+else
+    AC_MSG_NOTICE( [You may ignore the two warnings above, "accepted by the compiler, rejected by the preprocessor!"] )
+fi
+
 
 # -----------------------------------------------------------------------------
 #  PROGRAMMING NOTE: The below 'AC_SUBST' macro causes AC_OUTPUT to replace
@@ -362,12 +524,7 @@ HC_LD_DISALLOWDUPS()                    # Add linker options to LDFLAGS variable
                                         # to warn about duplicate libtool symbols,
                                         # if needed.
 
-###############################################################################
-#  The following is a "global error" flag used to defer aborting configure
-#  until after ALL errors have been detected/reported.
-###############################################################################
 
-hc_error=no
 
 ###############################################################################
 #   Autoheader templates
@@ -382,12 +539,12 @@ AH_TEMPLATE( [MAX_CPU_ENGINES],         [Defines the maximum number of emulated 
 AH_TEMPLATE( [HOST_ARCH],               [Define as quoted 'target_cpu' value = target host CPU architecture] )
 AH_TEMPLATE( [DEBUG],                   [Define to enable extra debugging code (TRACE/VERIFY/ASSERT macros)] )
 AH_TEMPLATE( [C99_FLEXIBLE_ARRAYS],     [Define if your gcc properly supports C99 flexible arrays] )
+AH_TEMPLATE( [HAVE_ATTR_PRINTF],        [Define if your gcc properly supports __attribute__((format(printf,n,n)))] )
 AH_TEMPLATE( [HAVE_ATTR_REGPARM],       [Define if your gcc properly supports __attribute__((regparm(n)))] )
 AH_TEMPLATE( [NO_ASM_BYTESWAP],         [Define to disable assembler routines for byte swapping] )
 AH_TEMPLATE( [NO_IEEE_SUPPORT],         [Define to disable IEEE floating point support] )
 AH_TEMPLATE( [NO_SETUID],               [Define to disable setuid operation] )
 AH_TEMPLATE( [NO_SIGABEND_HANDLER],     [Define to disable sigabend_handler (please describe this better)] )
-AH_TEMPLATE( [NON_UNIQUE_GETTIMEOFDAY], [Define if 'gettimeofday' returns non-unique values] )
 AH_TEMPLATE( [NEED_GETOPT_WRAPPER],     [Define to indicate a wrapper for getopt is needed] )
 AH_TEMPLATE( [NEED_GETOPT_OPTRESET],    [Define to indicate optreset exists] )
 AH_TEMPLATE( [HAVE_INTTYPES_H],         [Define if inttypes.h header file is present on your system] )
@@ -411,6 +568,31 @@ AH_TEMPLATE( [ENABLE_OBJECT_REXX],      [Define to enable open object rexx suppo
 AH_TEMPLATE( [ENABLE_REGINA_REXX],      [Define to enable Regina Rexx support] )
 AH_TEMPLATE( [ENABLE_IPV6],             [Define to enable IPV6 support] )
 AH_TEMPLATE( [HAVE_HQA_H],              [Define to if header "hqa.h" exists in HQA dir] )
+AH_TEMPLATE( [HAVE_FULL_KEEPALIVE],     [Define if symbols 'TCP_KEEPIDLE', 'TCP_KEEPINTVL' and 'TCP_KEEPCNT' are ALL available ] )
+AH_TEMPLATE( [HAVE_PARTIAL_KEEPALIVE],  [Define if symbol  'TCP_KEEPIDLE', 'TCP_KEEPINTVL' or 'TCP_KEEPCNT' is available ] )
+AH_TEMPLATE( [HAVE_BASIC_KEEPALIVE],    [Define if symbol  'SO_KEEPALIVE' or 'TCP_KEEPALIVE' is available] )
+AH_TEMPLATE( [DISABLE_IAF2],            [Define if enable_interlocked_access_facility_2 is to be forced off] )
+AH_TEMPLATE( [HAVE_GCC_DIAG_PRAGMA],         [Define if _Pragma GCC diagnostic is supported] )
+AH_TEMPLATE( [HAVE_GCC_DIAG_PUSHPOP],        [Define if _Pragma GCC diagnostic push/pop is supported] )
+AH_TEMPLATE( [HAVE_GCC_UNUSED_FUNC_WARNING], [Define if GCC issues 'defined but not used' warnings] )
+AH_TEMPLATE( [HAVE_GCC_SET_UNUSED_WARNING],  [Define if GCC issues 'variable set but not used' warnings] )
+AH_TEMPLATE( [C11_ATOMICS_AVAILABLE],        [Define if C11 atomics are available] )
+AH_TEMPLATE( [C11_ATOMIC_BOOL_LOCK_FREE],    [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_CHAR_LOCK_FREE],    [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_CHAR16_T_LOCK_FREE],[Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_CHAR32_T_LOCK_FREE],[Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_WCHAR_T_LOCK_FREE], [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_SHORT_LOCK_FREE],   [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_INT_LOCK_FREE],     [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_LONG_LOCK_FREE],    [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_LLONG_LOCK_FREE],   [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [C11_ATOMIC_POINTER_LOCK_FREE], [Define to 'stdatomics.h' ATOMIC_*_LOCK_FREE value] )
+AH_TEMPLATE( [HAVE_ATOMIC_INTRINSICS],       [Define if '__atomic_xor_fetch' and friends are available] )
+AH_TEMPLATE( [HAVE_SYNC_BUILTINS],           [Define if '__sync_xor_and_fetch' and friends are available] )
+AH_TEMPLATE( [VERS_MAJ],                     [Hardwired first component of version.] )
+AH_TEMPLATE( [VERS_INT],                     [Hardwired second component of version.] )
+AH_TEMPLATE( [VERS_MIN],                     [Hardwired third component of version.] )
+
 
 ###############################################################################
 #   Checks for REQUIRED (non-optional) header files...
@@ -422,21 +604,22 @@ AH_TEMPLATE( [HAVE_HQA_H],              [Define to if header "hqa.h" exists in H
 #  need to have any 'HAVE_XXX' pre-processor #defined entered into config.h
 #  (because we can't build Herc at all if any of them don't happen to exist)
 
-AC_CHECK_HEADER( ctype.h,      [], [ AC_MSG_RESULT( [ERROR: Required header 'ctype.h' not found]      ); hc_error=yes ] )
-AC_CHECK_HEADER( errno.h,      [], [ AC_MSG_RESULT( [ERROR: Required header 'errno.h' not found]      ); hc_error=yes ] )
-AC_CHECK_HEADER( fcntl.h,      [], [ AC_MSG_RESULT( [ERROR: Required header 'fcntl.h' not found]      ); hc_error=yes ] )
-AC_CHECK_HEADER( limits.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'limits.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( setjmp.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'setjmp.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( stdarg.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'stdarg.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( stdio.h,      [], [ AC_MSG_RESULT( [ERROR: Required header 'stdio.h' not found]      ); hc_error=yes ] )
-AC_CHECK_HEADER( stdlib.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'stdlib.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( string.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'string.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( time.h,       [], [ AC_MSG_RESULT( [ERROR: Required header 'time.h' not found]       ); hc_error=yes ] )
-AC_CHECK_HEADER( unistd.h,     [], [ AC_MSG_RESULT( [ERROR: Required header 'unistd.h' not found]     ); hc_error=yes ] )
-AC_CHECK_HEADER( sys/stat.h,   [], [ AC_MSG_RESULT( [ERROR: Required header 'sys/stat.h' not found]   ); hc_error=yes ] )
-AC_CHECK_HEADER( sys/time.h,   [], [ AC_MSG_RESULT( [ERROR: Required header 'sys/time.h' not found]   ); hc_error=yes ] )
-AC_CHECK_HEADER( sys/types.h,  [], [ AC_MSG_RESULT( [ERROR: Required header 'sys/types.h' not found]  ); hc_error=yes ] )
-AC_CHECK_HEADER( sys/mman.h,   [], [ AC_MSG_RESULT( [ERROR: Required header 'sys/mman.h' not found]   ); hc_error=yes ] )
+AC_CHECK_HEADER( ctype.h,      [], [ AC_MSG_WARN( [ERROR: Required header 'ctype.h' not found]      ); hc_error=yes ] )
+AC_CHECK_HEADER( errno.h,      [], [ AC_MSG_WARN( [ERROR: Required header 'errno.h' not found]      ); hc_error=yes ] )
+AC_CHECK_HEADER( fcntl.h,      [], [ AC_MSG_WARN( [ERROR: Required header 'fcntl.h' not found]      ); hc_error=yes ] )
+AC_CHECK_HEADER( limits.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'limits.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( setjmp.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'setjmp.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( stdarg.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'stdarg.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( stdio.h,      [], [ AC_MSG_WARN( [ERROR: Required header 'stdio.h' not found]      ); hc_error=yes ] )
+AC_CHECK_HEADER( stdlib.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'stdlib.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( string.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'string.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( sched.h,      [], [ AC_MSG_WARN( [ERROR: Required header 'sched.h' not found]      ); hc_error=yes ] )
+AC_CHECK_HEADER( time.h,       [], [ AC_MSG_WARN( [ERROR: Required header 'time.h' not found]       ); hc_error=yes ] )
+AC_CHECK_HEADER( unistd.h,     [], [ AC_MSG_WARN( [ERROR: Required header 'unistd.h' not found]     ); hc_error=yes ] )
+AC_CHECK_HEADER( sys/stat.h,   [], [ AC_MSG_WARN( [ERROR: Required header 'sys/stat.h' not found]   ); hc_error=yes ] )
+AC_CHECK_HEADER( sys/time.h,   [], [ AC_MSG_WARN( [ERROR: Required header 'sys/time.h' not found]   ); hc_error=yes ] )
+AC_CHECK_HEADER( sys/types.h,  [], [ AC_MSG_WARN( [ERROR: Required header 'sys/types.h' not found]  ); hc_error=yes ] )
+AC_CHECK_HEADER( sys/mman.h,   [], [ AC_MSG_WARN( [ERROR: Required header 'sys/mman.h' not found]   ); hc_error=yes ] )
 
 #  PROGRAMMING NOTE: the pthread.h header only required if this is not
 #  an fthreads build. Thus we delay aborting until later once we know
@@ -461,7 +644,7 @@ AC_CHECK_HEADER( pthread.h, [hc_cv_have_pthread_h=yes],
             CFLAGS=$hc_temp
 
         else
-            AC_MSG_RESULT( [ERROR: Required header 'pthread.h' not found] )
+            AC_MSG_WARN( [ERROR: Required header 'pthread.h' not found] )
             hc_error=yes
         fi
     ]
@@ -484,49 +667,56 @@ AC_CACHE_SAVE()
 
 HC_CHECK_HQA_DIR()                # (Hercules Build Configuration QA Testing)
 
+AC_CHECK_HEADERS( stdbool.h )
+
 #------------------------------------------------------------------------------
-#  PROGRAMMING NOTE: on Darwin sys/socket.h must be included before
+#  PROGRAMMING NOTE: on Darwin and *BSD sys/socket.h must be included before
 #  net/if.h, net/route.h, or netinet/in.h can be #included, and on OS X 10.3
 #  (but not 10.4) sys/types.h must be #included before sys/socket.h. Thus
 #  the below four header checks are treated specially. If we ever drop support
 #  for OS X 10.3, a lot of this cruft can be removed, not just here but
 #  anywhere we find ourselves manually including sys/types.h.
 
-#  PROGRAMMING NOTE: on *BSD sys/socket.h must be included before net/if.h,
-#  net/route.h, or netinet/in.h can be #included.
-
 AC_CHECK_HEADERS( sys/socket.h,   [hc_cv_have_sys_socket_h=yes],   [hc_cv_have_sys_socket_h=no],
 [
     #include <sys/types.h>
-]   )
-AC_CHECK_HEADERS( net/if.h,       [hc_cv_have_net_if_h=yes],       [hc_cv_have_net_if_h=no],
-[
-    #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
-    #endif
 ] )
 AC_CHECK_HEADERS( netinet/in.h,   [hc_cv_have_netinet_in_h=yes],   [hc_cv_have_netinet_in_h=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
-AC_CHECK_HEADERS( netinet/tcp.h,  [hc_cv_have_netinet_tcp_h=yes],  [hc_cv_have_netinet_tcp_h=no],
+AC_CHECK_HEADERS( net/if.h,       [hc_cv_have_net_if_h=yes],       [hc_cv_have_net_if_h=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_HEADERS( net/route.h,    [hc_cv_have_net_route_h=yes],    [hc_cv_have_net_route_h=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
+AC_CHECK_HEADERS( net/tcp.h,      [hc_cv_have_net_tcp_h=yes],      [hc_cv_have_net_tcp_h=no],
+[
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+] )
+AC_CHECK_HEADERS( netinet/tcp.h,  [hc_cv_have_netinet_tcp_h=yes],  [hc_cv_have_netinet_tcp_h=no],
+[
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+] )
+
 #------------------------------------------------------------------------------
 
 AC_CHECK_HEADERS( arpa/inet.h,    [hc_cv_have_arpa_inet_h=yes],    [hc_cv_have_arpa_inet_h=no]    )
@@ -536,44 +726,56 @@ AC_CHECK_HEADERS( sys/ioctl.h,    [hc_cv_have_sys_ioctl_h=yes],    [hc_cv_have_s
 #------------------------------------------------------------------------------
 #  PROGRAMMING NOTE: On Linux struct in6_ifreq is defined in linux/ipv6.h.
 #  On other systems it may be defined in netinet6/in6_var.h or elsewhere.
+#
+#  in6_*.h files are strictly for library separation and should not normally
+#  be directly #included. This is enforced on FreeBSD and to a lesser degree
+#  on OS/X where you you can get away with it by #including netinet/in_var.h
+#  first.
 
-#  in6_*.h files are stricly for library separation.  They should not be included
-#  directly.  This is enforced on FreeBSD and OS/X.  On OS/X you can get away with netinet/in_var.h;
-#  in FreeBSD you have to do it by the book, but this works for OS/X too.
-
-AC_CHECK_HEADERS( linux/ipv6.h,       [hc_cv_have_linux_ipv6_h=yes],       [hc_cv_have_linux_ipv6_h=no] )
-# FreeBSD has this guy
+AC_CHECK_HEADERS( linux/ipv6.h,   [hc_cv_have_linux_ipv6_h=yes],   [hc_cv_have_linux_ipv6_h=no],
+[
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+] )
 AC_CHECK_HEADERS( net/if_var.h,   [hc_cv_have_net_in_var_h=yes],   [hc_cv_have_net_in_var_h=no],
 [
-    #include <net/if.h>
-    #include <net/if_var.h>
-] )
-AC_CHECK_HEADERS( netinet/in.h,   [hc_cv_have_netinet_in_h=yes],   [hc_cv_have_netinet_in_h=no] )
-AC_CHECK_HEADERS( netinet/tcp.h,  [hc_cv_have_netinet_tcp_h=yes],  [hc_cv_have_netinet_tcp_h=no])
-AC_CHECK_HEADERS( net/route.h,    [hc_cv_have_net_route_h=yes],    [hc_cv_have_net_route_h=no])
-AC_CHECK_HEADERS( netinet/in_var.h,   [hc_cv_have_netinet_in_var_h=yes],   [hc_cv_have_netinet_in_var_h=no],
-[
-    #if HAVE_NET_IF_VAR_H
-    #include <net/if.h>
-    #include <net/if_var.h>
-    #if HAVE_NETINET_IN_H
-    #include <netinet/in.h>
-    #include <netinet/in_var.h>
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
+    #ifdef HAVE_NET_IF_H
+      #include <net/if.h>
     #endif
 ] )
-
-# Autoconf adds an include for file being tested at the end of the program, but that is OK,
-# as we've been good boys.  The duplicate include has no effect.
-AC_CHECK_HEADERS( netinet6/in6_var.h, [hc_cv_have_netinet6_in6_var_h=yes], [hc_cv_have_netinet6_in6_var_h=no],
+AC_CHECK_HEADERS( netinet/in_var.h,  [hc_cv_have_netinet_in_var_h=yes],  [hc_cv_have_netinet_in_var_h=no],
 [
-    #if HAVE_NET_IF_VAR_H
-    #include <net/if.h>
-    #include <net/if_var.h>
-    #if HAVE_NETINET_IN_H
-    #include <netinet/in.h>
-    #include <netinet/in_var.h>
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
+    #ifdef HAVE_NET_IF_VAR_H
+      #include <net/if.h>
+      #include <net/if_var.h>
+    #endif
+    #ifdef HAVE_NETINET_IN_H
+      #include <netinet/in.h>
+    #endif
+] )
+AC_CHECK_HEADERS( netinet6/in6_var.h,  [hc_cv_have_netinet6_in6_var_h=yes],  [hc_cv_have_netinet6_in6_var_h=no],
+[
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #ifdef HAVE_NET_IF_VAR_H
+      #include <net/if.h>
+      #include <net/if_var.h>
+    #endif
+    #ifdef HAVE_NETINET_IN_VAR_H
+      #include <netinet/in.h>
+      #include <netinet/in_var.h>
     #endif
 ] )
 
@@ -584,11 +786,13 @@ AC_CHECK_HEADERS( netinet6/in6_var.h, [hc_cv_have_netinet6_in6_var_h=yes], [hc_c
 AC_CHECK_HEADERS( sys/param.h,    [hc_cv_have_sys_param_h=yes],    [hc_cv_have_sys_param_h=no]    )
 AC_CHECK_HEADERS( sys/mount.h,    [hc_cv_have_sys_mount_h=yes],    [hc_cv_have_sys_mount_h=no],
 [
-    #if HAVE_SYS_PARAM_H
-    #include <sys/param.h>
+    #ifdef HAVE_SYS_PARAM_H
+      #include <sys/param.h>
     #endif
 ] )
+
 #------------------------------------------------------------------------------
+AC_CHECK_HEADERS_ONCE(stdatomic.h sys/sysctl.h assert.h)
 
 AC_CHECK_HEADERS( sys/mtio.h,     [hc_cv_have_sys_mtio_h=yes],     [hc_cv_have_sys_mtio_h=no]     )
 AC_CHECK_HEADERS( sys/resource.h, [hc_cv_have_sys_resource_h=yes], [hc_cv_have_sys_resource_h=no] )
@@ -599,23 +803,18 @@ AC_CHECK_HEADERS( sys/un.h,       [hc_cv_have_sys_un_h=yes],       [hc_cv_have_s
 AC_CHECK_HEADERS( byteswap.h,     [hc_cv_have_byteswap_h=yes],     [hc_cv_have_byteswap_h=no]     )
 AC_CHECK_HEADERS( bzlib.h,        [hc_cv_have_bzlib_h=yes],        [hc_cv_have_bzlib_h=no]        )
 AC_CHECK_HEADERS( dlfcn.h,        [hc_cv_have_dlfcn_h=yes],        [hc_cv_have_dlfcn_h=no]        )
-AC_CHECK_HEADERS( fenv.h,         [hc_cv_have_fenv_h=yes],         [hc_cv_have_fenv_h=no]         )
 AC_CHECK_HEADERS( inttypes.h,     [hc_cv_have_inttypes_h=yes],     [hc_cv_have_inttypes_h=no]     )
-AC_CHECK_HEADERS( locale.h,       [hc_cv_have_locale_h=yes],       [hc_cv_have_locale_h=no]       )
 AC_CHECK_HEADERS( ltdl.h,         [hc_cv_have_ltdl_h=yes],         [hc_cv_have_ltdl_h=no]         )
 AC_CHECK_HEADERS( malloc.h,       [hc_cv_have_malloc_h=yes],       [hc_cv_have_malloc_h=no]       )
-AC_CHECK_HEADERS( math.h,         [hc_cv_have_math_h=yes],         [hc_cv_have_math_h=no]         )
 AC_CHECK_HEADERS( netdb.h,        [hc_cv_have_netdb_h=yes],        [hc_cv_have_netdb_h=no]        )
 AC_CHECK_HEADERS( pwd.h,          [hc_cv_have_pwd_h=yes],          [hc_cv_have_pwd_h=no]          )
 AC_CHECK_HEADERS( regex.h,        [hc_cv_have_regex_h=yes],        [hc_cv_have_regex_h=no]        )
-AC_CHECK_HEADERS( sched.h,        [hc_cv_have_sched_h=yes],        [hc_cv_have_sched_h=no]        )
 AC_CHECK_HEADERS( signal.h,       [hc_cv_have_signal_h=yes],       [hc_cv_have_signal_h=no]       )
 AC_CHECK_HEADERS( termios.h,      [hc_cv_have_termios_h=yes],      [hc_cv_have_termios_h=no]      )
 AC_CHECK_HEADERS( time.h,         [hc_cv_have_time_h=yes],         [hc_cv_have_time_h=no]         )
 AC_CHECK_HEADERS( zlib.h,         [hc_cv_have_zlib_h=yes],         [hc_cv_have_zlib_h=no]         )
 AC_CHECK_HEADERS( sys/capability.h, [hc_cv_have_sys_capa_h=yes],   [hc_cv_have_sys_capa_h=no]     )
 AC_CHECK_HEADERS( sys/prctl.h,    [hc_cv_have_sys_prctl_h=yes],    [hc_cv_have_sys_prctl_h=no]    )
-AC_CHECK_HEADERS( sys/syscall.h,  [hc_cv_have_syscall_h=yes],      [hc_cv_have_syscall_h=no]    )
 
 AC_CHECK_HEADERS( rexx.h,
                   [hc_cv_have_rexx_h=yes],
@@ -654,14 +853,13 @@ AC_CHECK_DECLS( SIGBUS,               [hc_cv_have_sigbus=yes],              [hc_
 AC_CHECK_DECLS( IFNAMSIZ,             [hc_cv_have_ifnamsiz=yes],            [hc_cv_have_ifnamsiz=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_DECLS( LOGIN_NAME_MAX,       [hc_cv_have_login_name_max=yes],      [hc_cv_have_login_name_max=no],      [#include <limits.h>] )
 AC_CHECK_DECLS( _SC_NPROCESSORS_CONF, [hc_cv_have_sc_nprocessors_conf=yes], [hc_cv_have_sc_nprocessors_conf=no], [#include <unistd.h>] )
 AC_CHECK_DECLS( _SC_NPROCESSORS_ONLN, [hc_cv_have_sc_nprocessors_onln=yes], [hc_cv_have_sc_nprocessors_onln=no], [#include <unistd.h>] )
-
 AC_CHECK_DECLS( SIOCSIFNETMASK,       [hc_cv_have_siocsifnetmask=yes],      [hc_cv_have_siocsifnetmask=no],      [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCSIFBRDADDR,       [hc_cv_have_siocsifbrdaddr=yes],      [hc_cv_have_siocsifbrdaddr=no],      [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCSIFHWADDR,        [hc_cv_have_siocsifhwaddr=yes],       [hc_cv_have_siocsifhwaddr=no],       [#include <linux/sockios.h>] )
@@ -670,10 +868,106 @@ AC_CHECK_DECLS( SIOCADDRT,            [hc_cv_have_siocaddrt=yes],           [hc_
 AC_CHECK_DECLS( SIOCDELRT,            [hc_cv_have_siocdelrt=yes],           [hc_cv_have_siocdelrt=no],           [#include <linux/sockios.h>] )
 AC_CHECK_DECLS( SIOCDIFADDR,          [hc_cv_have_siocdifaddr=yes],         [hc_cv_have_siocdifaddr=no],         [#include <linux/sockios.h>] )
 
-if test "$hc_cv_have_sys_mtio_h" == "yes"; then
+if test "$hc_cv_have_sys_mtio_h" = "yes"; then
     AC_CHECK_DECLS( MTEWARN,          [hc_cv_have_mtewarn=yes],             [hc_cv_have_mtewarn=no],             [#include <sys/mtio.h>] )
 else
     hc_cv_have_mtewarn=no
+fi
+
+#------------------------------------------------------------------------------
+#                  Check for TCP Keepalive support
+#------------------------------------------------------------------------------
+
+AC_MSG_NOTICE( [Checking for TCP keepalive support...] )
+
+AC_CHECK_DECLS( SO_KEEPALIVE, [hc_cv_have_basic_keepalive=yes], [hc_cv_have_basic_keepalive=no],
+[
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+] )
+
+if test "$hc_cv_have_basic_keepalive" != "yes"; then
+  AC_CHECK_DECLS( TCP_KEEPALIVE, [hc_cv_have_basic_keepalive=yes], [hc_cv_have_basic_keepalive=no],
+  [
+      #include <sys/types.h>
+      #ifdef HAVE_SYS_SOCKET_H
+        #include <sys/socket.h>
+      #endif
+      #if defined(HAVE_NET_TCP_H)
+        #include <net/tcp.h>
+      #elif defined(HAVE_NETINET_TCP_H)
+        #include <netinet/tcp.h>
+      #endif
+  ] )
+fi
+
+if test "$hc_cv_have_basic_keepalive" != "yes"; then
+  hc_cv_have_partial_keepalive=no
+  hc_cv_have_full_keepalive=no
+else
+  AC_CHECK_DECLS( TCP_KEEPIDLE, [hc_cv_have_tcp_keepidle=yes], [hc_cv_have_tcp_keepidle=no],
+  [
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #if defined(HAVE_NET_TCP_H)
+      #include <net/tcp.h>
+    #elif defined(HAVE_NETINET_TCP_H)
+      #include <netinet/tcp.h>
+    #endif
+  ] )
+  AC_CHECK_DECLS( TCP_KEEPINTVL, [hc_cv_have_tcp_keepintvl=yes], [hc_cv_have_tcp_keepintvl=no],
+  [
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #if defined(HAVE_NET_TCP_H)
+      #include <net/tcp.h>
+    #elif defined(HAVE_NETINET_TCP_H)
+      #include <netinet/tcp.h>
+    #endif
+  ] )
+  AC_CHECK_DECLS( TCP_KEEPCNT, [hc_cv_have_tcp_keepcnt=yes], [hc_cv_have_tcp_keepcnt=no],
+  [
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #if defined(HAVE_NET_TCP_H)
+      #include <net/tcp.h>
+    #elif defined(HAVE_NETINET_TCP_H)
+      #include <netinet/tcp.h>
+    #endif
+  ] )
+  if test "$hc_cv_have_tcp_keepidle"  = "yes" &&
+     test "$hc_cv_have_tcp_keepintvl" = "yes" &&
+     test "$hc_cv_have_tcp_keepcnt"   = "yes"; then
+     hc_cv_have_full_keepalive=yes
+     hc_cv_have_partial_keepalive=yes
+  else
+    hc_cv_have_full_keepalive=no
+    if test "$hc_cv_have_tcp_keepidle"  = "yes" ||
+       test "$hc_cv_have_tcp_keepintvl" = "yes" ||
+       test "$hc_cv_have_tcp_keepcnt"   = "yes"; then
+       hc_cv_have_partial_keepalive=yes
+    else
+       hc_cv_have_partial_keepalive=no
+    fi
+  fi
+fi
+
+if test "$hc_cv_have_full_keepalive" = "yes"; then
+  AC_MSG_NOTICE( [TCP keepalive support...  FULL] )
+elif test "$hc_cv_have_partial_keepalive" = "yes"; then
+  AC_MSG_NOTICE( [TCP keepalive support...  PARTIAL] )
+elif test "$hc_cv_have_basic_keepalive" = "yes"; then
+  AC_MSG_NOTICE( [TCP keepalive support...  BASIC] )
+else
+  AC_MSG_NOTICE( [TCP keepalive support...  NONE] )
 fi
 
 AC_CACHE_SAVE()
@@ -682,52 +976,54 @@ AC_CACHE_SAVE()
 #   Checks for types...
 ###############################################################################
 
-AC_CHECK_TYPES( u_int8_t,   [hc_cv_have_u_int8_t=yes],   [hc_cv_have_u_int8_t=no]                              )
-AC_CHECK_TYPES( useconds_t, [hc_cv_have_useconds_t=yes], [hc_cv_have_useconds_t=no]                            )
-AC_CHECK_TYPES( id_t,       [hc_cv_have_id_t=yes],       [hc_cv_have_id_t=no]                                  )
+AC_CHECK_TYPES(__uint128_t, [hc_cv_have_u_int128_t=yes], [hc_cv_have_u_int128_t=no] )
+AC_CHECK_TYPES( u_int8_t,   [hc_cv_have_u_int8_t=yes],   [hc_cv_have_u_int8_t=no]   )
+AC_CHECK_TYPES( useconds_t, [hc_cv_have_useconds_t=yes], [hc_cv_have_useconds_t=no] )
+AC_CHECK_TYPES( id_t,       [hc_cv_have_id_t=yes],       [hc_cv_have_id_t=no]       )
+
 AC_CHECK_TYPES( u_char,     [hc_cv_have_u_char=yes],     [hc_cv_have_u_char=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_TYPES( u_short,    [hc_cv_have_u_short=yes],    [hc_cv_have_u_short=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_TYPES( u_int,      [hc_cv_have_u_int=yes],      [hc_cv_have_u_int=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_TYPES( u_long,     [hc_cv_have_u_long=yes],     [hc_cv_have_u_long=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 AC_CHECK_TYPES( in_addr_t,  [hc_cv_have_in_addr_t=yes],  [hc_cv_have_in_addr_t=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
-    #if HAVE_NETINET_IN_H
-    #include <netinet/in.h>
+    #ifdef HAVE_NETINET_IN_H
+      #include <netinet/in.h>
     #endif
 ] )
 AC_CHECK_TYPES( socklen_t,  [hc_cv_have_socklen_t=yes],  [hc_cv_have_socklen_t=no],
 [
     #include <sys/types.h>
-    #if HAVE_SYS_SOCKET_H
-    #include <sys/socket.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
     #endif
 ] )
 
@@ -745,12 +1041,18 @@ AC_CACHE_SAVE()
 #  keep the below check for 'dlopen' anyway since we prefer that libtool use it
 #  instead of its own equivalent (lt_dlopen) if it's available.
 
-AC_CHECK_LIB( msvcrt, _pipe          )
+#  AUTOCONF NOTE:  Linker -l options are built up in reverse order of the tests
+#  below; the last test performed becomes the first -l passed to ld.  If a
+#  library requires symbols from second library, the second library must be
+#  tested before the library that requires the symbols.  Note also that if
+#  an <action if found> is specified, a -l linker option is not added for the
+#  library.
+
+
 AC_CHECK_LIB( dl,     dlopen         )
-AC_CHECK_LIB( m,      sqrt           )
 AC_CHECK_LIB( socket, connect        )
 AC_CHECK_LIB( nsl,    gethostbyname  )
-AC_CHECK_LIB( resolv, inet_aton      )
+dnl AC_CHECK_LIB( resolv, inet_aton      )   left as m4 comment so test can be incrluded in CMake
 AC_CHECK_LIB( z,      uncompress     )
 AC_CHECK_LIB( bz2,    BZ2_bzBuffToBuffDecompress,
             [ hc_cv_have_libbz2=yes ],
@@ -765,6 +1067,29 @@ AC_CHECK_LIB( rt,     sched_yield    )
 #              To be further investigate...
 # AC_CHECK_LIB( pthread,pthread_create )
 
+###############################################################################
+#   Checks for REQUIRED math.h header and math library files...
+###############################################################################
+
+# math.h is needed by:
+# 1) control.c to declare the pow(), used in the emulation of STSI
+# 2) impl.c to declare floor(), used to process the time limit option -t
+# 3) clock.c to declare ldexp, used to compute 2^(-43).
+#
+# Note also that math functions are typically in libm in open source and
+# bundled in the c runtime library in Windows.
+
+AC_CHECK_HEADER( math.h,   [], [ AC_MSG_WARN( [Required header 'math.h' not found] );
+                                       hc_error=yes ] )
+AC_CHECK_LIB(    m, pow,   [], [ AC_MSG_WARN( [Required library 'libm' not found or does not include function 'pow()'] );
+                                       hc_error=yes ] )
+AC_CHECK_FUNC(   floor,    [], [ AC_MSG_WARN( [Required function 'floor() not found'] );
+                                       hc_error=yes ] )
+AC_CHECK_FUNC(   ldexp,    [], [ AC_MSG_WARN( [Required function 'ldexp() not found'] );
+                                       hc_error=yes ] )
+
+
+
 AC_CACHE_SAVE()
 
 ###############################################################################
@@ -777,8 +1102,6 @@ AC_CACHE_SAVE()
 
 AC_CHECK_FUNCS( memrchr )
 AC_CHECK_FUNCS( getopt_long )
-AC_CHECK_FUNCS( sqrtl ldexpl fabsl fmodl frexpl )
-AC_CHECK_FUNCS( ldexpf frexpf fabsf rint )
 AC_CHECK_FUNCS( strlcpy strlcat )
 AC_CHECK_FUNCS( strerror_r )
 AC_CHECK_FUNCS( strsignal, [hc_cv_have_strsignal=yes], [hc_cv_have_strsignal=no] )
@@ -802,14 +1125,6 @@ AC_CHECK_FUNCS( mlockall )
 AC_CHECK_FUNCS( pvalloc )
 AC_CHECK_FUNCS( valloc )
 AC_CHECK_FUNCS( posix_memalign )
-
-
-
-
-AC_CHECK_FUNCS( vsscanf,
-               [hc_cv_have_vsscanf=yes],
-               [hc_cv_have_vsscanf=no]
-)
 
 AC_CHECK_FUNCS( setresuid getresuid,
                [hc_cv_have_getset_uid=yes],
@@ -841,10 +1156,10 @@ AC_CACHE_CHECK([whether fdatasync is supported],[ac_cv_func_fdatasync_supported]
 #include <unistd.h>
     ]],[[
 #if !defined(HAVE_FDATASYNC)
-#error fdatasync is not defined on this platform
+  #error fdatasync is not defined on this platform
 #endif
 #if defined(_POSIX_SYNCHRONIZED_IO) && (_POSIX_SYNCHRONIZED_IO+0 < 0)
-#error fdatasync is not supported on this platform
+  #error fdatasync is not supported on this platform
 #endif
     ]])],
     [ac_cv_func_fdatasync_supported=yes],
@@ -864,55 +1179,57 @@ AC_CHECK_MEMBERS( [struct sockaddr_in.sin_len],
                   [hc_cv_have_sockaddr_in_sin_len=yes ],
                   [hc_cv_have_sockaddr_in_sin_len=no  ],
 [
-#include <sys/types.h>
-#if HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#if HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #ifdef HAVE_NETINET_IN_H
+      #include <netinet/in.h>
+    #endif
 ] )
 
 AC_CHECK_MEMBERS( [struct in_addr.s_addr],
                   [hc_cv_have_in_addr_s_addr=yes  ],
                   [hc_cv_have_in_addr_s_addr=no   ],
 [
-#include <sys/types.h>
-#if HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#if HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
+    #include <sys/types.h>
+    #ifdef HAVE_SYS_SOCKET_H
+      #include <sys/socket.h>
+    #endif
+    #ifdef HAVE_NETINET_IN_H
+      #include <netinet/in.h>
+    #endif
 ] )
 
 # This test works for Linux and OS/X
+
 AC_CHECK_MEMBERS( [struct in6_ifreq.ifr6_addr],
                   [hc_cv_have_in6_ifreq_ifr6_addr=yes  ],
                   [hc_cv_have_in6_ifreq_ifr6_addr=no   ],
 [
-#ifdef HAVE_LINUX_IPV6_H
-#include <linux/ipv6.h>
-#endif
-#ifdef HAVE_NETINET6_IN6_VAR_H
-#include <netinet6/in6_var.h>
-#endif
+    #ifdef HAVE_LINUX_IPV6_H
+      #include <linux/ipv6.h>
+    #endif
+    #ifdef HAVE_NETINET6_IN6_VAR_H
+      #include <netinet6/in6_var.h>
+    #endif
 ] )
 
 # FreeBSD naming scheme
+
 AC_CHECK_MEMBERS( [struct in6_ifreq.ifr_ifru.ifru_flags],
                   [hc_cv_have_in6_ifreq_ifru_addr=yes  ],
                   [hc_cv_have_in6_ifreq_ifru_addr=no   ],
 [
-#ifdef HAVE_LINUX_IPV6_H
-#include <linux/ipv6.h>
-#endif
-#ifdef HAVE_NETINET6_IN6_VAR_H
-#include <net/if.h>
-#include <net/if_var.h>
-#include <netinet/in.h>
-#include <netinet/in_var.h> // Not the ipv6 file, please
-#endif
+    #ifdef HAVE_LINUX_IPV6_H
+      #include <linux/ipv6.h>
+    #endif
+    #ifdef HAVE_NETINET6_IN6_VAR_H
+      #include <net/if.h>
+      #include <net/if_var.h>
+      #include <netinet/in.h>
+      #include <netinet/in_var.h>  // Not the ipv6 file, please
+    #endif
 ] )
 
 AC_CHECK_MEMBERS( [struct sigaction.sa_sigaction],
@@ -941,7 +1258,7 @@ AC_CHECK_MEMBERS( [struct timespec.tv_nsec],
     [#include <sys/types.h>]
 )
 
-if test "$hc_cv_have_sys_mtio_h" == "yes"; then
+if test "$hc_cv_have_sys_mtio_h" = "yes"; then
 
   AC_CHECK_MEMBERS( [struct mtget.mt_gstat],
                     [hc_cv_have_mtget_mt_gstat=yes  ],
@@ -968,6 +1285,10 @@ AC_CHECK_SIZEOF(long)
 AC_CHECK_SIZEOF(size_t)
 AC_CHECK_SIZEOF(int *)
 AC_CHECK_SIZEOF(off_t)
+
+if test "$hc_cv_have_pthread_h" = "yes"; then
+  AC_CHECK_SIZEOF(pthread_t)
+fi
 
 #----------------------------------#
 #  Structure alignment/size test   #
@@ -1032,7 +1353,7 @@ AC_MSG_NOTICE( [results: byte structs are aligned/rounded by default... ${hc_cv_
 
 if test "$hc_cv_byte_structs_always_aligned_and_rounded" = "yes"; then
 
-    AC_MSG_RESULT( [ERROR: Size of structures are aligned/rounded and we don't know how to tell the compiler otherwise] )
+    AC_MSG_WARN( [ERROR: Size of structures are aligned/rounded and we don't know how to tell the compiler otherwise] )
     hc_error=yes
 fi
 
@@ -1047,13 +1368,13 @@ AC_CACHE_CHECK( [if this is the broken 2.96 version of GCC],
         if test "$GCC" = "yes"; then
 
             AC_COMPILE_IFELSE(
-                [
+                [ AC_LANG_SOURCE [
                     #if __GNUC__ == 2 && __GNUC_MINOR__ == 96
                       yes;
                     #else
                       int no;
                     #endif
-                ],
+                ] ],
                 [hc_cv_is_gcc_2_96=no],
                 [hc_cv_is_gcc_2_96=yes]
             )
@@ -1063,6 +1384,147 @@ AC_CACHE_CHECK( [if this is the broken 2.96 version of GCC],
         fi
     ]
 )
+
+#---------------------------------------------------#
+#  Check if atomic '__sync' builtins are available  #
+#---------------------------------------------------#
+
+# Note: We purposely do *NOT* check for GCC. We don't
+# care if the compiler is GCC or CLANG. Either is ok.
+
+AC_CACHE_CHECK( [if atomic '_sync' builtins are available],
+
+    [hc_cv_sync_builtins_available],
+    [
+        AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    static unsigned char  b = 0;
+                    static unsigned char *p = &b;
+                    void main()
+                    {
+                        __sync_or_and_fetch  ( p, 0xFF );
+                        __sync_and_and_fetch ( p, 0x00 );
+                        __sync_xor_and_fetch ( p, 0xAC );
+                    }
+                  ]
+                ],
+        [hc_cv_sync_builtins_available=yes],
+        [hc_cv_sync_builtins_available=no] )
+    ]
+)
+
+#------------------------------------------------#
+#  Check if '__atomic' intrinsics are available  #
+#------------------------------------------------#
+
+# Note: We purposely do *NOT* check for GCC. We don't
+# care if the compiler is GCC or CLANG. Either is ok.
+
+AC_CACHE_CHECK( [if '__atomic' intrinsics are available],
+
+    [hc_cv_atomic_intrinsics_available],
+    [
+        AC_COMPILE_IFELSE(
+        [ AC_LANG_SOURCE [
+            static unsigned char  b = 0;
+            static unsigned char *p = &b;
+            void main()
+            {
+                __atomic_or_fetch  ( p, 0xFF, __ATOMIC_SEQ_CST );
+                __atomic_and_fetch ( p, 0x00, __ATOMIC_SEQ_CST );
+                __atomic_xor_fetch ( p, 0xAC, __ATOMIC_SEQ_CST );
+            }
+          ]
+        ],
+        [hc_cv_atomic_intrinsics_available=yes],
+        [hc_cv_atomic_intrinsics_available=no] )
+    ]
+)
+
+#---------------------------------------#
+#  Check if C11 atomics are available   #
+#---------------------------------------#
+
+# Note: We purposely do *NOT* check for GCC. We don't
+# care if the compiler is GCC or CLANG. Either is ok.
+
+AC_CACHE_CHECK( [if C11 atomics are available],
+
+    [hc_cv_c11_atomics_available],
+    [
+        AC_COMPILE_IFELSE(
+        [ AC_LANG_SOURCE [
+            #if !defined(HAVE_STDATOMIC_H) || defined(__STDC_NO_ATOMICS__)
+              #error C11 atomics are not available
+            #else
+              #include <stdatomic.h>
+              #if defined(ATOMIC_CHAR_LOCK_FREE)
+                #define C11_ATOMICS_ARE_AVAILABLE
+              #else
+                #error C11 atomics are not available
+              #endif
+            #endif
+          ]
+        ],
+        [hc_cv_c11_atomics_available=yes],
+        [hc_cv_c11_atomics_available=no] )
+    ]
+)
+
+#-----------------------------------------------#
+#  Determine 'safe' ATOMIC_*_LOCK_FREE values   #
+#-----------------------------------------------#
+
+if test "$hc_cv_c11_atomics_available" = "yes"; then
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_BOOL_LOCK_FREE)
+                   hc_cv_c11_atomic_bool_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_CHAR_LOCK_FREE)
+                   hc_cv_c11_atomic_char_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_CHAR16_T_LOCK_FREE)
+                   hc_cv_c11_atomic_char16_t_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_CHAR32_T_LOCK_FREE)
+                   hc_cv_c11_atomic_char32_t_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_WCHAR_T_LOCK_FREE)
+                   hc_cv_c11_atomic_wchar_t_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_SHORT_LOCK_FREE)
+                   hc_cv_c11_atomic_short_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_INT_LOCK_FREE)
+                   hc_cv_c11_atomic_int_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_LONG_LOCK_FREE)
+                   hc_cv_c11_atomic_long_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_LLONG_LOCK_FREE)
+                   hc_cv_c11_atomic_llong_lock_free="$c11_lock_free_value"
+
+  HC_GET_C11_LOCK_FREE_VALUE(ATOMIC_POINTER_LOCK_FREE)
+                   hc_cv_c11_atomic_pointer_lock_free="$c11_lock_free_value"
+
+  if test "$hc_error" != "no"; then
+    AC_MSG_ERROR( [Please correct the above error(s) and try again] )
+  fi
+
+else
+
+  hc_cv_c11_atomic_bool_lock_free="0"
+  hc_cv_c11_atomic_char_lock_free="0"
+  hc_cv_c11_atomic_char16_t_lock_free="0"
+  hc_cv_c11_atomic_char32_t_lock_free="0"
+  hc_cv_c11_atomic_wchar_t_lock_free="0"
+  hc_cv_c11_atomic_short_lock_free="0"
+  hc_cv_c11_atomic_int_lock_free="0"
+  hc_cv_c11_atomic_long_lock_free="0"
+  hc_cv_c11_atomic_llong_lock_free="0"
+  hc_cv_c11_atomic_pointer_lock_free="0"
+
+fi
 
 #----------------------------------------------#
 #  Check if C99 flexible arrays are supported  #
@@ -1077,6 +1539,34 @@ AC_CACHE_CHECK( [if this is the broken 2.96 version of GCC],
 #----------------------------------------------#
 
 HC_C99_FLEXIBLE_ARRAYS()
+
+#----------------------------------------------------------------#
+#  Check if GCC supports '__attribute__ ((format(printf,n,n)))'  #
+#----------------------------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    AC_CACHE_CHECK( [whether '__attribute__ ((format(printf,n,n)))' is supported],
+
+        [hc_cv_attr_printf_supported],
+        [
+            hc_temp="$CFLAGS"
+            CFLAGS="-Wall -Werror"
+
+            AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    void logmsg(char*,...) __attribute__ ((format(printf,1,2)));
+                ] ],
+                [hc_cv_attr_printf_supported=yes],
+                [hc_cv_attr_printf_supported=no]
+            )
+
+            CFLAGS="$hc_temp"
+        ]
+    )
+else
+    hc_cv_attr_printf_supported=no
+fi
 
 #--------------------------------------------------------#
 #  Check if GCC supports '__attribute__ ((regparm(n)))'  #
@@ -1096,9 +1586,9 @@ if test "$GCC" = "yes"; then
             CFLAGS="-Wall -Werror"
 
             AC_COMPILE_IFELSE(
-                [
+                [ AC_LANG_SOURCE [
                     void conftest() __attribute__ ((regparm(1)));
-                ],
+                ] ],
                 [hc_cv_regparm_attr_supported=yes],
                 [hc_cv_regparm_attr_supported=no]
             )
@@ -1108,6 +1598,133 @@ if test "$GCC" = "yes"; then
     )
 else
     hc_cv_regparm_attr_supported=no
+fi
+
+#--------------------------------------------------------#
+#  Check if GCC supports diagnostic pragma               #
+#--------------------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    AC_CACHE_CHECK( [whether GCC supports diagnostic pragma],
+
+        [hc_cv_have_gcc_diag_pragma],
+        [
+            hc_temp="$CFLAGS"
+            CFLAGS="-Wall -Werror"
+
+            AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    /* Test an ancient diagnostic */
+                    #pragma GCC diagnostic ignored "-Wformat"
+                ] ],
+                [hc_cv_have_gcc_diag_pragma=yes],
+                [hc_cv_have_gcc_diag_pragma=no]
+            )
+
+            CFLAGS="$hc_temp"
+        ]
+    )
+else
+    hc_cv_have_gcc_diag_pragma=no
+fi
+
+#--------------------------------------------------------#
+#  Check if GCC supports diagnostic push/pop pragma      #
+#--------------------------------------------------------#
+
+if test "$hc_cv_have_gcc_diag_pragma" = "yes"  &&
+   test "$GCC"                        = "yes"; then
+
+    AC_CACHE_CHECK( [whether GCC supports diagnostic push/pop pragma],
+
+        [hc_cv_have_gcc_diag_pushpop],
+        [
+            hc_temp="$CFLAGS"
+            CFLAGS="-Wall -Werror"
+
+            AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    #pragma GCC diagnostic push
+                ] ],
+                [hc_cv_have_gcc_diag_pushpop=yes],
+                [hc_cv_have_gcc_diag_pushpop=no]
+            )
+
+            CFLAGS="$hc_temp"
+        ]
+    )
+else
+    hc_cv_have_gcc_diag_pushpop=no
+fi
+
+#--------------------------------------------------------#
+#  Check if GCC issues func defined but not used warning #
+#--------------------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    # Note: success/failure is reversed for this test.
+
+    AC_CACHE_CHECK( [whether GCC issues 'function defined but not used' warnings],
+
+        [hc_cv_have_gcc_unused_func_warning],
+        [
+            hc_temp="$CFLAGS"
+            CFLAGS="-Wall -Werror"
+
+            AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    static int unused() {return 1;}
+                    int main(int argc, char **argv)
+                    {
+                        return 0;
+                    }
+                ] ],
+                [hc_cv_have_gcc_unused_func_warning=no],
+                [hc_cv_have_gcc_unused_func_warning=yes]
+            )
+
+            CFLAGS="$hc_temp"
+        ]
+    )
+else
+    hc_cv_have_gcc_unused_func_warning=no
+fi
+
+#--------------------------------------------------------#
+#  Check if GCC issues variable set but not used warning #
+#--------------------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    # Note: success/failure is reversed for this test.
+
+    AC_CACHE_CHECK( [whether GCC issues 'variable set but not used' warnings],
+
+        [hc_cv_have_gcc_set_unused_warning],
+        [
+            hc_temp="$CFLAGS"
+            CFLAGS="-Wall -Werror"
+
+            AC_COMPILE_IFELSE(
+                [ AC_LANG_SOURCE [
+                    int main(int argc, char **argv)
+                    {
+                        int rc;
+                         rc = 2;
+                        return 0;
+                    }
+                ] ],
+                [hc_cv_have_gcc_set_unused_warning=no],
+                [hc_cv_have_gcc_set_unused_warning=yes]
+            )
+
+            CFLAGS="$hc_temp"
+        ]
+    )
+else
+    hc_cv_have_gcc_set_unused_warning=no
 fi
 
 #---------------------------------------------------#
@@ -1123,7 +1740,6 @@ if test "$GCC"                          = "yes"  &&
         [
             hc_temp="$CFLAGS"
             CFLAGS="-O3 -fomit-frame-pointer"
-
             AC_TRY_RUN(
                 [
                     /*
@@ -1240,7 +1856,7 @@ if test "$GCC" = "yes"; then
             CFLAGS="-Wall -Werror"
 
             AC_COMPILE_IFELSE(
-                [
+                [ AC_LANG_SOURCE [
                     #include <stdio.h>
                     #define MACRO(_x,_args...) printf(_x, ## _args)
                     int  main( int argc, char **argv, char **arge )
@@ -1248,7 +1864,7 @@ if test "$GCC" = "yes"; then
                         MACRO( "bare printf\n" );
                         return 0;
                     }
-                ],
+                ] ],
                 [hc_cv_pp_macro_arg_counting_broke=no],
                 [hc_cv_pp_macro_arg_counting_broke=yes]
             )
@@ -1258,6 +1874,50 @@ if test "$GCC" = "yes"; then
     )
 else
     hc_cv_pp_macro_arg_counting_broke=no
+fi
+
+#------------------------------------------------------#
+#  Test for GCC strict aliasing insanity               #
+#------------------------------------------------------#
+
+if test "$GCC" = "yes"; then
+
+    AC_CACHE_CHECK( [for gcc strict aliasing insanity],
+
+        [hc_cv_gcc_strict_aliasing_insanity],
+        [
+            hc_temp=$CFLAGS
+            CFLAGS="-O3 -fstrict-aliasing"
+
+            AC_TRY_RUN(
+                [
+                    #include <stdio.h>
+                    #include <stdlib.h>
+
+                    #ifdef WORDS_BIGENDIAN
+                    #define I 1
+                    #else
+                    #define I 0
+                    #endif
+
+                    int main()
+                    {
+                        unsigned long a;
+                        a = 111;
+                        *((unsigned short*)&a + I) = 222;
+                        return (a == 222 ? 0 : 1);
+                    }
+                ],
+                [hc_cv_gcc_strict_aliasing_insanity=no],
+                [hc_cv_gcc_strict_aliasing_insanity=yes],
+                [hc_cv_gcc_strict_aliasing_insanity=yes]
+            )
+
+            CFLAGS=$hc_temp
+        ]
+    )
+else
+    hc_cv_gcc_strict_aliasing_insanity=no
 fi
 
 #------------------------------------------------------------#
@@ -1294,7 +1954,7 @@ if test "$GCC" = "yes"; then
 # Note: The test program MUST start in column 1! Otherwise, the compilation
 # will fail when it's not supposed to.
             AC_COMPILE_IFELSE(
-                [
+                [ AC_LANG_SOURCE [
 /* If the following gets an error, then the
    "traditional" preprocessor is K&R C type.
    Otherwise if it compiles WITHOUT error
@@ -1308,7 +1968,7 @@ int main( int, char**, char** )
 {
   return 0;
 }
-                ],
+                ] ],
                 [hc_cv_traditional_cpp_is_K_AND_R_C_type=no],
                 [hc_cv_traditional_cpp_is_K_AND_R_C_type=yes]
             )
@@ -1414,14 +2074,14 @@ AC_ARG_ENABLE( hqa,
             hc_cv_have_hqa_h=no
           fi
         else
-          AC_MSG_RESULT( [ERROR: --enable-hqa directory not found: $hc_cv_hqa_opt] )
+          AC_MSG_WARN( [ERROR: --enable-hqa directory not found: $hc_cv_hqa_opt] )
           hc_error=yes
           hc_cv_have_hqa_h=no
         fi
 
         if test "$hc_cv_have_hqa_h" = "yes"; then
           if test "$hc_cv_hqa_inc" != "."; then
-            AC_MSG_RESULT( [WARNING: --enable-hqa value overrides existing HAQ_DIR value] )
+            AC_MSG_WARN( [WARNING: --enable-hqa value overrides existing HAQ_DIR value] )
           fi
           hc_cv_hqa_inc=$hc_cv_hqa_opt
         else
@@ -1440,7 +2100,7 @@ AC_ARG_ENABLE( dynamic-load,
         case "${enableval}" in
         yes) hc_cv_opt_dynamic_load=yes                      ;;
         no)  hc_cv_opt_dynamic_load=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'dynamic-load' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'dynamic-load' option] )
              hc_error=yes
              ;;
         esac
@@ -1458,13 +2118,13 @@ AC_ARG_ENABLE( object-rexx,
         case "${enableval}" in
         yes) hc_cv_ena_object_rexx=yes                      ;;
         no)  hc_cv_ena_object_rexx=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'object-rexx' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'object-rexx' option] )
              hc_error=yes
              ;;
         esac
     ],
     [
-     if test "$hc_cv_have_rexx_h" == "yes"; then
+     if test "$hc_cv_have_rexx_h" = "yes"; then
          hc_cv_ena_object_rexx=yes
      else
          hc_cv_ena_object_rexx=no
@@ -1482,14 +2142,14 @@ AC_ARG_ENABLE( regina-rexx,
         case "${enableval}" in
         yes) hc_cv_ena_regina_rexx=yes                      ;;
         no)  hc_cv_ena_regina_rexx=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'regina-rexx' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'regina-rexx' option] )
              hc_error=yes
              ;;
         esac
     ],
     [
-     if test "$hc_cv_have_rexxsaa_h" == "yes" ||
-        test "$hc_cv_have_regina_rexxsaa_h" == "yes"; then
+     if test "$hc_cv_have_rexxsaa_h"        = "yes"  ||
+        test "$hc_cv_have_regina_rexxsaa_h" = "yes"; then
          hc_cv_ena_regina_rexx=yes
      else
          hc_cv_ena_regina_rexx=no
@@ -1507,7 +2167,7 @@ AC_ARG_ENABLE( ipv6,
         case "${enableval}" in
         yes) hc_cv_ena_ipv6=yes                      ;;
         no)  hc_cv_ena_ipv6=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'ipv6' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'ipv6' option] )
              hc_error=yes
              ;;
         esac
@@ -1525,7 +2185,7 @@ AC_ARG_ENABLE( cckd-bzip2,
         case "${enableval}" in
         yes) hc_cv_opt_cckd_bzip2=yes                      ;;
         no)  hc_cv_opt_cckd_bzip2=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'cckd-bzip2' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'cckd-bzip2' option] )
              hc_error=yes
              ;;
         esac
@@ -1543,7 +2203,7 @@ AC_ARG_ENABLE( het-bzip2,
         case "${enableval}" in
         yes) hc_cv_opt_het_bzip2=yes                      ;;
         no)  hc_cv_opt_het_bzip2=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'het-bzip2' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'het-bzip2' option] )
              hc_error=yes
              ;;
         esac
@@ -1561,7 +2221,7 @@ AC_ARG_ENABLE( debug,
         case "${enableval}" in
         yes) hc_cv_opt_debug=yes                      ;;
         no)  hc_cv_opt_debug=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'debug' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'debug' option] )
              hc_error=yes
              ;;
         esac
@@ -1581,24 +2241,6 @@ AC_ARG_ENABLE( optimization,
     [hc_cv_opt_optimization=yes]
 )
 
-AC_ARG_ENABLE( enhanced-configincludes,
-
-    AC_HELP_STRING( [--disable-enhanced-configincludes],
-
-        [disable enhanced-mode 'include' file support in configuration file]
-    ),
-    [
-        case "${enableval}" in
-        yes) hc_cv_opt_enhanced_configincludes=yes                      ;;
-        no)  hc_cv_opt_enhanced_configincludes=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'enhanced-configincludes' option] )
-             hc_error=yes
-             ;;
-        esac
-    ],
-    [hc_cv_opt_enhanced_configincludes=yes]
-)
-
 AC_ARG_ENABLE( automatic-operator,
 
     AC_HELP_STRING( [--disable-automatic-operator],
@@ -1609,7 +2251,7 @@ AC_ARG_ENABLE( automatic-operator,
         case "${enableval}" in
         yes) hc_cv_opt_auto_oper=yes                      ;;
         no)  hc_cv_opt_auto_oper=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'automatic-operator' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'automatic-operator' option] )
              hc_error=yes
              ;;
         esac
@@ -1627,7 +2269,7 @@ AC_ARG_ENABLE( external-gui,
         case "${enableval}" in
         yes) hc_cv_opt_external_gui=yes                      ;;
         no)  hc_cv_opt_external_gui=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'external-gui' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'external-gui' option] )
              hc_error=yes
              ;;
         esac
@@ -1645,7 +2287,7 @@ AC_ARG_ENABLE( fthreads,
         case "${enableval}" in
         yes) hc_cv_opt_fthreads=yes                      ;;
         no)  hc_cv_opt_fthreads=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'fthreads' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'fthreads' option] )
              hc_error=yes
              ;;
         esac
@@ -1653,28 +2295,46 @@ AC_ARG_ENABLE( fthreads,
     [hc_cv_opt_fthreads=$hc_cv_is_windows]
 )
 
+if test "$hc_cv_have_u_int128_t" = "yes"; then
+  hc_cv_max_cpu_engines=128
+else
+  hc_cv_max_cpu_engines=64
+fi
+
+hc_cv_default_num_cpu_engines=8
+
 AC_ARG_ENABLE( multi-cpu,
 
     AC_HELP_STRING( [--enable-multi-cpu=yes|no|NUMBER],
 
-        [enable/disable multi-cpu support (1-128, default 8)]
+        [enable/disable multi-cpu support (yes=8,no=1,NUMBER=1-64/128,default=64/128)]
     ),
     [
         case "${enableval}" in
-        yes)             hc_cv_opt_num_cpu_engines=8                  ;;
-        no)              hc_cv_opt_num_cpu_engines=1                  ;;
+        yes)             hc_cv_opt_num_cpu_engines=$hc_cv_default_num_cpu_engines  ;;
+        no)              hc_cv_opt_num_cpu_engines=1                               ;;
         *)
-            if test 0 -lt "${enableval}" -a 128 -ge "${enableval}"
+            if test 0 -lt "${enableval}" -a "$hc_cv_max_cpu_engines" -ge "${enableval}"
             then
                 hc_cv_opt_num_cpu_engines=${enableval}
             else
-                AC_MSG_RESULT( [ERROR: invalid 'multi-cpu' option] )
+                AC_MSG_WARN( [ERROR: invalid 'multi-cpu' option] )
                 hc_error=yes
             fi
             ;;
         esac
     ],
-    [hc_cv_opt_num_cpu_engines=8]
+    [hc_cv_opt_num_cpu_engines=$hc_cv_max_cpu_engines]
+)
+
+AC_ARG_ENABLE( interlocked-access-facility-2,
+
+    AC_HELP_STRING( [--enable-interlocked-access-facility-2=yes|no],
+
+        [enable/disable Interlocked Access Facility 2 (default yes)]
+    ),
+    ,
+    [enable_interlocked_access_facility_2=yes]
 )
 
 AC_ARG_ENABLE( capabilities,
@@ -1687,7 +2347,7 @@ AC_ARG_ENABLE( capabilities,
         case "${enableval}" in
         yes) hc_cv_opt_capabilities=yes                      ;;
         no)  hc_cv_opt_capabilities=no                       ;;
-        *)   AC_MSG_RESULT( [ERROR: invalid 'capabilities' option] )
+        *)   AC_MSG_WARN( [ERROR: invalid 'capabilities' option] )
              hc_error=yes
              ;;
         esac
@@ -1695,21 +2355,63 @@ AC_ARG_ENABLE( capabilities,
     [hc_cv_opt_capabilities=hc_cv_have_sys_capability]
 )
 
-# only include libcap if needed
+# -----------------------------------------------------------------------
+# -enable-syncio
+#
+# When enabled, syncio is permitted on attach and devinit commands,
+# and when so specified, synchronous I/O operations are used when
+# possible.  When disabled, no support for syncio is compiled into
+# Hercules.
+#
+# When enabled, preprocessor symbol OPTION_SYNCIO is defined.
+# When disabled, preprocessor symbol OPTION_NOSYNCIO is defined.
+# -----------------------------------------------------------------------
+
+AC_ARG_ENABLE( syncio,
+    AC_HELP_STRING([--disable-syncio],
+        [disable syncio function and device options]
+    ),
+                                    dnl Action if specified
+    [
+        case "${enableval}" in
+        yes) hc_cv_opt_syncio=yes                      ;;
+        no)  hc_cv_opt_syncio=no                       ;;
+        *)   AC_MSG_WARN( [ERROR: invalid 'syncio' option.  No operand is allowed.] )
+             hc_error=yes
+             ;;
+        esac
+    ],
+                                    dnl Action if not specified (default)
+    [hc_cv_opt_syncio=yes]
+)
+
+if test "$hc_cv_opt_syncio" = "yes"; then
+    AH_TEMPLATE(   [OPTION_SYNCIO],     [Define to include syncio functions in the build] )
+    AC_DEFINE(     [OPTION_SYNCIO] )
+fi
+if test "$hc_cv_opt_syncio" = "no"; then
+    AH_TEMPLATE(   [OPTION_NOSYNCIO],  [Define to exclude syncio functions from the build] )
+    AC_DEFINE(     [OPTION_NOSYNCIO] )
+    AC_MSG_NOTICE( [Excluding syncio functions from the Hercules build ] )
+fi
+
+
+# -----------------------------------------------------------------------
+
+# Only include libcap if needed and then force
+# disable capabilities support altogether if the
+# library or any required headers are missing.
+
 if test "$hc_cv_opt_capabilities" = "yes"; then
+
     AC_CHECK_LIB(cap,cap_set_proc)
-fi
-# Force disable capabilities support if library is missing
-if test "$ac_cv_lib_cap_cap_set_proc" = "no"; then
-  hc_cv_opt_capabilities="no"
-fi
-# Force disable capabilities support if sys/capability.h header is missing
-if test "$hc_cv_have_sys_capa_h" = "no"; then
-  hc_cv_opt_capabilities="no"
-fi
-# Force disable capabilities support if sys/prctl.h header is missing
-if test "$hc_cv_have_sys_prctl_h" = "no"; then
-  hc_cv_opt_capabilities="no"
+
+  if test $ac_cv_lib_cap_cap_set_proc = "no" ||
+     test $hc_cv_have_sys_capa_h      = "no" ||
+     test $hc_cv_have_sys_prctl_h     = "no"; then
+
+     hc_cv_opt_capabilities="no"
+  fi
 fi
 
 AC_ARG_ENABLE( custom,
@@ -1768,6 +2470,11 @@ hc_cv_hdl_build_shared=$enable_shared
 AC_CACHE_SAVE()
 
 ###############################################################################
+#   End of AC_ARG_ENABLE option selections
+###############################################################################
+
+
+###############################################################################
 #   Final default settings, final sanity / error checks...
 ###############################################################################
 
@@ -1775,13 +2482,13 @@ if test "$hc_cv_ena_object_rexx" = "yes" ; then
 
    if test "$hc_cv_have_rexx_h" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: open object rexx support requested but,  (oorexx) rexx.h is not available] )
+      AC_MSG_WARN( [ERROR: open object rexx support requested but,  (oorexx) rexx.h is not available] )
       hc_error=yes
    fi
 
    if test "$hc_cv_have_oorexxapi_h" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: open object rexx support requested but,  (oorexx) oorexxapi.h is not available] )
+      AC_MSG_WARN( [ERROR: open object rexx support requested but,  (oorexx) oorexxapi.h is not available] )
       hc_error=yes
    fi
 
@@ -1792,7 +2499,7 @@ if test "$hc_cv_ena_regina_rexx" = "yes" ; then
    if test "$hc_cv_have_rexxsaa_h" != "yes" &&
       test "$hc_cv_have_regina_rexxsaa_h" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: regina rexx support requested but, (regina) rexxsaa.h is not available] )
+      AC_MSG_WARN( [ERROR: regina rexx support requested but, (regina) rexxsaa.h is not available] )
       hc_error=yes
    fi
 
@@ -1803,7 +2510,7 @@ if test "$hc_cv_ena_ipv6" = "yes" ; then
    if test "$hc_cv_have_in6_ifreq_ifr6_addr" != "yes" &&
       test "$hc_cv_have_in6_ifreq_ifru_addr" != "yes"
    then
-      AC_MSG_RESULT( [ERROR: IPv6 support requested but struct in6_ifreq is not available] )
+      AC_MSG_WARN( [ERROR: IPv6 support requested but struct in6_ifreq is not available] )
       hc_error=yes
    fi
 
@@ -1815,14 +2522,14 @@ if test "$hc_cv_build_hercifc" = "yes"; then
 
       if test "$hc_cv_have_net_if_h" != "yes"; then
 
-         AC_MSG_RESULT( [ERROR: Required headers 'linux/if_tun.h' or 'net/if.h' not found] )
+         AC_MSG_WARN( [ERROR: Required headers 'linux/if_tun.h' or 'net/if.h' not found] )
          hc_error=yes
       fi
    fi
 
    if test "$hc_cv_have_net_route_h" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: Required header 'net/route_h' not found] )
+      AC_MSG_WARN( [ERROR: Required header 'net/route_h' not found] )
       hc_error=yes
    fi
 fi
@@ -1836,16 +2543,8 @@ fi
 if test "$hc_cv_have_strsignal" != "yes"  &&
    test "$hc_cv_have_signal_h"  != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: Required header 'signal.h' not found] )
+   AC_MSG_WARN( [ERROR: Required header 'signal.h' not found] )
    hc_error=yes
-fi
-
-#------------------------------------------------------------------------------
-
-if test "$hc_cv_have_vsscanf" != "yes"; then
-
-    AC_MSG_RESULT( [ERROR: Required function 'vsscanf' not found] )
-    hc_error=yes
 fi
 
 #------------------------------------------------------------------------------
@@ -1853,7 +2552,7 @@ fi
 if test "$hc_cv_have_inttypes_h" != "yes"  &&
    test "$hc_cv_have_u_int8_t"   != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: unable to find fixed-size data types] )
+   AC_MSG_WARN( [ERROR: unable to find fixed-size data types] )
    hc_error=yes
 fi
 
@@ -1864,13 +2563,13 @@ if test "$hc_cv_opt_cckd_bzip2" = "yes"  ||
 
    if test "$hc_cv_have_libbz2" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: bzip2 compression requested but libbz2 library not found] )
+      AC_MSG_WARN( [ERROR: bzip2 compression requested but libbz2 library not found] )
       hc_error=yes
    fi
 
    if test "$hc_cv_have_bzlib_h" != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: bzip2 compression requested but 'bzlib.h' header not found] )
+      AC_MSG_WARN( [ERROR: bzip2 compression requested but 'bzlib.h' header not found] )
       hc_error=yes
    fi
 fi
@@ -1882,7 +2581,7 @@ if test "$hc_cv_opt_dynamic_load" = "yes"; then
    if test "$hc_cv_have_lt_dlopen" != "yes"  &&
       test "$hc_cv_have_dlopen"    != "yes"; then
 
-      AC_MSG_RESULT( [ERROR: dynamic-load requires libtool or dlltool] )
+      AC_MSG_WARN( [ERROR: dynamic-load requires libtool or dlltool] )
       hc_error=yes
    fi
 fi
@@ -1892,7 +2591,7 @@ fi
 if test "$hc_cv_opt_auto_oper" = "yes"  &&
    test "$hc_cv_have_regex_h" != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: automatic-operator requested but 'regex.h' header not found] )
+   AC_MSG_WARN( [ERROR: automatic-operator requested but 'regex.h' header not found] )
    hc_error=yes
 fi
 
@@ -1901,7 +2600,7 @@ fi
 if test "$hc_cv_opt_external_gui"  = "yes"  &&
    test "$hc_cv_opt_dynamic_load" != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: external-gui requires dynamic-load] )
+   AC_MSG_WARN( [ERROR: external-gui requires dynamic-load] )
    hc_error=yes
 fi
 
@@ -1910,14 +2609,14 @@ fi
 if test "$hc_cv_opt_fthreads" = "yes"  &&
    test "$hc_cv_is_windows"  != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: fthreads is only for Windows platforms] )
+   AC_MSG_WARN( [ERROR: fthreads is only for Windows platforms] )
    hc_error=yes
 fi
 
 if test "$hc_cv_have_pthread_h" != "yes"  &&
    test "$hc_cv_opt_fthreads"   != "yes"; then
 
-   AC_MSG_RESULT( [ERROR: unable to find pthread.h] )
+   AC_MSG_WARN( [ERROR: unable to find pthread.h] )
    hc_error=yes
 fi
 
@@ -1927,8 +2626,16 @@ if test "$hc_cv_is_apple"                          = "yes"  &&
    test "$hc_cv_pp_macro_arg_counting_broke"       = "yes"  &&
    test "$hc_cv_traditional_cpp_is_K_AND_R_C_type" = "yes"; then
 
-    AC_MSG_RESULT( [ERROR: macro argument counting broken and cannot use -traditional-cpp option to work around it] )
+    AC_MSG_WARN( [ERROR: macro argument counting broken and cannot use -traditional-cpp option to work around it] )
     hc_error=yes
+fi
+
+#------------------------------------------------------------------------------
+
+if test "$hc_cv_have_full_keepalive"  != "yes"  &&
+   test "$hc_cv_have_basic_keepalive" != "yes"; then
+
+   AC_MSG_WARN( [WARNING: Support missing for TCP keepalive] )
 fi
 
 ###############################################################################
@@ -1954,16 +2661,17 @@ AC_CACHE_SAVE()
 
 AC_MSG_CHECKING( [for what optimization flags to use] )
 
-    hc_cv_optimization_flags=""
+hc_cv_optimization_flags=""
 
-if test "$hc_cv_opt_debug" = "yes"; then
+if test "$GCC" = "yes"; then
 
-    # Note: the -g option we start with below will be removed if they specified
+    # Note: the -g options we start with below will be removed if they specified
     # their own optimization flags via "--enable-optimization=(flags)", but will
     # be kept if they specify an optimized build via "--enable-optimization=yes"
 
-    hc_cv_optimization_flags="$hc_cv_optimization_flags -g3"    # Include module/statement_information
-    hc_cv_optimization_flags="$hc_cv_optimization_flags -ggdb3" # Include gdb symbols
+    hc_cv_optimization_flags="$hc_cv_optimization_flags -g"     # Include debugging information
+    hc_cv_optimization_flags="$hc_cv_optimization_flags -g3"    # Include module/statement information
+    hc_cv_optimization_flags="$hc_cv_optimization_flags -ggdb3" # Include gdb debugger symbols
 fi
 
 case "$hc_cv_opt_optimization" in
@@ -1980,6 +2688,10 @@ case "$hc_cv_opt_optimization" in
 
     *)
         if test "x$hc_cv_opt_optimization" = "x"; then
+
+            # They did NOT specify any optimization flags.
+            # Don't optimize if this is a debugging build.
+            # Otherwise we definitely want to optimize.
 
             if test "$hc_cv_opt_debug" = "yes"; then
                 hc_cv_auto_optimize=no
@@ -1999,9 +2711,20 @@ esac
 
 if test "$hc_cv_auto_optimize" = "yes"; then
 
+    #----------------------------------------------------------#
+    #                      AUTO-OPTIMIZE                       #
+    #----------------------------------------------------------#
 
-    if test "$hc_cv_builtin_alloca_broke" != "yes"; then
+    if test "$GCC" = "yes"; then
+
+      # We prefer -O3 (the highest optimization level possible)
+      # as long as we can trust GCC to implement it correctly.
+
+      if test "$hc_cv_broken_gcc_O3"        != "yes"  &&
+         test "$hc_cv_builtin_alloca_broke" != "yes"
+      then
         hc_cv_optimization_flags="$hc_cv_optimization_flags -O3"
+      fi
     fi
 
     hc_cv_is_intel_x86_arch=no
@@ -2056,20 +2779,22 @@ if test "$hc_cv_auto_optimize" = "yes"; then
             hc_cv_optimization_flags="$hc_cv_optimization_flags -mcpu=$target_cpu -mtune=$target_cpu -frename-registers"
             ;;
     esac
+
     if test "$hc_cv_is_intel_x86_arch" = "yes"; then
 
         # Set CPU type
         hc_cv_optimization_flags="$hc_cv_optimization_flags -march=$hc_cv_intel_cpu_type"
 
-        # Align 128-bit values
-        AS_VERSION_COMPARE( $hc_gcc_level, "3.0.0", [hc_cv_optimization_flags="$hc_cv_optimization_flags"],
-                                                    [hc_cv_optimization_flags="$hc_cv_optimization_flags"],
-                                                    [hc_cv_optimization_flags="$hc_cv_optimization_flags -m128bit-long-double"] )
+        # Dynamically inline small block string operations
+        # (subroutine calls still made for large area calls)
+        #
+        # Note: option introduced in GCC 4.3 Release Series, but it
+        # is unclear which 4.3 version so we test for 4.4 or greater.
+        # See:  https://gcc.gnu.org/gcc-4.3/changes.html
 
-        # Dynamically inline small block string operations (subroutine calls still made for large area calls)
         if test "$hc_cv_is_apple" != "yes"; then
-           AS_VERSION_COMPARE( $hc_gcc_level, "4.1.2", [hc_cv_optimization_flags="$hc_cv_optimization_flags"],
-                                                       [hc_cv_optimization_flags="$hc_cv_optimization_flags"],
+           AS_VERSION_COMPARE( $hc_gcc_level, "4.4.0", [hc_cv_optimization_flags="$hc_cv_optimization_flags"],
+                                                       [hc_cv_optimization_flags="$hc_cv_optimization_flags -minline-stringops-dynamically"],
                                                        [hc_cv_optimization_flags="$hc_cv_optimization_flags -minline-stringops-dynamically"] )
         fi
 
@@ -2079,6 +2804,10 @@ if test "$hc_cv_auto_optimize" = "yes"; then
         else
             hc_cv_optimization_flags="$hc_cv_optimization_flags -fno-omit-frame-pointer"
         fi
+    fi
+
+    if test "$hc_cv_gcc_strict_aliasing_insanity" = "yes"; then
+      hc_cv_optimization_flags="$hc_cv_optimization_flags -fno-strict-aliasing"
     fi
 fi
 
@@ -2105,8 +2834,27 @@ fi
 AC_DEFINE_UNQUOTED( [MAX_CPU_ENGINES],  ${hc_cv_opt_num_cpu_engines} )
 AC_DEFINE_UNQUOTED( [HOST_ARCH],       "${target_cpu}" )
 
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_BOOL_LOCK_FREE],     ${hc_cv_c11_atomic_bool_lock_free}     )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_CHAR_LOCK_FREE],     ${hc_cv_c11_atomic_char_lock_free}     )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_CHAR16_T_LOCK_FREE], ${hc_cv_c11_atomic_char16_t_lock_free} )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_CHAR32_T_LOCK_FREE], ${hc_cv_c11_atomic_char32_t_lock_free} )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_WCHAR_T_LOCK_FREE],  ${hc_cv_c11_atomic_wchar_t_lock_free}  )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_SHORT_LOCK_FREE],    ${hc_cv_c11_atomic_short_lock_free}    )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_INT_LOCK_FREE],      ${hc_cv_c11_atomic_int_lock_free}      )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_LONG_LOCK_FREE],     ${hc_cv_c11_atomic_long_lock_free}     )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_LLONG_LOCK_FREE],    ${hc_cv_c11_atomic_llong_lock_free}    )
+AC_DEFINE_UNQUOTED( [C11_ATOMIC_POINTER_LOCK_FREE],  ${hc_cv_c11_atomic_pointer_lock_free}  )
+AC_DEFINE_UNQUOTED( [VERS_MAJ],                      ${VERS_MAJ}                          )
+AC_DEFINE_UNQUOTED( [VERS_INT],                      ${VERS_INT}                          )
+AC_DEFINE_UNQUOTED( [VERS_MIN],                      ${VERS_MIN}                          )
+
 AC_CACHE_SAVE()
 
+AC_MSG_NOTICE( [-----------------------------------------] )
+AC_MSG_NOTICE( [                                         ] )
+AC_MSG_NOTICE( [ Package source directories:             ] )
+AC_MSG_NOTICE( [                                         ] )
+AC_MSG_NOTICE( [    SoftFloat:  ${hc_cv_s3fh_dir}  ] )
 AC_MSG_NOTICE( [                                         ] )
 AC_MSG_NOTICE( [ Package destination directory prefixes: ] )
 AC_MSG_NOTICE( [                                         ] )
@@ -2114,6 +2862,7 @@ AC_MSG_NOTICE( [    Libraries:  ${modexecdir}            ] )
 AC_MSG_NOTICE( [    Data:       \$(datadir)/hercules     ] )
 AC_MSG_NOTICE( [    Locale:     ${localedir}             ] )
 AC_MSG_NOTICE( [                                         ] )
+AC_MSG_NOTICE( [-----------------------------------------] )
 
 CPPFLAGS="$CPPFLAGS"' -DPKGDATADIR=\"$(pkgdatadir)\" -DMODULESDIR=\"$(modexecdir)\" -DHERC_LOCALEDIR=\"$(localedir)\"'
 
@@ -2125,7 +2874,6 @@ test "$hc_cv_have_hqa_h"                  = "yes"  &&  AC_DEFINE(HAVE_HQA_H)
 test "$hc_cv_opt_debug"                   = "yes"  &&  AC_DEFINE(DEBUG)
 test "$hc_cv_have_inttypes_h"             = "yes"  &&  AC_DEFINE(HAVE_INTTYPES_H)
 test "$hc_cv_have_u_int8_t"               = "yes"  &&  AC_DEFINE(HAVE_U_INT)
-test "$hc_cv_opt_enhanced_configincludes" = "yes"  &&  AC_DEFINE(OPTION_ENHANCED_CONFIG_INCLUDE)
 test "$hc_cv_opt_auto_oper"               = "yes"  &&  AC_DEFINE(OPTION_HAO)
 test "$hc_cv_opt_dynamic_load"            = "yes"  &&  AC_DEFINE(OPTION_DYNAMIC_LOAD)
 test "$hc_cv_opt_fthreads"                = "yes"  &&  AC_DEFINE(OPTION_FTHREADS)
@@ -2139,12 +2887,21 @@ test "$hc_cv_timespec_in_sys_types_h"     = "yes"  &&  AC_DEFINE(TIMESPEC_IN_SYS
 test "$hc_cv_timespec_in_time_h"          = "yes"  &&  AC_DEFINE(TIMESPEC_IN_TIME_H)
 test "$hc_cv_have_getset_uid"            != "yes"  &&  AC_DEFINE(NO_SETUID)
 test "$hc_cv_asm_byteswap"               != "yes"  &&  AC_DEFINE(NO_ASM_BYTESWAP)
-test "$hc_cv_non_unique_gettimeofday"     = "yes"  &&  AC_DEFINE(NON_UNIQUE_GETTIMEOFDAY)
 test "$hc_cv_build_hercifc"               = "yes"  &&  AC_DEFINE(BUILD_HERCIFC)
 test "$hc_cv_opt_capabilities"            = "yes"  &&  AC_DEFINE(OPTION_CAPABILITIES)
 test "$hc_cv_ena_object_rexx"             = "yes"  &&  AC_DEFINE(ENABLE_OBJECT_REXX)
 test "$hc_cv_ena_regina_rexx"             = "yes"  &&  AC_DEFINE(ENABLE_REGINA_REXX)
 test "$hc_cv_ena_ipv6"                    = "yes"  &&  AC_DEFINE(ENABLE_IPV6)
+test "$hc_cv_have_full_keepalive"         = "yes"  &&  AC_DEFINE(HAVE_FULL_KEEPALIVE)
+test "$hc_cv_have_partial_keepalive"      = "yes"  &&  AC_DEFINE(HAVE_PARTIAL_KEEPALIVE)
+test "$hc_cv_have_basic_keepalive"        = "yes"  &&  AC_DEFINE(HAVE_BASIC_KEEPALIVE)
+test "$hc_cv_atomic_intrinsics_available" = "yes"  &&  AC_DEFINE(HAVE_ATOMIC_INTRINSICS)
+test "$hc_cv_sync_builtins_available"     = "yes"  &&  AC_DEFINE(HAVE_SYNC_BUILTINS)
+test "$enable_interlocked_access_facility_2" = "no" && AC_DEFINE(DISABLE_IAF2)
+test "$hc_cv_have_gcc_diag_pragma"         = "yes" &&  AC_DEFINE(HAVE_GCC_DIAG_PRAGMA)
+test "$hc_cv_have_gcc_diag_pushpop"        = "yes" &&  AC_DEFINE(HAVE_GCC_DIAG_PUSHPOP)
+test "$hc_cv_have_gcc_unused_func_warning" = "yes" &&  AC_DEFINE(HAVE_GCC_UNUSED_FUNC_WARNING)
+test "$hc_cv_have_gcc_set_unused_warning"  = "yes" &&  AC_DEFINE(HAVE_GCC_SET_UNUSED_WARNING)
 
 if test $hc_cv_have_sa_sigaction != yes ||
    test $hc_cv_have_sigusr1      != yes ||
@@ -2156,16 +2913,15 @@ if test $hc_cv_have_sa_sigaction != yes ||
 
 fi
 
+if test "$hc_cv_attr_printf_supported" = "yes"; then
+
+    AC_DEFINE(HAVE_ATTR_PRINTF)
+fi
+
 if test "$hc_cv_regparm_attr_supported" = "yes"  &&
    test "$hc_cv_regparm_attr_broke"    != "yes"; then
 
     AC_DEFINE(HAVE_ATTR_REGPARM)
-fi
-
-if test "$hc_cv_is_windows"  != "yes"  &&
-   test "$hc_cv_have_fenv_h" != "yes"; then
-
-    AC_DEFINE(NO_IEEE_SUPPORT)
 fi
 
 #--------------------------------------------------#
@@ -2216,6 +2972,13 @@ test  "$hc_cv_have_libbz2"         =  "yes"  &&  LIBS="$LIBS -lbz2"
 test  "$hc_cv_is_mingw" =  "yes"  &&  LIBS="$LIBS -lmsvcrt"
 test  "$hc_cv_is_mingw" =  "yes"  &&  LIBS="$LIBS -lws2_32"
 
+#      ------------ SoftFloat-3a For Hercules --------------
+
+LIBS="$LIBS -L$hc_cv_s3fh_dir/lib -lSoftFloat"
+S3FH_INC="$hc_cv_s3fh_dir/include"
+
+AC_SUBST(S3FH_INC)
+
 AC_CACHE_SAVE()
 
 #--------------------------------------------------------------------------------#
@@ -2231,17 +2994,20 @@ AM_CONDITIONAL( BUILD_FTHREADS,      [ test "$hc_cv_opt_fthreads"     = "yes" ] 
 AM_CONDITIONAL( BUILD_HERCIFC,       [ test "$hc_cv_build_hercifc"    = "yes" ] )
 AM_CONDITIONAL( SETUID_HERCIFC,      [ test "$hc_cv_setuid_hercifc"   = "yes" ] )
 AM_CONDITIONAL( HERCIFC_GROUPSET,    [ test "x$hc_cv_hercifc_groupname" != "x"] )
+AM_CONDITIONAL( APPLE,               [ test "$hc_cv_is_darwin"        = "yes" ] )
 
 if test "x$hc_cv_hercifc_groupname" != "x"; then
     HERCIFC_GROUPNAME=${hc_cv_hercifc_groupname}
     AC_SUBST(HERCIFC_GROUPNAME)
 fi
 
-AC_SUBST(HQA_INC,$hc_cv_hqa_inc)
+HQA_INC="$hc_cv_hqa_inc"
+
+AC_SUBST(HQA_INC)
 
 AC_CACHE_SAVE()
 
-AC_OUTPUT( [ Makefile util/Makefile html/Makefile crypto/Makefile man/Makefile m4/Makefile decNumber/Makefile] )
+AC_OUTPUT( [ Makefile util/Makefile html/Makefile crypto/Makefile man/Makefile m4/Makefile decNumber/Makefile tests/Makefile ] )
 
 ###############################################################################
 #   (end-of-file)

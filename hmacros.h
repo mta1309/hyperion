@@ -15,26 +15,26 @@
 #define _HMACROS_H
 
 #include "hercules.h"
+#include "dbgtrace.h"
+
+/*-------------------------------------------------------------------*/
+/*      UNREACHABLE_CODE         code that should NEVER be reached   */
+/*-------------------------------------------------------------------*/
+
+#ifdef _MSVC_
+  #define UNREACHABLE_CODE(ret)     __assume(0)
+#else                        
+  #define UNREACHABLE_CODE(ret)     BREAK_INTO_DEBUGGER(); ret
+#endif
 
 /*-------------------------------------------------------------------*/
 /*      Define INLINE attributes by compiler                         */
 /*-------------------------------------------------------------------*/
 #if !defined(INLINE)
   #if defined(__GNUC__)
-    #define INLINE          __inline__ __attribute__((always_inline))
-  #elif defined(_MSVC_)
-    #define INLINE          __forceinline
+    #define INLINE          __inline
   #else
     #define INLINE          __inline
-  #endif
-#endif
-
-/*-------------------------------------------------------------------*/
-/*      Use '__noop()' to disable code generating macros             */
-/*-------------------------------------------------------------------*/
-#if !defined(_MSVC_)
-  #if !defined(__noop)
-    #define __noop(...)     do{;}while(0)   /*  (i.e. do nothing)    */
   #endif
 #endif
 
@@ -84,7 +84,7 @@
 /*-------------------------------------------------------------------*/
 /*      CASSERT macro       a compile time assertion check           */
 /*-------------------------------------------------------------------*/
-/** 
+/**
  *  Validates at compile time whether condition is true without
  *  generating code. It can be used at any point in a source file
  *  where typedefs are legal.
@@ -185,11 +185,12 @@
 
 #ifdef _MSVC_
   #define  socket               w32_socket
+  #define  accept               w32_accept
 /* Now defined in hsocket.h
   int read_socket(int fd, char *ptr, int nbytes);
   int write_socket(int fd, const char *ptr, int nbytes);
 */
-  #define  close_socket(f)      closesocket(f)
+  #define  close_socket         w32_close_socket
   #define  hif_nametoindex      w32_if_nametoindex
   #define  hinet_ntop           w32_inet_ntop
   #define  hinet_pton           w32_inet_pton
@@ -210,6 +211,7 @@
   #define  FD_SET               w32_FD_SET
   #define  FD_ISSET             w32_FD_ISSET
   #define  select(n,r,w,e,t)    w32_select((n),(r),(w),(e),(t),__FILE__,__LINE__)
+  #define  pselect(n,r,w,e,t,m) w32_pselect((n),(r),(w),(e),(t),(m),__FILE__,__LINE__)
   #define  fdopen               w32_fdopen
   #define  fwrite               w32_fwrite
   #define  fprintf              w32_fprintf
@@ -281,6 +283,7 @@
 #endif
 
 #define  SHIFT_KILOBYTE     10
+#define  SHIFT_4K           12
 #define  SHIFT_64KBYTE      16
 #define  SHIFT_MEGABYTE     20
 #define  SHIFT_GIGABYTE     30
@@ -326,6 +329,9 @@
 #define ONE_SEXTILLION  ((U64)ONE_QUINTILLION * (U64)(1000))    /* zeros = 21 */
 #define ONE_SEPTILLION  ((U64)ONE_SEXTILLION  * (U64)(1000))    /* zeros = 24 */
 
+#define  _4K       4096     // (just a much shorter name)
+#define  _1M    1048576     // (just a much shorter name)
+
 /*-------------------------------------------------------------------*/
 /*      Some handy memory/string comparison macros                   */
 /*-------------------------------------------------------------------*/
@@ -370,7 +376,7 @@
     #define  fseek              fseeko
   #else
     #if defined(SIZEOF_LONG) && SIZEOF_LONG <= 4
-      #warning fseek/ftell use offset arguments of insufficient size
+      WARNING( "fseek/ftell use offset arguments of insufficient size" )
     #endif
   #endif
 #elif defined(_LFS64_LARGEFILE)
@@ -384,7 +390,7 @@
   #define    stat               stat64
 #else // !defined(_LFS_LARGEFILE) && !defined(_LFS64_LARGEFILE) && (!defined(SIZEOF_OFF_T) || SIZEOF_OFF_T <= 4)
   /* No 64-bit Large File Support at all */
-  #warning Large File Support missing
+  WARNING( "Large File Support missing" )
 #endif
 // Hercules low-level file open...
 // PROGRAMMING NOTE: the "##" preceding "__VA_ARGS__" is required for compat-
@@ -477,38 +483,6 @@ typedef int CMPFUNC(const void*, const void*);
 #define RELEASE_CRWLOCK()   release_lock( &sysblk.crwlock )
 
 /*-------------------------------------------------------------------*/
-/*      Obtain/Release intlock                                       */
-/*      intlock can be obtained by any thread                        */
-/*      if obtained by a cpu thread, check to see                    */
-/*      if synchronize_cpus is in progress.                          */
-/*-------------------------------------------------------------------*/
-
-#define OBTAIN_INTLOCK(_iregs) \
- do { \
-   REGS *_regs = (_iregs); \
-   if ((_regs)) \
-     (_regs)->hostregs->intwait = 1; \
-   obtain_lock (&sysblk.intlock); \
-   if ((_regs)) { \
-     while (sysblk.syncing) { \
-       sysblk.sync_mask &= ~(_regs)->hostregs->cpubit; \
-       if (!sysblk.sync_mask) \
-         signal_condition(&sysblk.sync_cond); \
-       wait_condition(&sysblk.sync_bc_cond, &sysblk.intlock); \
-     } \
-     (_regs)->hostregs->intwait = 0; \
-     sysblk.intowner = (_regs)->hostregs->cpuad; \
-   } else \
-     sysblk.intowner = LOCK_OWNER_OTHER; \
- } while (0)
-
-#define RELEASE_INTLOCK(_regs) \
- do { \
-   sysblk.intowner = LOCK_OWNER_NONE; \
-   release_lock(&sysblk.intlock); \
- } while (0)
-
-/*-------------------------------------------------------------------*/
 /* Returns when all other CPU threads are blocked on intlock         */
 /*-------------------------------------------------------------------*/
 #ifdef OPTION_SYNCIO
@@ -523,121 +497,6 @@ typedef int CMPFUNC(const void*, const void*);
 /*-------------------------------------------------------------------*/
 #define SYNCHRONIZE_CPUS(_regs) \
         synchronize_cpus(_regs)
-
-/*-------------------------------------------------------------------*/
-/*      Macros to signal interrupt condition to a CPU[s]             */
-/*-------------------------------------------------------------------*/
-
-#define WAKEUP_CPU(_regs) \
- do { \
-   signal_condition(&(_regs)->intcond); \
- } while (0)
-
-#define WAKEUP_CPU_MASK(_mask) \
- do { \
-   int i; \
-   CPU_BITMAP mask = (_mask); \
-   for (i = 0; mask; i++) { \
-     if (mask & 1) \
-     { \
-       signal_condition(&sysblk.regs[i]->intcond); \
-       break; \
-     } \
-     mask >>= 1; \
-   } \
- } while (0)
-
-#define WAKEUP_CPUS_MASK(_mask) \
- do { \
-   int i; \
-   CPU_BITMAP mask = (_mask); \
-   for (i = 0; mask; i++) { \
-     if (mask & 1) \
-       signal_condition(&sysblk.regs[i]->intcond); \
-     mask >>= 1; \
-   } \
- } while (0)
-
-/*-------------------------------------------------------------------*/
-/*      Macros to queue/dequeue device on I/O interrupt queue        */
-/*      sysblk.iointqlk ALWAYS needed to examine sysblk.iointq       */
-/*-------------------------------------------------------------------*/
-
-
-#define QUEUE_IO_INTERRUPT(_io) \
- do { \
-   obtain_lock(&sysblk.iointqlk); \
-   QUEUE_IO_INTERRUPT_QLOCKED((_io)); \
-   release_lock(&sysblk.iointqlk); \
- } while (0)
-
-#define QUEUE_IO_INTERRUPT_QLOCKED(_io)                               \
- do {                                                                 \
-    IOINT *prev;                                                      \
-    for (prev = (IOINT *)&sysblk.iointq;                              \
-         prev->next != NULL                                           \
-         && prev->next != (_io)                                       \
-         && prev->next->priority >= (_io)->dev->priority;             \
-         prev = prev->next);                                          \
-    if (prev->next != (_io))                                          \
-        (_io)->next     = prev->next,                                 \
-        prev->next      = (_io),                                      \
-        (_io)->priority = (_io)->dev->priority;                       \
-         if ((_io)->pending)     (_io)->dev->pending     = 1;         \
-    else if ((_io)->pcipending)  (_io)->dev->pcipending  = 1;         \
-    else if ((_io)->attnpending) (_io)->dev->attnpending = 1;         \
- } while (0)
-
-#define DEQUEUE_IO_INTERRUPT(_io) \
- do { \
-   obtain_lock(&sysblk.iointqlk); \
-   DEQUEUE_IO_INTERRUPT_QLOCKED((_io)); \
-   release_lock(&sysblk.iointqlk); \
- } while (0)
-
-#define DEQUEUE_IO_INTERRUPT_QLOCKED(_io) \
- do { \
-   IOINT *prev; \
-   for (prev = (IOINT *)&sysblk.iointq; prev->next != NULL; prev = prev->next) \
-     if (prev->next == (_io)) { \
-       prev->next = (_io)->next; \
-            if ((_io)->pending)     (_io)->dev->pending     = 0; \
-       else if ((_io)->pcipending)  (_io)->dev->pcipending  = 0; \
-       else if ((_io)->attnpending) (_io)->dev->attnpending = 0; \
-       break; \
-     } \
- } while (0)
-
-/*    NOTE: sysblk.iointqlk needed to examine sysblk.iointq,
-      sysblk.intlock (which MUST be held before calling these
-      macros) needed in order to set/reset IC_IOPENDING flag
-*/
-#define UPDATE_IC_IOPENDING() \
- do { \
-   obtain_lock(&sysblk.iointqlk); \
-   UPDATE_IC_IOPENDING_QLOCKED(); \
-   release_lock(&sysblk.iointqlk); \
- } while (0)
-
-#define UPDATE_IC_IOPENDING_QLOCKED() \
- do { \
-   if (sysblk.iointq == NULL) \
-     OFF_IC_IOPENDING; \
-   else { \
-     ON_IC_IOPENDING; \
-   } \
- } while (0)
-
-/*-------------------------------------------------------------------*/
-/*      Handy utility macro for channel.c                            */
-/*-------------------------------------------------------------------*/
-
-#define IS_CCW_IMMEDIATE(_dev,_code) \
-  ( \
-    ( (_dev)->hnd->immed && (_dev)->hnd->immed[(_code)]) \
-    || ( (_dev)->immed      && (_dev)->immed[(_code)]) \
-    || IS_CCW_NOP((_dev)->code) \
-  )
 
 /*-------------------------------------------------------------------*/
 /*      Macro to check if DEVBLK is for an existing device           */
@@ -716,65 +575,8 @@ typedef int CMPFUNC(const void*, const void*);
 /*      Perform standard utility initialization                      */
 /*-------------------------------------------------------------------*/
 
-#if !defined(EXTERNALGUI)
-  #define INITIALIZE_EXTERNAL_GUI()
-#else
-  #define INITIALIZE_EXTERNAL_GUI() \
-  do { \
-    if (argc >= 1 && strncmp(argv[argc-1],"EXTERNALGUI",11) == 0) { \
-        extgui = 1; \
-        argv[argc-1] = NULL; \
-        argc--; \
-        setvbuf(stderr, NULL, _IONBF, 0); \
-        setvbuf(stdout, NULL, _IONBF, 0); \
-    } \
-  } while (0)
-#endif
-
-#if defined(OPTION_MSGLCK)
- #define INIT_MSGLCK initialize_lock (&sysblk.msglock);
-#else
- #define INIT_MSGLCK
-#endif
-
-#if defined(OPTION_CONFIG_SYMBOLS)
-#define INIT_UTILMSGLVL \
-    do \
-    { \
-        char *msglvl = (char *)get_symbol( "HERCULES_UTIL_MSGLVL" );\
-        if ( msglvl != NULL ) \
-        { \
-            sysblk.emsg = EMSG_ON; \
-            if ( strcasestr(msglvl, "all") ) \
-                sysblk.msglvl |= MLVL_ANY; \
-            if ( strcasestr(msglvl, "debug") ) \
-                sysblk.msglvl |= MLVL_DEBUG | MLVL_DEVICES; \
-            if ( strcasestr(msglvl, "verbose") )\
-                sysblk.msglvl |= MLVL_VERBOSE; \
-            if ( strcasestr(msglvl, "tape") ) \
-                sysblk.msglvl |= MLVL_TAPE; \
-            if ( strcasestr(msglvl, "dasd") ) \
-                sysblk.msglvl |= MLVL_DASD; \
-            if ( strcasestr(msglvl, "time") ) \
-                sysblk.emsg |= EMSG_TS; \
-        } \
-    } while (0)
-#else
-#define INIT_UTILMSGLVL
-#endif
-
-#define INITIALIZE_UTILITY(name) \
-  do { \
-    SET_THREAD_NAME(name); \
-    INITIALIZE_EXTERNAL_GUI(); \
-    memset (&sysblk, 0, sizeof(SYSBLK)); \
-    INIT_MSGLCK \
-    initialize_detach_attr (DETACHED); \
-    initialize_join_attr   (JOINABLE); \
-    set_codepage(NULL); \
-    init_hostinfo( &hostinfo ); \
-    INIT_UTILMSGLVL; \
-  } while (0)
+#define INITIALIZE_UTILITY( def, desc, pgm )  \
+    argc = initialize_utility( argc, argv, def, desc, pgm )
 
 /*-------------------------------------------------------------------*/
 /*      Assign name to thread           (debugging aid)              */
@@ -833,26 +635,26 @@ typedef int CMPFUNC(const void*, const void*);
 
 #define _SETMODE_INIT \
 do { \
-    getresuid(&sysblk.ruid,&sysblk.euid,&sysblk.suid); \
-    getresgid(&sysblk.rgid,&sysblk.egid,&sysblk.sgid); \
-    setresuid(sysblk.ruid,sysblk.ruid,sysblk.euid); \
-    setresgid(sysblk.rgid,sysblk.rgid,sysblk.egid); \
+    VERIFY(!getresuid(&sysblk.ruid,&sysblk.euid,&sysblk.suid)); \
+    VERIFY(!getresgid(&sysblk.rgid,&sysblk.egid,&sysblk.sgid)); \
+    VERIFY(!setresuid(sysblk.ruid,sysblk.ruid,sysblk.euid)); \
+    VERIFY(!setresgid(sysblk.rgid,sysblk.rgid,sysblk.egid)); \
 } while(0)
 
 #define _SETMODE_ROOT \
 do { \
-    setresuid(sysblk.suid,sysblk.suid,sysblk.ruid); \
+    VERIFY(!setresuid(sysblk.suid,sysblk.suid,sysblk.ruid)); \
 } while(0)
 
 #define _SETMODE_USER \
 do { \
-    setresuid(sysblk.ruid,sysblk.ruid,sysblk.suid); \
+    VERIFY(!setresuid(sysblk.ruid,sysblk.ruid,sysblk.suid)); \
 } while(0)
 
 #define _SETMODE_TERM \
 do { \
-    setresuid(sysblk.ruid,sysblk.ruid,sysblk.ruid); \
-    setresgid(sysblk.rgid,sysblk.rgid,sysblk.rgid); \
+    VERIFY(!setresuid(sysblk.ruid,sysblk.ruid,sysblk.ruid)); \
+    VERIFY(!setresgid(sysblk.rgid,sysblk.rgid,sysblk.rgid)); \
 } while(0)
 
 #elif defined(HAVE_SETREUID)
@@ -863,26 +665,26 @@ do { \
     sysblk.euid = geteuid(); \
     sysblk.rgid = getgid(); \
     sysblk.egid = getegid(); \
-    setreuid(sysblk.euid, sysblk.ruid); \
-    setregid(sysblk.egid, sysblk.rgid); \
+    VERIFY(!setreuid(sysblk.euid, sysblk.ruid)); \
+    VERIFY(!setregid(sysblk.egid, sysblk.rgid)); \
 } while (0)
 
 #define _SETMODE_ROOT \
 do { \
-    setreuid(sysblk.ruid, sysblk.euid); \
-    setregid(sysblk.rgid, sysblk.egid); \
+    VERIFY(!setreuid(sysblk.ruid, sysblk.euid)); \
+    VERIFY(!setregid(sysblk.rgid, sysblk.egid)); \
 } while (0)
 
 #define _SETMODE_USER \
 do { \
-    setregid(sysblk.egid, sysblk.rgid); \
-    setreuid(sysblk.euid, sysblk.ruid); \
+    VERIFY(!setregid(sysblk.egid, sysblk.rgid)); \
+    VERIFY(!setreuid(sysblk.euid, sysblk.ruid)); \
 } while (0)
 
 #define _SETMODE_TERM \
 do { \
-    setuid(sysblk.ruid); \
-    setgid(sysblk.rgid); \
+    VERIFY(!setuid(sysblk.ruid)); \
+    VERIFY(!setgid(sysblk.rgid)); \
 } while (0)
 
 #else /* defined(HAVE_SETRESUID) || defined(HAVE_SETEREUID) */
@@ -940,5 +742,34 @@ do { \
 #define RECV_SOCKDEV_THREAD_PIPE_SIGNAL()  RECV_PIPE_SIGNAL( sysblk.sockrpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
 #define SIGNAL_CONSOLE_THREAD()            SEND_PIPE_SIGNAL( sysblk.cnslwpipe, sysblk.cnslpipe_lock, sysblk.cnslpipe_flag )
 #define SIGNAL_SOCKDEV_THREAD()            SEND_PIPE_SIGNAL( sysblk.sockwpipe, sysblk.sockpipe_lock, sysblk.sockpipe_flag )
+
+
+/*********************************************************************/
+/*                                                                   */
+/*  Define compiler error bypasses                                   */
+/*                                                                   */
+/*********************************************************************/
+
+
+/*      MS VC Bug ID 363375 Bypass
+ *
+ *      Note: This error, or similar, also occurs at VS 2010 and
+ *            VS 2012.
+ *
+ *      TODO: Verify if fixed in VS 2013 and/or VS 2014.
+ *
+ */
+
+#if defined( _MSC_VER ) && ( _MSC_VER >= VS2008 )
+# define ENABLE_VS_BUG_ID_363375_BYPASS                                 \
+  __pragma( optimize( "", off ) )                                       \
+  __pragma( optimize( "t", on ) )
+# define DISABLE_VS_BUG_ID_363375_BYPASS                                \
+  __pragma( optimize( "", on ) )
+#else
+# define ENABLE_VS_BUG_ID_363375_BYPASS
+# define DISABLE_VS_BUG_ID_363375_BYPASS
+#endif
+
 
 #endif // _HMACROS_H

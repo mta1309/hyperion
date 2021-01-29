@@ -20,6 +20,14 @@
 #include "devtype.h"
 #include "opcode.h"
 
+//#define DEBUG_FREESPACE
+
+#ifdef DEBUG_FREESPACE
+  #define CCKD_CHK_SPACE(_dev)      cckd_chk_space(_dev)
+#else
+  #define CCKD_CHK_SPACE(_dev)
+#endif
+
 /*-------------------------------------------------------------------*/
 /* Internal functions                                                */
 /*-------------------------------------------------------------------*/
@@ -93,6 +101,7 @@ DLL_EXPORT void   *cckd_sf_remove(void *data);
 DLL_EXPORT void   *cckd_sf_comp(void *data);
 DLL_EXPORT void   *cckd_sf_chk(void *data);
 DLL_EXPORT void   *cckd_sf_stats(void *data);
+DLL_EXPORT void    cckd_sf_parse_sfn( DEVBLK* dev, char* sfn );
 #ifdef OPTION_SYNCIO
 int     cckd_disable_syncio(DEVBLK *dev);
 #endif // OPTION_SYNCIO
@@ -155,7 +164,7 @@ static  CCKD_L2ENT empty_l2[CKDDASD_NULLTRK_FMTMAX+1][256];
 static  BYTE eighthexFF[] = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
 DEVHND  cckddasd_device_hndinfo;
 DEVHND  cfbadasd_device_hndinfo;
-DLL_EXPORT CCKDBLK cckdblk;                        /* cckd global area          */
+DLL_EXPORT CCKDBLK cckdblk;             /* cckd global area          */
 
 /*-------------------------------------------------------------------*/
 /* CCKD global initialization                                        */
@@ -297,9 +306,9 @@ int             fdflags;                /* File flags                */
         return -1;
 
     /* Initialize locks and conditions */
-    initialize_lock (&cckd->iolock);
+    initialize_lock (&cckd->cckdiolock);
     initialize_lock (&cckd->filelock);
-    initialize_condition (&cckd->iocond);
+    initialize_condition (&cckd->cckdiocond);
 
     /* Initialize some variables */
     obtain_lock (&cckd->filelock);
@@ -347,6 +356,7 @@ int             fdflags;                /* File flags                */
     cckd_unlock_devchain();
 
     cckdblk.batch = dev->batch;
+
     if (cckdblk.batch)
     {
         cckdblk.nostress = 1;
@@ -379,21 +389,21 @@ int             i;                      /* Index                     */
     release_lock(&cckdblk.ralock);
 
     /* Flush the cache and wait for the writes to complete */
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     cckd->stopping = 1;
     cckd_flush_cache (dev);
-    while (cckd->wrpending || cckd->ioactive)
+    while (cckd->wrpending || cckd->cckdioact)
     {
-        cckd->iowaiters++;
-        wait_condition (&cckd->iocond, &cckd->iolock);
-        cckd->iowaiters--;
+        cckd->cckdwaiters++;
+        wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+        cckd->cckdwaiters--;
         cckd_flush_cache (dev);
     }
-    broadcast_condition (&cckd->iocond);
+    broadcast_condition (&cckd->cckdiocond);
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
     if (cckd->newbuf) cckd_free (dev, "newbuf", cckd->newbuf);
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* Remove the device from the cckd queue */
     cckd_lock_devchain(1);
@@ -474,19 +484,19 @@ int             trk = 0;                /* Last active track         */
 #else // OPTION_NOSYNCIO
     /* Check for merge */
 #endif // OPTION_SYNCIO
-    obtain_lock(&cckd->iolock);
+    obtain_lock(&cckd->cckdiolock);
     if (cckd->merging)
     {
         cckd_trace (dev, "start i/o waiting for merge%s","");
         while (cckd->merging)
         {
-            cckd->iowaiters++;
-            wait_condition (&cckd->iocond, &cckd->iolock);
-            cckd->iowaiters--;
+            cckd->cckdwaiters++;
+            wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+            cckd->cckdwaiters--;
         }
         dev->bufcur = dev->cache = -1;
     }
-    cckd->ioactive = 1;
+    cckd->cckdioact = 1;
 
     cache_lock(CACHE_DEVBUF);
 
@@ -505,8 +515,8 @@ int             trk = 0;                /* Last active track         */
         {
             cache_setflag (CACHE_DEVBUF, dev->cache, ~CCKD_CACHE_WRITE, CCKD_CACHE_UPDATED);
             cckd->wrpending--;
-            if (cckd->iowaiters && !cckd->wrpending)
-                broadcast_condition (&cckd->iocond);
+            if (cckd->cckdwaiters && !cckd->wrpending)
+                broadcast_condition (&cckd->cckdiocond);
         }
     }
     else
@@ -514,7 +524,7 @@ int             trk = 0;                /* Last active track         */
 
     cache_unlock (CACHE_DEVBUF);
 
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     return;
 
@@ -539,11 +549,11 @@ CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
     dev->bufupd = 0;
 
     cckd_trace (dev, "end i/o bufcur %d cache[%d] waiters %d",
-                dev->bufcur, dev->cache, cckd->iowaiters);
+                dev->bufcur, dev->cache, cckd->cckdwaiters);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
 
-    cckd->ioactive = 0;
+    cckd->cckdioact = 0;
 
     /* Make the current entry inactive */
     if (dev->cache >= 0)
@@ -554,12 +564,12 @@ CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
     }
 
     /* Cause writers to start after first update */
-    if (cckd->updated && (cckdblk.wrs == 0 || cckd->iowaiters != 0))
+    if (cckd->updated && (cckdblk.wrs == 0 || cckd->cckdwaiters != 0))
         cckd_flush_cache (dev);
-    else if (cckd->iowaiters)
-        broadcast_condition (&cckd->iocond);
+    else if (cckd->cckdwaiters)
+        broadcast_condition (&cckd->cckdiocond);
 
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
 } /* end function cckddasd_end */
 
@@ -650,7 +660,7 @@ int             rc;                     /* Return code               */
 
     cckd = dev->cckd_ext;
 
-    cckd_trace (dev, "file[%d] fd[%d] read, off 0x"I64_FMTx" len %d",
+    cckd_trace (dev, "file[%d] fd[%d] read, off 0x%16.16"PRIx64" len %d",
                 sfx, cckd->fd[sfx], off, len);
 
     /* Seek to specified offset */
@@ -694,7 +704,7 @@ int             rc = 0;                 /* Return code               */
 
     cckd = dev->cckd_ext;
 
-    cckd_trace (dev, "file[%d] fd[%d] write, off 0x"I64_FMTx" len %d",
+    cckd_trace (dev, "file[%d] fd[%d] write, off 0x%16.16"PRIx64" len %d",
                 sfx, cckd->fd[sfx], off, len);
 
     /* Seek to specified offset */
@@ -736,7 +746,7 @@ CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
 
     cckd = dev->cckd_ext;
 
-    cckd_trace (dev, "file[%d] fd[%d] ftruncate, off 0x"I64_FMTx,
+    cckd_trace (dev, "file[%d] fd[%d] ftruncate, off 0x%16.16"PRIx64,
                 sfx, cckd->fd[sfx], off);
 
     /* Truncate the file */
@@ -1234,7 +1244,7 @@ BYTE           *buf;                    /* Read buffer               */
     maxlen = cckd->ckddasd ? dev->ckdtrksz
                            : CFBA_BLOCK_SIZE + CKDDASD_TRKHDR_SIZE;
 
-    if (!ra) obtain_lock (&cckd->iolock);
+    if (!ra) obtain_lock (&cckd->cckdiolock);
 
     cache_lock (CACHE_DEVBUF);
 
@@ -1273,7 +1283,7 @@ cckd_read_trk_retry:
                 cckdblk.stats_synciomisses++;
                 dev->syncio_retry = 1;
                 cache_unlock (CACHE_DEVBUF);
-                release_lock (&cckd->iolock);
+                release_lock (&cckd->cckdiolock);
                 return -1;
             }
             else cckdblk.stats_syncios++;
@@ -1289,8 +1299,8 @@ cckd_read_trk_retry:
         {
             cache_setflag(CACHE_DEVBUF, fnd, ~CCKD_CACHE_WRITE, CCKD_CACHE_UPDATED);
             cckd->wrpending--;
-            if (cckd->iowaiters && !cckd->wrpending)
-                broadcast_condition (&cckd->iocond);
+            if (cckd->cckdwaiters && !cckd->wrpending)
+                broadcast_condition (&cckd->cckdiocond);
         }
         buf = cache_getbuf(CACHE_DEVBUF, fnd, 0);
 
@@ -1310,15 +1320,15 @@ cckd_read_trk_retry:
                         cache_getflag(CACHE_DEVBUF, fnd) & CCKD_CACHE_READING ?
                         "read" : "write");
             cache_setflag (CACHE_DEVBUF, fnd, ~0, CCKD_CACHE_IOWAIT);
-            cckd->iowaiters++;
-            wait_condition (&cckd->iocond, &cckd->iolock);
-            cckd->iowaiters--;
+            cckd->cckdwaiters++;
+            wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+            cckd->cckdwaiters--;
             cache_setflag (CACHE_DEVBUF, fnd, ~CCKD_CACHE_IOWAIT, 0);
             cckd_trace (dev, "%d rdtrk[%d] %d io wait complete",
                         ra, fnd, trk);
         }
 
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
 
         /* Asynchrously schedule readaheads */
         if (curtrk > 0 && trk > curtrk && trk <= curtrk + 2)
@@ -1333,7 +1343,7 @@ cckd_read_trk_retry:
     if (!ra && dev->syncio_active)
     {
         cache_unlock(CACHE_DEVBUF);
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
         cckd_trace (dev, "%d rdtrk[%d] %d syncio cache miss", ra, lru, trk);
         cckdblk.stats_synciomisses++;
         dev->syncio_retry = 1;
@@ -1352,7 +1362,7 @@ cckd_read_trk_retry:
         cckd_trace (dev, "%d rdtrk[%d] %d no available cache entry",
                     ra, lru, trk);
         cache_unlock (CACHE_DEVBUF);
-        if (!ra) release_lock (&cckd->iolock);
+        if (!ra) release_lock (&cckd->cckdiolock);
         cckd_flush_cache_all();
         cache_lock (CACHE_DEVBUF);
         cckdblk.stats_cachewaits++;
@@ -1360,7 +1370,7 @@ cckd_read_trk_retry:
         if (!ra)
         {
             cache_unlock (CACHE_DEVBUF);
-            obtain_lock (&cckd->iolock);
+            obtain_lock (&cckd->cckdiolock);
             cache_lock (CACHE_DEVBUF);
         }
         goto cckd_read_trk_retry;
@@ -1397,7 +1407,7 @@ cckd_read_trk_retry:
 
     cache_unlock (CACHE_DEVBUF);
 
-    if (!ra) release_lock (&cckd->iolock);
+    if (!ra) release_lock (&cckd->cckdiolock);
 
     /* Asynchronously schedule readaheads */
     if (!ra && curtrk > 0 && trk > curtrk && trk <= curtrk + 2)
@@ -1412,7 +1422,7 @@ cckd_read_trk_retry:
     release_lock (&cckd->filelock);
     cache_setval (CACHE_DEVBUF, lru, len);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
 
     /* Turn off the READING bit */
     cache_lock (CACHE_DEVBUF);
@@ -1420,13 +1430,13 @@ cckd_read_trk_retry:
     cache_unlock (CACHE_DEVBUF);
 
     /* Wakeup other thread waiting for this read */
-    if (cckd->iowaiters && (flag & CCKD_CACHE_IOWAIT))
+    if (cckd->cckdwaiters && (flag & CCKD_CACHE_IOWAIT))
     {   cckd_trace (dev, "%d rdtrk[%d] %d signalling read complete",
                     ra, lru, trk);
-        broadcast_condition (&cckd->iocond);
+        broadcast_condition (&cckd->cckdiocond);
     }
 
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     if (ra)
     {
@@ -1502,12 +1512,27 @@ int             rc;
     if (cckdblk.ra1st >= 0)
     {
         if (cckdblk.rawaiting)
-            signal_condition (&cckdblk.racond);
+            signal_condition(&cckdblk.racond);
         else if (cckdblk.ras < cckdblk.ramax)
         {
-            rc = create_thread (&tid, JOINABLE, cckd_ra, NULL, "cckd_ra");
+            /* Schedule a new read-ahead thread  */
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+                // "Starting thread %s, active=%d, started=%d, max=%d"
+                WRMSG(HHC00107, "I", "cckd_ra()", cckdblk.raa, cckdblk.ras, cckdblk.ramax);
+
+            ++cckdblk.ras;
+
+            /* Release lock across thread create to prevent interlock  */
+            release_lock(&cckdblk.ralock);
+            rc = create_thread(&tid, JOINABLE, cckd_ra, NULL, "cckd_ra");
+            obtain_lock(&cckdblk.ralock);
+
             if (rc)
-                WRMSG(HHC00102, "E", strerror(rc));
+            {
+                // "Error in function create_thread() for %s %d of %d: %s"
+                WRMSG(HHC00106, "E", "cckd_ra()", cckdblk.ras-1, cckdblk.ramax, strerror(rc));
+                --cckdblk.ras;
+            }
         }
     }
 
@@ -1541,35 +1566,43 @@ int             k;                      /* Index                     */
 /*-------------------------------------------------------------------*/
 void* cckd_ra (void* arg)
 {
-CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
-DEVBLK         *dev;                    /* Readahead devblk          */
-int             trk;                    /* Readahead track           */
-int             ra;                     /* Readahead index           */
-int             r;                      /* Readahead queue index     */
-TID             tid;                    /* Readahead thread id       */
-char            threadname[40];
-int             rc;
+    CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
+    DEVBLK         *dev;                    /* Readahead devblk          */
+    int             trk;                    /* Readahead track           */
+    int             ra;                     /* Readahead index           */
+    int             r;                      /* Readahead queue index     */
+    TID             tid;                    /* Readahead thread id       */
+    char            threadname[40];
+    int             rc;
 
-    UNREFERENCED( arg );
+    UNREFERENCED(arg);
 
-    obtain_lock (&cckdblk.ralock);
-    ra = ++cckdblk.ras;
+    obtain_lock(&cckdblk.ralock);
+    ra = ++cckdblk.raa;  /* increment nr ra threads dispatched */
+    MSGBUF(threadname, "Read-ahead thread-%d", ra);
 
-    /* Return without messages if too many already started */
+    /* Return if too many already started */
     if (ra > cckdblk.ramax)
     {
-        --cckdblk.ras;
-        release_lock (&cckdblk.ralock);
+        --cckdblk.ras;  /* decrement count started */
+        --cckdblk.raa;  /* decrement count running */
+        if (!cckdblk.ramax)
+        {
+            signal_condition(&cckdblk.termcond);
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+                WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
+        }
+        else
+            if (!cckdblk.batch || cckdblk.batchml > 0)
+                WRMSG(HHC00108, "W", thread_id(), threadname, get_thread_priority(0), ra, cckdblk.ramax);
+        release_lock(&cckdblk.ralock);
         return NULL;
     }
 
-    if (!cckdblk.batch)
-    {
-        MSGBUF( threadname, "Read-ahead thread-%d", ra);
-        WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
-    }
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), threadname);
 
-    while (ra <= cckdblk.ramax)
+    while (ra <= cckdblk.ramax)   /* continue until ramax=0 (shutdown) or max reduced by command line */
     {
         if (cckdblk.ra1st < 0)
         {
@@ -1601,9 +1634,24 @@ int             rc;
                 signal_condition (&cckdblk.racond);
             else if (cckdblk.ras < cckdblk.ramax)
             {
-                rc = create_thread (&tid, JOINABLE, cckd_ra, dev, "cckd_ra");
+                /* Schedule a new read-ahead thread  */
+                if (!cckdblk.batch || cckdblk.batchml > 1)
+                    // "Starting thread %s, active=%d, started=%d, max=%d"
+                    WRMSG(HHC00107, "I", "cckd_ra() from cckd_ra()", cckdblk.raa, cckdblk.ras, cckdblk.ramax);
+
+                ++cckdblk.ras;
+
+                /* Release lock across thread create to prevent interlock  */
+                release_lock(&cckdblk.ralock);
+                rc = create_thread(&tid, JOINABLE, cckd_ra, NULL, "cckd_ra");
+                obtain_lock(&cckdblk.ralock);
+
                 if (rc)
-                    WRMSG(HHC00102, "E", strerror(rc));
+                {
+                    // "Error in function create_thread() for %s %d of %d: %s"
+                    WRMSG(HHC00106, "E", "cckd_ra() from cckd_ra()", cckdblk.ras-1, cckdblk.ramax, strerror(rc));
+                    --cckdblk.ras;
+                }
             }
         }
 
@@ -1619,9 +1667,10 @@ int             rc;
         cckd->ras--;
     }
 
-    if (!cckdblk.batch)
-        WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
     --cckdblk.ras;
+    --cckdblk.raa;
     if (!cckdblk.ras) signal_condition(&cckdblk.termcond);
     release_lock(&cckdblk.ralock);
     return NULL;
@@ -1630,7 +1679,7 @@ int             rc;
 /*-------------------------------------------------------------------*/
 /* Flush updated cache entries for a device                          */
 /*                                                                   */
-/* Caller holds the cckd->iolock                                     */
+/* Caller holds the cckd->cckdiolock                                 */
 /* cckdblk.wrlock then cache_lock is obtained and released           */
 /*-------------------------------------------------------------------*/
 void cckd_flush_cache(DEVBLK *dev)
@@ -1652,13 +1701,31 @@ TID             tid;                    /* Writer thread id          */
             signal_condition (&cckdblk.wrcond);
         else if (cckdblk.wrs < cckdblk.wrmax)
         {
-            rc = create_thread (&tid, JOINABLE, cckd_writer, NULL, "cckd_writer");
+            /* Schedule a new writer thread  */
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+                // "Starting thread %s, active=%d, started=%d, max=%d"
+                WRMSG(HHC00107, "I", "cckd_writer()", cckdblk.wra, cckdblk.wrs, cckdblk.wrmax);
+
+            ++cckdblk.wrs;
+
+            /* Release lock across thread create to prevent interlock  */
+            release_lock(&cckdblk.wrlock);
+            rc = create_thread(&tid, JOINABLE, cckd_writer, NULL, "cckd_writer");
+            obtain_lock(&cckdblk.wrlock);
+
             if (rc)
-                WRMSG(HHC00102, "E", strerror(rc));
+            {
+                // "Error in function create_thread() for %s %d of %d: %s"
+                WRMSG(HHC00106, "E", "cckd_writer()", cckdblk.wrs-1, cckdblk.wrmax, strerror(rc));
+                --cckdblk.wrs;
+            }
         }
     }
+
     release_lock (&cckdblk.wrlock);
 }
+
+
 int cckd_flush_cache_scan (int *answer, int ix, int i, void *data)
 {
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
@@ -1689,10 +1756,10 @@ DEVBLK         *dev = NULL;             /* -> device block           */
     for (dev = cckdblk.dev1st; dev; dev = cckd->devnext)
     {
         cckd = dev->cckd_ext;
-        obtain_lock (&cckd->iolock);
+        obtain_lock (&cckd->cckdiolock);
         if (!cckd->merging && !cckd->stopping)
             cckd_flush_cache(dev);
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
     }
     cckd_unlock_devchain();
 }
@@ -1700,7 +1767,7 @@ DEVBLK         *dev = NULL;             /* -> device block           */
 /*-------------------------------------------------------------------*/
 /* Purge cache entries for a device                                  */
 /*                                                                   */
-/* Caller holds the iolock                                           */
+/* Caller holds the cckdiolock                                       */
 /* cache_lock is obtained and released                               */
 /*-------------------------------------------------------------------*/
 void cckd_purge_cache(DEVBLK *dev)
@@ -1757,29 +1824,34 @@ int             rc;
     /* Set writer priority just below cpu priority to mimimize the
        compression effect */
     if(cckdblk.wrprio >= 0)
-    {
-        if(setpriority (PRIO_PROCESS, 0, cckdblk.wrprio))
-            WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-    }
+        set_thread_priority(0, cckdblk.wrprio);
 #endif
 
     obtain_lock (&cckdblk.wrlock);
 
-    writer = ++cckdblk.wrs;
+    writer = ++cckdblk.wra;
+    MSGBUF(threadname, "Writer thread-%d", writer);
 
-    /* Return without messages if too many already started */
+    /* Return with message if too many already started */
     if (writer > cckdblk.wrmax)
     {
-        --cckdblk.wrs;
+        --cckdblk.wrs;  /* decrease threads started */
+        --cckdblk.wra;  /* decrease threads active  */
+        if (!cckdblk.wrmax)  /* choose thread termination message  */
+        {
+            signal_condition(&cckdblk.termcond);  /* shutting down */
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+              WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
+        }
+        else
+            if (!cckdblk.batch || cckdblk.batchml > 0)
+                WRMSG(HHC00108, "W", thread_id(), threadname, get_thread_priority(0), writer, cckdblk.wrmax);
         release_lock (&cckdblk.wrlock);
         return NULL;
     }
 
-    if (!cckdblk.batch)
-    {
-        MSGBUF( threadname, "Writer thread-%d", writer);
-        WRMSG ( HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
-    }
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG ( HHC00100, "I", thread_id(), get_thread_priority(0), threadname);
 
     while (writer <= cckdblk.wrmax || cckdblk.wrpending)
     {
@@ -1813,11 +1885,27 @@ int             rc;
                 signal_condition (&cckdblk.wrcond);
             else if (cckdblk.wrs < cckdblk.wrmax)
             {
-                rc = create_thread (&tid, JOINABLE, cckd_writer, NULL, "cckd_writer");
+                /* Schedule a new writer thread  */
+                if (!cckdblk.batch || cckdblk.batchml > 1)
+                    // "Starting thread %s, active=%d, started=%d, max=%d"
+                    WRMSG(HHC00107, "I", "cckd_writer() from cckd_writer()", cckdblk.wra, cckdblk.wrs, cckdblk.wrmax);
+
+                ++cckdblk.wrs;
+
+                /* Release lock across thread create to prevent interlock  */
+                release_lock(&cckdblk.wrlock);
+                rc = create_thread(&tid, JOINABLE, cckd_writer, NULL, "cckd_writer");
+                obtain_lock(&cckdblk.wrlock);
+
                 if (rc)
-                    WRMSG(HHC00102, "E", strerror(rc));
+                {
+                    // "Error in function create_thread() for %s %d of %d: %s"
+                    WRMSG(HHC00106, "E", "cckd_writer() from cckd_writer()", cckdblk.wrs-1, cckdblk.wrmax, strerror(rc));
+                    --cckdblk.wrs;
+                }
             }
         }
+
         release_lock (&cckdblk.wrlock);
 
         /* Prepare to compress */
@@ -1879,24 +1967,43 @@ int             rc;
         release_lock (&cckd->filelock);
 
         /* Schedule the garbage collector */
+        obtain_lock(&cckdblk.gclock);  /* ensure read integrity for gc count */
         if (cckdblk.gcs < cckdblk.gcmax)
         {
-            rc = create_thread (&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
-            if (rc)
-                WRMSG(HHC00102, "E", strerror(rc));
-        }
+            /* Schedule a new garbage collector thread  */
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+                // "Starting thread %s, active=%d, started=%d, max=%d"
+                WRMSG(HHC00107, "I", "cckd_gcol()", cckdblk.gca, cckdblk.gcs, cckdblk.gcmax);
 
-        obtain_lock (&cckd->iolock);
+            ++cckdblk.gcs;
+
+            /* Release lock across thread create to prevent interlock  */
+            release_lock(&cckdblk.gclock);
+            rc = create_thread(&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
+
+            if (rc)
+            {
+                // "Error in function create_thread() for %s %d of %d: %s"
+                WRMSG(HHC00106, "E", "cckd_gcol()", cckdblk.gcs-1, cckdblk.gcmax, strerror(rc));
+                obtain_lock(&cckdblk.gclock);
+                --cckdblk.gcs;
+                release_lock(&cckdblk.gclock);
+            }
+        }
+        else
+            release_lock(&cckdblk.gclock);
+
+        obtain_lock (&cckd->cckdiolock);
         cache_lock (CACHE_DEVBUF);
         flag = cache_setflag (CACHE_DEVBUF, o, ~CCKD_CACHE_WRITING, 0);
         cache_unlock (CACHE_DEVBUF);
         cckd->wrpending--;
-        if (cckd->iowaiters && ((flag & CCKD_CACHE_IOWAIT) || !cckd->wrpending))
+        if (cckd->cckdwaiters && ((flag & CCKD_CACHE_IOWAIT) || !cckd->wrpending))
         {   cckd_trace (dev, "writer[%d] cache[%2.2d] %d signalling write complete",
                         writer, o, trk);
-            broadcast_condition (&cckd->iocond);
+            broadcast_condition (&cckd->cckdiocond);
         }
-        release_lock(&cckd->iolock);
+        release_lock(&cckd->cckdiolock);
 
         cckd_trace (dev, "%d wrtrk[%2.2d] %d complete flags:%8.8x",
                     writer, o, trk, cache_getflag(CACHE_DEVBUF,o));
@@ -1904,9 +2011,10 @@ int             rc;
         obtain_lock(&cckdblk.wrlock);
     }
 
-    if (!cckdblk.batch)
-        WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), threadname);
     cckdblk.wrs--;
+    cckdblk.wra--;
     if (cckdblk.wrs == 0) signal_condition(&cckdblk.termcond);
     release_lock(&cckdblk.wrlock);
     return NULL;
@@ -1922,13 +2030,13 @@ int cckd_writer_scan (int *o, int ix, int i, void *data)
     return 0;
 }
 
+#ifdef DEBUG_FREESPACE
 /*-------------------------------------------------------------------*/
 /* Debug routine for checking the free space array                   */
 /*-------------------------------------------------------------------*/
 
 void cckd_chk_space(DEVBLK *dev)
 {
-#if 1
 CCKDDASD_EXT   *cckd;                   /* -> cckd extension         */
 int             sfx;                    /* Shadow file index         */
 int             err = 0, n = 0, i, p;
@@ -1987,7 +2095,7 @@ off_t           fpos;
         for (n = 0, i = cckd->free1st; i >= 0; i = cckd->free[i].next)
         {
             if (++n > cckd->freenbr) break;
-            cckd_trace (dev, "%4d: [%4d] prev[%4d] next[%4d] pos "I64_FMTx" len %8d "I64_FMTx" pend %d",
+            cckd_trace (dev, "%4d: [%4d] prev[%4d] next[%4d] pos %16.16"PRIx64" len %8d %16.16"PRIx64" pend %d",
                         n, i, cckd->free[i].prev, cckd->free[i].next,
                         fpos, cckd->free[i].len,
                         fpos + cckd->free[i].len, cckd->free[i].pending);
@@ -1995,8 +2103,8 @@ off_t           fpos;
         }
         cckd_print_itrace();
     }
-#endif
 } /* end function cckd_chk_space */
+#endif // DEBUG_FREESPACE
 
 /*-------------------------------------------------------------------*/
 /* Get file space                                                    */
@@ -2043,14 +2151,15 @@ cckd_get_space_atend:
         fpos = (off_t)cckd->cdevhdr[sfx].size;
         if ((fpos + len) > cckd->maxsize)
         {
+            // "%1d:%04X CCKD file[%d] %s: get space error, size exceeds %"PRId64"M"
             WRMSG (HHC00304, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, sfx, cckd_sf_name (dev, sfx),
-                  (long long)    (cckd->maxsize >> 20) + 1);
+                (S64) (cckd->maxsize >> 20) + 1);
             return -1;
         }
         cckd->cdevhdr[sfx].size += len;
         cckd->cdevhdr[sfx].used += len;
 
-        cckd_trace (dev, "get_space atend 0x"I64_FMTx" len %d",fpos, len);
+        cckd_trace (dev, "get_space atend 0x%16.16"PRIx64" len %d",fpos, len);
 
         return fpos;
     }
@@ -2132,7 +2241,7 @@ cckd_get_space_atend:
 
     cckd->cdevhdr[sfx].free_imbed += *size - len;
 
-    cckd_trace (dev, "get_space found 0x"I64_FMTx" len %d size %d",
+    cckd_trace (dev, "get_space found 0x%16.16"PRIx64" len %d size %d",
                 fpos, len, *size);
 
     return fpos;
@@ -2157,12 +2266,12 @@ int             fsize = size;           /* Free space size           */
     cckd = dev->cckd_ext;
     sfx = cckd->sfn;
 
-    cckd_trace (dev, "rel_space offset 0x"I64_FMTx" len %d size %d",
+    cckd_trace (dev, "rel_space offset 0x%16.16"PRIx64" len %d size %d",
                 pos, len, size);
 
     if (!cckd->free) cckd_read_fsp (dev);
 
-//  cckd_chk_space(dev);
+    CCKD_CHK_SPACE(dev);
 
     /* Scan free space chain */
     ppos = -1;
@@ -2237,7 +2346,7 @@ int             fsize = size;           /* Free space size           */
     if (!pending && (U32)fsize > cckd->cdevhdr[sfx].free_largest)
         cckd->cdevhdr[sfx].free_largest = (U32)fsize;
 
-//  cckd_chk_space(dev);
+    CCKD_CHK_SPACE(dev);
 
 } /* end function cckd_rel_space */
 
@@ -2259,7 +2368,7 @@ U32             ppos, pos;              /* Free space offsets        */
     /* Make sure the free space chain is built */
     if (!cckd->free) cckd_read_fsp (dev);
 
-//  cckd_chk_space(dev);
+    CCKD_CHK_SPACE(dev);
 
     if (cckd->cdevhdr[sfx].free_number == 0 || cckd->cdevhdr[sfx].free == 0)
     {
@@ -2313,7 +2422,7 @@ U32             ppos, pos;              /* Free space offsets        */
         i = p;
         p = cckd->free[i].prev;
 
-        cckd_trace (dev, "file[%d] rel_flush_space atend 0x"I64_FMTx" len %d",
+        cckd_trace (dev, "file[%d] rel_flush_space atend 0x%16.16"PRIx64" len %d",
                     sfx, ppos, cckd->free[i].len);
 
         /* Remove the entry from the chain */
@@ -2351,7 +2460,7 @@ U32             ppos, pos;              /* Free space offsets        */
 
     } /* Release space at end of the file */
 
-//  cckd_chk_space(dev);
+    CCKD_CHK_SPACE(dev);
 
 } /* end function cckd_flush_space */
 
@@ -2443,7 +2552,7 @@ int             i;                      /* Work integer              */
     cckd = dev->cckd_ext;
     sfx = cckd->sfn;
 
-    cckd_trace (dev, "file[%d] read_l1 offset 0x%"I64_FMT"x",
+    cckd_trace (dev, "file[%d] read_l1 offset 0x%"PRIx64,
                 sfx, (U64)CCKD_L1TAB_POS);
 
     /* Free the old level 1 table if it exists */
@@ -2496,7 +2605,7 @@ int             len;                    /* Length of level 1 table   */
     sfx = cckd->sfn;
     len = cckd->cdevhdr[sfx].numl1tab * CCKD_L1ENT_SIZE;
 
-    cckd_trace (dev, "file[%d] write_l1 0x%"I64_FMT"x len %d",
+    cckd_trace (dev, "file[%d] write_l1 0x%"PRIx64" len %d",
                 sfx, (U64)CCKD_L1TAB_POS, len);
 
     if (cckd_write (dev, sfx, CCKD_L1TAB_POS, cckd->l1[sfx], len) < 0)
@@ -2519,7 +2628,7 @@ off_t           off;                    /* Offset to l1 entry        */
     sfx = cckd->sfn;
     off = (off_t)(CCKD_L1TAB_POS + l1x * CCKD_L1ENT_SIZE);
 
-    cckd_trace (dev, "file[%d] write_l1ent[%d] , 0x"I64_FMTx,
+    cckd_trace (dev, "file[%d] write_l1ent[%d] , 0x%16.16"PRIx64,
                 sfx, l1x, off);
 
     if (cckd_write (dev, sfx, off, &cckd->l1[sfx][l1x], CCKD_L1ENT_SIZE) < 0)
@@ -2858,7 +2967,7 @@ int             nullfmt;                /* Null track format         */
         if (cckd->swapend[sfx])
             cckd_swapend_l2 (buf);
 
-        cckd_trace (dev, "file[%d] cache[%d] l2[%d] read offset 0x"I32_FMTx,
+        cckd_trace (dev, "file[%d] cache[%d] l2[%d] read offset 0x%8.8"PRIx32,
                     sfx, lru, l1x, cckd->l1[sfx][l1x]);
 
         cckd->l2reads[sfx]++;
@@ -3612,6 +3721,42 @@ char *cckd_sf_name (DEVBLK *dev, int sfx)
 } /* end function cckd_sf_name */
 
 /*-------------------------------------------------------------------*/
+/* Parse the shadow file name option                                 */
+/*-------------------------------------------------------------------*/
+void cckd_sf_parse_sfn( DEVBLK* dev, char* sfn )
+{
+    char pathname[MAX_PATH];
+    if ('\"' == sfn[0]) sfn++;
+    hostpath(pathname, sfn, sizeof(pathname));
+    dev->dasdsfn = strdup(pathname);
+    if (dev->dasdsfn)
+    {
+        /*
+        **         Set the pointer to the suffix character
+        **
+        ** The shadow file name should have spot where the shadow file
+        ** number will be set.  This is either the character preceding
+        ** the last period after the last slash (i.e. the last character
+        ** of the filename, immediately before the file extension), or
+        ** the very last character of the filename itself if the file
+        ** extension was not specified.
+        */
+        char* fn;
+        if ((fn = strrchr( dev->dasdsfn, PATHSEPC )) != NULL)
+            fn++;
+        else
+            fn = dev->dasdsfn;
+
+        dev->dasdsfx = strrchr( fn, '.' );  /* Find last period */
+
+        if (dev->dasdsfx == NULL)
+            dev->dasdsfx = dev->dasdsfn + strlen(dev->dasdsfn);
+
+        dev->dasdsfx--;     /* Shadow file number will go here */
+    }
+}
+
+/*-------------------------------------------------------------------*/
 /* Initialize shadow files                                           */
 /*-------------------------------------------------------------------*/
 int cckd_sf_init (DEVBLK *dev)
@@ -3627,7 +3772,6 @@ char            pathname[MAX_PATH];     /* file path in host format  */
     /* return if no shadow files */
     if (dev->dasdsfn == NULL) return 0;
 
-#if 1
     /* Check for shadow file name collision */
     for (i = 1; i <= CCKD_MAX_SF && dev->dasdsfn != NULL; i++)
     {
@@ -3650,7 +3794,6 @@ char            pathname[MAX_PATH];     /* file path in host format  */
             }
         }
     }
-#endif
 
     /* open all existing shadow files */
     for (cckd->sfn = 1; cckd->sfn <= CCKD_MAX_SF; cckd->sfn++)
@@ -3825,28 +3968,28 @@ int             syncio;                 /* Saved syncio bit          */
 #endif // OPTION_SYNCIO
 
     /* Schedule updated track entries to be written */
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     if (cckd->merging)
     {
 #ifdef OPTION_SYNCIO
         dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
         WRMSG (HHC00318, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name (dev, cckd->sfn));
         return NULL;
     }
     cckd->merging = 1;
     cckd_flush_cache (dev);
-    while (cckd->wrpending || cckd->ioactive)
+    while (cckd->wrpending || cckd->cckdioact)
     {
-        cckd->iowaiters++;
-        wait_condition (&cckd->iocond, &cckd->iolock);
-        cckd->iowaiters--;
+        cckd->cckdwaiters++;
+        wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+        cckd->cckdwaiters--;
         cckd_flush_cache (dev);
     }
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* Obtain control of the file */
     obtain_lock (&cckd->filelock);
@@ -3874,14 +4017,14 @@ cckd_sf_add_exit:
 
     release_lock (&cckd->filelock);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     cckd->merging = 0;
-    if (cckd->iowaiters)
-        broadcast_condition (&cckd->iocond);
+    if (cckd->cckdwaiters)
+        broadcast_condition (&cckd->cckdiocond);
 #ifdef OPTION_SYNCIO
     dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     cckd_sf_stats (dev);
     return NULL;
@@ -3953,28 +4096,28 @@ BYTE            buf[65536];             /* Buffer                    */
 #endif // OPTION_SYNCIO
 
     /* Schedule updated track entries to be written */
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     if (cckd->merging)
     {
 #ifdef OPTION_SYNCIO
         dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
         WRMSG (HHC00322, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
     }
     cckd->merging = 1;
     cckd_flush_cache (dev);
-    while (cckd->wrpending || cckd->ioactive)
+    while (cckd->wrpending || cckd->cckdioact)
     {
-        cckd->iowaiters++;
-        wait_condition (&cckd->iocond, &cckd->iolock);
-        cckd->iowaiters--;
+        cckd->cckdwaiters++;
+        wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+        cckd->cckdwaiters--;
         cckd_flush_cache (dev);
     }
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     obtain_lock (&cckd->filelock);
 
@@ -4187,17 +4330,17 @@ sf_remove_exit:
 
     release_lock (&cckd->filelock);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
     cckd->merging = 0;
-    if (cckd->iowaiters)
-        broadcast_condition (&cckd->iocond);
+    if (cckd->cckdwaiters)
+        broadcast_condition (&cckd->cckdiocond);
 #ifdef OPTION_SYNCIO
     dev->syncio = syncio;
 #endif // OPTION_SYNCIO
     cckd_trace (dev, "merge complete%s","");
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     cckd_sf_stats (dev);
     return NULL;
@@ -4263,28 +4406,28 @@ int             rc;                     /* Return code               */
 #endif // OPTION_SYNCIO
 
     /* schedule updated track entries to be written */
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     if (cckd->merging)
     {
 #ifdef OPTION_SYNCIO
         dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
         WRMSG (HHC00329, "W",  SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
     }
     cckd->merging = 1;
     cckd_flush_cache (dev);
-    while (cckd->wrpending || cckd->ioactive)
+    while (cckd->wrpending || cckd->cckdioact)
     {
-        cckd->iowaiters++;
-        wait_condition (&cckd->iocond, &cckd->iolock);
-        cckd->iowaiters--;
+        cckd->cckdwaiters++;
+        wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+        cckd->cckdwaiters--;
         cckd_flush_cache (dev);
     }
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* obtain control of the file */
     obtain_lock (&cckd->filelock);
@@ -4300,14 +4443,14 @@ int             rc;                     /* Return code               */
 
     release_lock (&cckd->filelock);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     cckd->merging = 0;
-    if (cckd->iowaiters)
-        broadcast_condition (&cckd->iocond);
+    if (cckd->cckdwaiters)
+        broadcast_condition (&cckd->cckdiocond);
 #ifdef OPTION_SYNCIO
     dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* Display the shadow file statistics */
     cckd_sf_stats (dev);
@@ -4361,28 +4504,28 @@ int             level = 2;              /* Check level               */
 #endif // OPTION_SYNCIO
 
     /* schedule updated track entries to be written */
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     if (cckd->merging)
     {
 #ifdef OPTION_SYNCIO
         dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-        release_lock (&cckd->iolock);
+        release_lock (&cckd->cckdiolock);
         WRMSG (HHC00331, "W", SSID_TO_LCSS(dev->ssid), dev->devnum, cckd->sfn, cckd_sf_name(dev, cckd->sfn));
         return NULL;
     }
     cckd->merging = 1;
     cckd_flush_cache (dev);
-    while (cckd->wrpending || cckd->ioactive)
+    while (cckd->wrpending || cckd->cckdioact)
     {
-        cckd->iowaiters++;
-        wait_condition (&cckd->iocond, &cckd->iolock);
-        cckd->iowaiters--;
+        cckd->cckdwaiters++;
+        wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+        cckd->cckdwaiters--;
         cckd_flush_cache (dev);
     }
     cckd_purge_cache (dev); cckd_purge_l2 (dev);
     dev->bufcur = dev->cache = -1;
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* obtain control of the file */
     obtain_lock (&cckd->filelock);
@@ -4398,14 +4541,14 @@ int             level = 2;              /* Check level               */
 
     release_lock (&cckd->filelock);
 
-    obtain_lock (&cckd->iolock);
+    obtain_lock (&cckd->cckdiolock);
     cckd->merging = 0;
-    if (cckd->iowaiters)
-        broadcast_condition (&cckd->iocond);
+    if (cckd->cckdwaiters)
+        broadcast_condition (&cckd->cckdiocond);
 #ifdef OPTION_SYNCIO
     dev->syncio = syncio;
 #endif // OPTION_SYNCIO
-    release_lock (&cckd->iolock);
+    release_lock (&cckd->cckdiolock);
 
     /* Display the shadow file statistics */
     cckd_sf_stats (dev);
@@ -4572,6 +4715,14 @@ void cckd_unlock_devchain()
 
 /*-------------------------------------------------------------------*/
 /* Garbage Collection thread                                         */
+/*                                                                   */
+/*  While provision is made in the code that initiates cckd_gcol     */
+/*  for execution of more than one concurrent Garbage Collector,     */
+/*  the thread runs with mutex cckdblk.gclock held at all times      */
+/*  and is therefore limited to one concurrent thread.  We'll leave  */
+/*  the initiation code as-is in anticipation of the day when we     */
+/*  might get to a max of one collector per compressed device.       */
+/*                                                                   */
 /*-------------------------------------------------------------------*/
 void* cckd_gcol(void* arg)
 {
@@ -4596,20 +4747,28 @@ int             gctab[5]= {             /* default gcol parameters   */
     gettimeofday (&tv_now, NULL);
 
     obtain_lock (&cckdblk.gclock);
-    gcol = ++cckdblk.gcs;
+    gcol = ++cckdblk.gca;
 
     /* Return without messages if too many already started */
     if (gcol > cckdblk.gcmax)
     {
         --cckdblk.gcs;
+        --cckdblk.gca;
+        if (!cckdblk.gcs)
+        {
+            signal_condition(&cckdblk.termcond);  /* signal if last gcol thread ending before init. */
+            if (!cckdblk.batch || cckdblk.batchml > 1)
+                WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), "Garbage collector");
+        }
+        else
+            if (!cckdblk.batch || cckdblk.batchml > 0)
+                WRMSG(HHC00108, "W", thread_id(), "cckd_gcol()", get_thread_priority(0), cckdblk.gcs, cckdblk.gcmax);
         release_lock (&cckdblk.gclock);
-        return NULL;
+        return NULL;        /* back to the shadows again  */
     }
 
-    if (!cckdblk.batch)
-    {
-        WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Garbage collector");
-    }
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), "Garbage collector");
 
     while (gcol <= cckdblk.gcmax)
     {
@@ -4618,24 +4777,24 @@ int             gctab[5]= {             /* default gcol parameters   */
         for (dev = cckdblk.dev1st; dev; dev = cckd->devnext)
         {
             cckd = dev->cckd_ext;
-            obtain_lock (&cckd->iolock);
+            obtain_lock (&cckd->cckdiolock);
 
             /* Bypass if merging or stopping */
             if (cckd->merging || cckd->stopping)
             {
-                release_lock (&cckd->iolock);
+                release_lock (&cckd->cckdiolock);
                 continue;
             }
 
             /* Bypass if not opened read-write */
             if (cckd->open[cckd->sfn] != CCKD_OPEN_RW)
             {
-                release_lock (&cckd->iolock);
+                release_lock (&cckd->cckdiolock);
                 continue;
             }
 
             /* Free newbuf if it hasn't been used */
-            if (!cckd->ioactive && !cckd->bufused && cckd->newbuf)
+            if (!cckd->cckdioact && !cckd->bufused && cckd->newbuf)
                 cckd->newbuf = cckd_free (dev, "newbuf", cckd->newbuf);
             cckd->bufused = 0;
 
@@ -4643,7 +4802,7 @@ int             gctab[5]= {             /* default gcol parameters   */
             if (!(cckd->cdevhdr[cckd->sfn].options & CCKD_OPENED))
             {
                 if (cckd->updated) cckd_flush_cache (dev);
-                release_lock (&cckd->iolock);
+                release_lock (&cckd->cckdiolock);
                 continue;
             }
 
@@ -4669,21 +4828,21 @@ int             gctab[5]= {             /* default gcol parameters   */
                 size = cckd->cdevhdr[cckd->sfn].used >> 10;
             if (size < 64) size = 64;
 
-            release_lock (&cckd->iolock);
+            release_lock (&cckd->cckdiolock);
 
             /* Call the garbage collector */
             cckd_gc_percolate (dev, (unsigned int)size);
 
             /* Schedule any updated tracks to be written */
-            obtain_lock (&cckd->iolock);
+            obtain_lock (&cckd->cckdiolock);
             cckd_flush_cache (dev);
             while (cckdblk.fsync && cckd->wrpending)
             {
-                cckd->iowaiters++;
-                wait_condition (&cckd->iocond, &cckd->iolock);
-                cckd->iowaiters--;
+                cckd->cckdwaiters++;
+                wait_condition (&cckd->cckdiocond, &cckd->cckdiolock);
+                cckd->cckdwaiters--;
             }
-            release_lock (&cckd->iolock);
+            release_lock (&cckd->cckdiolock);
 
             /* Sync the file */
             if (cckdblk.fsync && cckd->lastsync + 10 <= tv_now.tv_sec)
@@ -4718,10 +4877,11 @@ int             gctab[5]= {             /* default gcol parameters   */
         timed_wait_condition (&cckdblk.gccond, &cckdblk.gclock, &tm);
     }
 
-    if (!cckdblk.batch)
-    WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Garbage collector");
+    if (!cckdblk.batch || cckdblk.batchml > 1)
+        WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), "Garbage collector");
 
     cckdblk.gcs--;
+    cckdblk.gca--;
     if (!cckdblk.gcs) signal_condition (&cckdblk.termcond);
     release_lock (&cckdblk.gclock);
     return NULL;
@@ -4870,7 +5030,7 @@ BYTE            buf[256*1024];          /* Buffer                    */
         if (ulen > flen + 65536) ulen = flen + 65536;
         if (ulen > sizeof(buf))  ulen = sizeof(buf);
 
-        cckd_trace (dev, "gcperc selected space 0x"I64_FMTx" len %d", upos, ulen);
+        cckd_trace (dev, "gcperc selected space 0x%16.16"PRIx64" len %d", upos, ulen);
 
         if (cckd_read (dev, sfx, upos, buf, ulen) < 0)
             goto cckd_gc_perc_error;
@@ -4888,7 +5048,7 @@ BYTE            buf[256*1024];          /* Buffer                    */
                 /* Moving a level 2 table */
                 len = CCKD_L2TAB_SIZE;
                 if (i + len > ulen) break;
-                cckd_trace (dev, "gcperc move l2tab[%d] at pos 0x"I64_FMTx" len %d",
+                cckd_trace (dev, "gcperc move l2tab[%d] at pos 0x%16.16"PRIx64" len %d",
                             j, upos + i, len);
 
                 /* Make the level 2 table active */
@@ -4916,7 +5076,7 @@ BYTE            buf[256*1024];          /* Buffer                    */
                 len = (int)l2.size;
                 if (i + l2.len > (int)ulen) break;
 
-                cckd_trace (dev, "gcperc move trk %d at pos 0x"I64_FMTx" len %h",
+                cckd_trace (dev, "gcperc move trk %d at pos 0x%16.16"PRIx64" len %h",
                             trk, upos + i, l2.len);
 
                 /* Relocate the track image somewhere else */
@@ -5443,41 +5603,41 @@ void cckd_command_stats()
 
     WRMSG( HHC00347, "I", "cckd stats:" );
 
-    MSGBUF( msgbuf, "  reads....%10" I64_FMT "d Kbytes...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  reads....%10"PRId64" Kbytes...%10"PRId64,
                     cckdblk.stats_reads, cckdblk.stats_readbytes >> 10 );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  writes...%10" I64_FMT "d Kbytes...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  writes...%10"PRId64" Kbytes...%10"PRId64,
                     cckdblk.stats_writes, cckdblk.stats_writebytes >> 10 );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  readaheads%9" I64_FMT "d misses...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  readaheads%9"PRId64" misses...%10"PRId64,
                     cckdblk.stats_readaheads, cckdblk.stats_readaheadmisses );
     WRMSG( HHC00347, "I", msgbuf );
 
 #ifdef OPTION_SYNCIO
-    MSGBUF( msgbuf, "  syncios..%10" I64_FMT "d misses...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  syncios..%10"PRId64" misses...%10"PRId64,
                     cckdblk.stats_syncios, cckdblk.stats_synciomisses );
     WRMSG( HHC00347, "I", msgbuf );
 #endif // OPTION_SYNCIO
 
-    MSGBUF( msgbuf, "  switches.%10" I64_FMT "d l2 reads.%10" I64_FMT "d strs wrt.%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  switches.%10"PRId64" l2 reads.%10"PRId64" strs wrt.%10"PRId64,
                     cckdblk.stats_switches, cckdblk.stats_l2reads, cckdblk.stats_stresswrites );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  cachehits%10" I64_FMT "d misses...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  cachehits%10"PRId64" misses...%10"PRId64,
                     cckdblk.stats_cachehits, cckdblk.stats_cachemisses );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  l2 hits..%10" I64_FMT "d misses...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  l2 hits..%10"PRId64" misses...%10"PRId64,
                     cckdblk.stats_l2cachehits, cckdblk.stats_l2cachemisses );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  waits............   i/o......%10" I64_FMT "d cache....%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  waits............   i/o......%10"PRId64" cache....%10"PRId64,
                     cckdblk.stats_iowaits, cckdblk.stats_cachewaits );
     WRMSG( HHC00347, "I", msgbuf );
 
-    MSGBUF( msgbuf, "  garbage collector   moves....%10" I64_FMT "d Kbytes...%10" I64_FMT "d",
+    MSGBUF( msgbuf, "  garbage collector   moves....%10"PRId64" Kbytes...%10"PRId64,
                     cckdblk.stats_gcolmoves, cckdblk.stats_gcolbytes >> 10 );
     WRMSG( HHC00347, "I", msgbuf );
 
@@ -5523,44 +5683,62 @@ int   rc;
         op = strchr (op, ',');
         if (op) *op++ = '\0';
 
-        /* Check for keyword = value */
+        /* Check for "keyword=value" */
         if ((p = strchr (kw, '=')))
         {
             *p++ = '\0';
+            c = 0;
             rc = sscanf (p, "%d%c", &val, &c);
         }
-        else rc = 0;
 
-        /* Parse the keyword */
-        if ( CMD(kw,help,4 ) )
+        /* If p == NULL, then just keyword syntax (no "=value") */
+        if (!p)
         {
-            if (!cmd) return 0;
-            cckd_command_help();
+            /* Parse the keyword */
+            if ( CMD(kw,help,4 ) )
+            {
+                if (!cmd) return 0;
+                cckd_command_help();
+            }
+            else if ( CMD(kw,stats,4) )
+            {
+                if (!cmd) return 0;
+                cckd_command_stats ();
+            }
+            else if ( CMD(kw,opts,4) )
+            {
+                if (!cmd) return 0;
+                cckd_command_opts();
+            }
+            else if ( CMD(kw,debug,5) )
+            {
+                if (!cmd) return 0;
+                cckd_command_debug();
+            }
+            else
+            {
+                // "CCKD file: invalid cckd keyword: %s"
+                WRMSG( HHC00349, "E", kw );
+                cckd_command_help ();
+                return -1;
+            }
         }
-        else if ( CMD(kw,stats,4) )
+        /* If rc != 1 || c != 0 then either a non-numeric "=value"
+           was skipped (sscanf %d failed) and/or something follows
+           the numeric "=value" (sscanf %c succeeded)
+        */
+        else if (rc != 1 || c != 0)
         {
-            if (!cmd) return 0;
-            cckd_command_stats ();
-        }
-        else if ( CMD(kw,opts,4) )
-        {
-            if (!cmd) return 0;
-            cckd_command_opts();
-        }
-        else if ( CMD(kw,debug,5) )
-        {
-            if (!cmd) return 0;
-            cckd_command_debug();
-        }
-        else if (rc != 1)
-        {
-            WRMSG(HHC00348, "E", val, kw);
+            // "CCKD file: invalid numeric value %s"
+            WRMSG( HHC00350, "E", p );
             return -1;
         }
+        /* If rc == 1 && c == 0, then "keyword=value" syntax */
         else if ( CMD(kw,comp,4) )
         {
             if (val < -1 || (val > 0 && (val & ~cckdblk.comps)))
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5574,6 +5752,7 @@ int   rc;
                 opts = 1;
                 break;
             default: /* unsupported algorithm */
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5582,6 +5761,7 @@ int   rc;
         {
             if (val < -1 || val > 9)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5595,6 +5775,7 @@ int   rc;
         {
             if (val < CCKD_MIN_RA || val > CCKD_MAX_RA)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5608,6 +5789,7 @@ int   rc;
         {
             if (val < 0 || val > CCKD_MAX_RA_SIZE)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5621,6 +5803,7 @@ int   rc;
         {
             if (val < 0 || val > CCKD_MAX_RA_SIZE)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5634,6 +5817,7 @@ int   rc;
         {
             if (val < CCKD_MIN_WRITER || val > CCKD_MAX_WRITER)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5647,6 +5831,7 @@ int   rc;
         {
             if (val < 1 || val > 60)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5660,6 +5845,7 @@ int   rc;
         {
             if (val < -8 || val > 8)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5673,6 +5859,7 @@ int   rc;
         {
             if (val < 0 || val > 1)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5686,6 +5873,7 @@ int   rc;
         {
             if (val < -1 || val > CCKD_MAX_FREEPEND)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5699,6 +5887,7 @@ int   rc;
         {
             if (val < 0 || val > 1)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5712,6 +5901,7 @@ int   rc;
         {
             if (val < 0 || val > CCKD_MAX_TRACE)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5743,6 +5933,7 @@ int   rc;
                     {
                         char buf[64];
                         MSGBUF( buf, "calloc(%d, %d)", val, (int)sizeof(CCKD_TRACE));
+                        // "%1d:%04X CCKD file: error in function %s: %s"
                         WRMSG (HHC00303, "E", 0, 0, buf, strerror(errno));
                     }
                 }
@@ -5753,6 +5944,7 @@ int   rc;
         {
             if (val < 0 || val > 1)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5766,6 +5958,7 @@ int   rc;
         {
             if (val < 0 || val > 1)
             {
+                // "CCKD file: value %d invalid for %s"
                 WRMSG(HHC00348, "E", val, kw);
                 return -1;
             }
@@ -5790,22 +5983,46 @@ int   rc;
                     release_lock (&cckd->filelock);
                 }
                 cckd_unlock_devchain();
-                if (flag && cckdblk.gcs < cckdblk.gcmax)
+                if (flag && cckdblk.gcs < cckdblk.gcmax)  /* Schedule the garbage collector */
                 {
-                    rc = create_thread (&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
-                    if (rc)
-                        WRMSG(HHC00102, "E", strerror(rc));
+                    obtain_lock(&cckdblk.gclock);  /* ensure read integrity for gc count */
+                    if (cckdblk.gcs < cckdblk.gcmax)
+                    {
+                        /* Schedule a new garbage collector thread  */
+                        if (!cckdblk.batch || cckdblk.batchml > 1)
+                            // "Starting thread %s, active=%d, started=%d, max=%d"
+                            WRMSG(HHC00107, "I", "cckd_gcol() by command line", cckdblk.gca, cckdblk.gcs, cckdblk.gcmax);
+
+                        ++cckdblk.gcs;
+
+                        /* Release lock across thread create to prevent interlock  */
+                        release_lock(&cckdblk.gclock);
+                        rc = create_thread(&tid, JOINABLE, cckd_gcol, NULL, "cckd_gcol");
+
+                        if (rc)
+                        {
+                            // "Error in function create_thread() for %s %d of %d: %s"
+                            WRMSG(HHC00106, "E", "cckd_gcol() by command line", cckdblk.gcs-1, cckdblk.gcmax, strerror(rc));
+                            obtain_lock(&cckdblk.gclock);
+                            --cckdblk.gcs;
+                            release_lock(&cckdblk.gclock);
+                        }
+                    }
+                    else
+                        release_lock(&cckdblk.gclock);
                 }
             }
         }
         else
         {
+            // "CCKD file: invalid cckd keyword: %s"
             WRMSG(HHC00349, "E", kw);
             if (!cmd) return -1;
             cckd_command_help ();
             op = NULL;
         }
     }
+    /* end while (op) */
 
     if (cmd && opts)
         cckd_command_opts();

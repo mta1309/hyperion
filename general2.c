@@ -47,6 +47,11 @@
 #include "inline.h"
 #include "clock.h"
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
+
 /*-------------------------------------------------------------------*/
 /* 16   OR    - Or Register                                     [RR] */
 /*-------------------------------------------------------------------*/
@@ -89,17 +94,17 @@ DEF_INST(or_immediate)
 BYTE    i2;                             /* Immediate operand byte    */
 int     b1;                             /* Base of effective addr    */
 VADR    effective_addr1;                /* Effective address         */
-BYTE   *dest;                           /* Pointer to target byte    */
+BYTE   *dest;                         /* Pointer to target byte      */
 
     SI(inst, regs, i2, b1, effective_addr1);
 
-    ITIMER_SYNC(effective_addr1,1,regs);
+    ITIMER_SYNC(effective_addr1, 0, regs);
     /* Get byte mainstor address */
     dest = MADDR (effective_addr1, b1, regs, ACCTYPE_WRITE, regs->psw.pkey );
 
     /* OR byte with immediate operand, setting condition code */
-    regs->psw.cc = ((*dest |= i2) != 0);
-    ITIMER_UPDATE(effective_addr1,1,regs);
+    regs->psw.cc = (H_ATOMIC_OP(dest, i2, or, Or, |) != 0);
+    ITIMER_UPDATE(effective_addr1, 0, regs);
 }
 
 
@@ -154,7 +159,7 @@ int     cc = 0;                         /* Condition code            */
         {
             /* (1) - No boundaries are crossed */
             for (i = 0; i <= len; i++)
-                if (*dest1++ |= *source1++) cc = 1;
+                if ( (*dest1++ |= *source1++) ) cc = 1;
 
         }
         else
@@ -164,10 +169,10 @@ int     cc = 0;                         /* Condition code            */
              source2 = MADDR ((addr2 + len2) & ADDRESS_MAXWRAP(regs),
                               b2, regs, ACCTYPE_READ, regs->psw.pkey);
              for ( i = 0; i < len2; i++)
-                 if (*dest1++ |= *source1++) cc = 1;
+                 if ( (*dest1++ |= *source1++) ) cc = 1;
              len2 = len - len2;
              for ( i = 0; i <= len2; i++)
-                 if (*dest1++ |= *source2++) cc = 1;
+                 if ( (*dest1++ |= *source2++) ) cc = 1;
         }
         *sk1 |= (STORKEY_REF | STORKEY_CHANGE);
     }
@@ -183,10 +188,10 @@ int     cc = 0;                         /* Condition code            */
         {
              /* (3) - First operand crosses a boundary */
              for ( i = 0; i < len2; i++)
-                 if (*dest1++ |= *source1++) cc = 1;
+                 if ( (*dest1++ |= *source1++) ) cc = 1;
              len2 = len - len2;
              for ( i = 0; i <= len2; i++)
-                 if (*dest2++ |= *source1++) cc = 1;
+                 if ( (*dest2++ |= *source1++) ) cc = 1;
         }
         else
         {
@@ -198,34 +203,34 @@ int     cc = 0;                         /* Condition code            */
             {
                 /* (4a) - Both operands cross at the same time */
                 for ( i = 0; i < len2; i++)
-                    if (*dest1++ |= *source1++) cc = 1;
+                    if ( (*dest1++ |= *source1++) ) cc = 1;
                 len2 = len - len2;
                 for ( i = 0; i <= len2; i++)
-                    if (*dest2++ |= *source2++) cc = 1;
+                    if ( (*dest2++ |= *source2++) ) cc = 1;
             }
             else if (len2 < len3)
             {
                 /* (4b) - First operand crosses first */
                 for ( i = 0; i < len2; i++)
-                    if (*dest1++ |= *source1++) cc = 1;
+                    if ( (*dest1++ |= *source1++) ) cc = 1;
                 len2 = len3 - len2;
                 for ( i = 0; i < len2; i++)
-                    if (*dest2++ |= *source1++) cc = 1;
+                    if ( (*dest2++ |= *source1++) ) cc = 1;
                 len2 = len - len3;
                 for ( i = 0; i <= len2; i++)
-                    if (*dest2++ |= *source2++) cc = 1;
+                    if ( (*dest2++ |= *source2++) ) cc = 1;
             }
             else
             {
                 /* (4c) - Second operand crosses first */
                 for ( i = 0; i < len3; i++)
-                    if (*dest1++ |= *source1++) cc = 1;
+                    if ( (*dest1++ |= *source1++) ) cc = 1;
                 len3 = len2 - len3;
                 for ( i = 0; i < len3; i++)
-                    if (*dest1++ |= *source2++) cc = 1;
+                    if ( (*dest1++ |= *source2++) ) cc = 1;
                 len3 = len - len2;
                 for ( i = 0; i <= len3; i++)
-                    if (*dest2++ |= *source2++) cc = 1;
+                    if ( (*dest2++ |= *source2++) ) cc = 1;
             }
         }
         *sk1 |= (STORKEY_REF | STORKEY_CHANGE);
@@ -357,7 +362,7 @@ VADR    effective_addr2,
             break;
 
         default:
-            PTT(PTT_CL_ERR,"*PLO",regs->GR_L(0),regs->GR_L(r1),regs->psw.IA_L);
+            PTT_ERR("*PLO",regs->GR_L(0),regs->GR_L(r1),regs->psw.IA_L);
             /* indicate function not supported */
             regs->psw.cc = 3;
             break;
@@ -483,7 +488,7 @@ VADR    effective_addr2,
 
         if(regs->psw.cc && sysblk.cpus > 1)
         {
-            PTT(PTT_CL_CSF,"*PLO",regs->GR_L(0),regs->GR_L(r1),regs->psw.IA_L);
+            PTT_CSF("*PLO",regs->GR_L(0),regs->GR_L(r1),regs->psw.IA_L);
             sched_yield();
         }
 
@@ -986,7 +991,7 @@ ETOD    ETOD;                           /* Extended TOD clock        */
     /* Shift out epoch */
     dreg = ETOD2TOD(ETOD);
 
-// /*debug*/logmsg("Store TOD clock=%16.16" I64_FMT "X\n", dreg);
+// /*debug*/logmsg("Store TOD clock=%16.16"PRIX64"\n", dreg);
 
     /* Store TOD clock value at operand address */
     ARCH_DEP(vstore8) ( dreg, effective_addr2, b2, regs );
@@ -1029,14 +1034,14 @@ ETOD    ETOD;                           /* Extended clock work area  */
     /* Retrieve the extended format TOD clock */
     etod_clock(regs, &ETOD, ETOD_extended);
 
-//  /*debug*/logmsg("Store TOD clock extended: +0=%16.16" I64_FMT "X\n",
+//  /*debug*/logmsg("Store TOD clock extended: +0=%16.16"PRIX64"\n",
 //  /*debug*/       dreg);
 
     /* Store the 8 bit TOD epoch, clock bits 0-51, and bits
        20-23 of the TOD uniqueness value at operand address */
     ARCH_DEP(vstore8) ( ETOD.high, effective_addr2, b2, regs );
 
-//  /*debug*/logmsg("Store TOD clock extended: +8=%16.16" I64_FMT "X\n",
+//  /*debug*/logmsg("Store TOD clock extended: +8=%16.16"PRIX64"\n",
 //  /*debug*/       dreg);
 
     /* Store second doubleword value at operand+8 */
@@ -1417,7 +1422,24 @@ BYTE    old;                            /* Old value                 */
     old = *main2;
 
     /* Attempt to exchange the values */
-    while (cmpxchg1(&old, 255, main2));
+    /*  The WHILE statement that follows could lead to a        @PJJ */
+    /*  TS-style lock release never being noticed, because      @PJJ */
+    /*  because such release statements are implemented using   @PJJ */
+    /*  regular instructions such as MVI or even ST which set   @PJJ */
+    /*  [the most significant bit of] the mem_lockbyte to zero; @PJJ */
+    /*  these are NOT being protected using _MAINLOCK.  In the  @PJJ */
+    /*  absence of a machine assist for "cmpxchg1" it is then   @PJJ */
+    /*  possible that this reset occurs in between the test     @PJJ */
+    /*  IF (old == mem_lockbyte), and the updating of           @PJJ */
+    /*  mem_lockbyte = 255;  As this update in the case         @PJJ */
+    /*  old == 255 is not needed to start with, we have         @PJJ */
+    /*  inserted the test IF (old != 255) in front of the       @PJJ */
+    /*  original WHILE statement.                               @PJJ */
+    /*  (The above bug WAS experienced running VM on an ARM     @PJJ */
+    /*  Raspberry PI; this correction fixed it.)                @PJJ */
+    /*                              (Peter J. Jansen, May 2015) @PJJ */
+    if (old != 255)
+        while (cmpxchg1(&old, 255, main2));
     regs->psw.cc = old >> 7;
 
     /* Release main-storage access lock */
@@ -2223,10 +2245,10 @@ DEF_INST(convert_utf8_to_utf32)
 
     /* Write and commit registers */
     ARCH_DEP(vstorec)(utf32, 3, dest, r1, regs);
-    SET_GR_A(r1, regs, (dest + 4) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r1 + 1, regs, destlen - 4);
-    SET_GR_A(r2, regs, (srce + read) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r2 + 1, regs, srcelen - read);
+    SET_GR_A(r1, regs, (dest += 4) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r1 + 1, regs, destlen -= 4);
+    SET_GR_A(r2, regs, (srce += read) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r2 + 1, regs, srcelen -= read);
 
     xlated += read;
   }
@@ -2340,10 +2362,10 @@ DEF_INST(convert_utf16_to_utf32)
 
     /* Write and commit registers */
     ARCH_DEP(vstorec)(utf32, 3, dest, r1, regs);
-    SET_GR_A(r1, regs, (dest + 4) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r1 + 1, regs, destlen - 4);
-    SET_GR_A(r2, regs, (srce + read) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r2 + 1, regs, srcelen - read);
+    SET_GR_A(r1, regs, (dest += 4) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r1 + 1, regs, destlen -= 4);
+    SET_GR_A(r2, regs, (srce += read) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r2 + 1, regs, srcelen -= read);
 
     xlated += read;
   }
@@ -2476,10 +2498,10 @@ DEF_INST(convert_utf32_to_utf8)
 
     /* Write and commit registers */
     ARCH_DEP(vstorec)(utf8, write - 1, dest, r1, regs);
-    SET_GR_A(r1, regs, (dest + write) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r1 + 1, regs, destlen - write);
-    SET_GR_A(r2, regs, (srce + 4) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r2 + 1, regs, srcelen - 4);
+    SET_GR_A(r1, regs, (dest += write) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r1 + 1, regs, destlen -= write);
+    SET_GR_A(r2, regs, (srce += 4) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r2 + 1, regs, srcelen -= 4);
 
     xlated += 4;
   }
@@ -2573,10 +2595,10 @@ DEF_INST(convert_utf32_to_utf16)
 
     /* Write and commit registers */
     ARCH_DEP(vstorec)(utf16, write - 1, dest, r1, regs);
-    SET_GR_A(r1, regs, (dest + write) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r1 + 1, regs, destlen - write);
-    SET_GR_A(r2, regs, (srce + 4) & ADDRESS_MAXWRAP(regs));
-    SET_GR_A(r2 + 1, regs, srcelen - 4);
+    SET_GR_A(r1, regs, (dest += write) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r1 + 1, regs, destlen -= write);
+    SET_GR_A(r2, regs, (srce += 4) & ADDRESS_MAXWRAP(regs));
+    SET_GR_A(r2 + 1, regs, srcelen -= 4);
 
     xlated += 4;
   }

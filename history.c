@@ -30,15 +30,16 @@ HISTORY *history_ptr;        /* points to last command retrieved by key press */
 HISTORY *backup;             /* used for backuping last removed command */
 
 /* these 2 are used in panel.c to see if there was history command requested and
-   returns that command */ 
+   returns that command */
 char *historyCmdLine;
 int history_requested = 0;
 
 void copy_to_historyCmdLine(char* cmdline)
 {
+  size_t size = strlen(cmdline)+1;
   if (historyCmdLine) free(historyCmdLine);
-  historyCmdLine = malloc(strlen(cmdline)+1);
-  strlcpy(historyCmdLine, cmdline, strlen(cmdline)+1 );
+  historyCmdLine = malloc(size);
+  strlcpy(historyCmdLine, cmdline, size);
 }
 
 /* initialize environment */
@@ -56,6 +57,7 @@ int history_init() {
 /* add commandline to history list */
 int history_add(char *cmdline) {
   HISTORY *tmp;
+  size_t size;
 
   /* if there is some backup line remaining, remove it */
   if (backup != NULL) {
@@ -64,7 +66,7 @@ int history_add(char *cmdline) {
     backup = NULL;
   }
 
-  /* If last line is exactly the same as this line 
+  /* If last line is exactly the same as this line
      ignore and return to caller */
 
   if ( history_lines != NULL && !strcmp(cmdline,history_lines_end->cmdline) )
@@ -74,8 +76,9 @@ int history_add(char *cmdline) {
   }
   /* allocate space and copy string */
   tmp = (HISTORY*) malloc(sizeof(HISTORY));
-  tmp->cmdline = (char*) malloc(strlen(cmdline) + 1);
-  strlcpy(tmp->cmdline, cmdline,strlen(cmdline)+1);
+  size = strlen(cmdline) + 1;
+  tmp->cmdline = (char*) malloc(size);
+  strlcpy(tmp->cmdline, cmdline, size);
   tmp->next = NULL;
   tmp->prev = NULL;
   tmp->number = ++history_count;
@@ -206,7 +209,7 @@ int history_next() {
   }
   if (history_ptr->next == NULL)
     history_ptr = history_lines;
-  else 
+  else
     history_ptr = history_ptr->next;
   copy_to_historyCmdLine(history_ptr->cmdline);
   return(0);
@@ -222,7 +225,7 @@ int history_prev() {
   }
   if (history_ptr->prev == NULL)
     history_ptr = history_lines_end;
-  else 
+  else
     history_ptr = history_ptr->prev;
   copy_to_historyCmdLine(history_ptr->cmdline);
   return(0);

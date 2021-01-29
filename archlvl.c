@@ -30,6 +30,65 @@
  #undef   _GEN_ARCH
 #endif
 
+/*********************************************************************/
+/* Archaeologist's note:                                             */
+/*                                                                   */
+/* The  two following structures were added by Jan Jaeger 2010-08-29 */
+/* when he wrote this module.                                        */
+/*                                                                   */
+/* At  that  point  in  time,  z/Architecture  already had a slew of */
+/* additional  facilities,  including decimal floating point, though */
+/* not all of them were published by the date Jan wrote this.        */
+/*                                                                   */
+/* However,  judging  by  the  way the z/Architecture facilities are */
+/* defined  below, it would appear to be that the intent of ALS2 was */
+/* to  base  z architecture and that increasing numbers would be the */
+/* various level sets of the new models.                             */
+/*                                                                   */
+/* The only place I have been able to determine a dependency on ALS3 */
+/* is in dyncrypt.c where the presence of the various facilities are */
+/* tested  against  the bit map in the CPU.  Here ARCHLVL ESAME gets */
+/* you different bahaviour from ARCHLVL z.                           */
+/*                                                                   */
+/* If  ARCHLVL  ESAME  is  indeed  the  original  z,  then  the  ALC */
+/* instruction  et al.  should receive separate treatment in ESA and */
+/* ESAME  vs  z in that it is RXE in RSA and RXY in z (there are not */
+/* many  instructions that share this behaviour, but they are likely */
+/* to trip you on CMS in ESA mode.                                   */
+/*                                                                   */
+/* The  actual  feature  names  are  define in featxxx.h files.  The */
+/* conditinal definition of FEATURE_INTERLOCKED_ACCESS_FACILITY_2 in */
+/* feat900.h is my doing, out of ignorance at the time.              */
+/*                                                                   */
+/* In  the real world (that is, IBM's) feature membership is defined */
+/* in  Appendix B of the PoO, though the instruction definition also */
+/* includes the lack of the facility as causing a program exception. */
+/*                                                                   */
+/* You  may  wish  to contrast this defintion to the HLASM MACHINE() */
+/* option  in  SC26-4941-07  (somewhat  abbreviated  and paraphrased */
+/* here).                                                            */
+/*                                                                   */
+/* S370:  System/370  machine  instructions,  including those with a */
+/* vector facility.                                                  */
+/*                                                                   */
+/* S370XA:  System/370  extended  architecture machine instructions, */
+/* including  those  with  a  vector facility.  [370 I/O replaced by */
+/* XA.]                                                              */
+/*                                                                   */
+/* S390E:  ESA/370  and  ESA/390  architecture machine instructions, */
+/* including those with a vector facility.                           */
+/*                                                                   */
+/* ZSERIES: z/Architecture systems.                                  */
+/* ZSERIES-2: add long displacement facility.                        */
+/* ZSERIES-3: add z9-109 instructions.                               */
+/* ZSERIES-4: add z10 instructions.                                  */
+/* ZSERIES-5: add z196 instructions.                                 */
+/* ZSERIES-6: add zEC12 instructions.                                */
+/* ZSERIES-7: add z13 instructions.                                  */
+/*                                                                   */
+/*                                                    jph 2017-01-09 */
+/*********************************************************************/
+
 /* Layout of the facility table */
 #define FACILITY(_name, _mode, _fixed, _supp, _level) \
     { QSTR(_name), (STFL_ ## _name), (_mode), (_fixed), (_supp), (_level) },
@@ -71,16 +130,23 @@ static ARCHTAB archtab[] =
 #if defined(_370)
 /* S/370 - ALS0 */
 ARCHLVL(_ARCH_370_NAME,  ARCH_370, ALS0)
+ARCHLVL("370",           ARCH_370, ALS0)
 ARCHLVL("S370",          ARCH_370, ALS0)
+ARCHLVL("S/370",         ARCH_370, ALS0)
 ARCHLVL("ALS0",          ARCH_370, ALS0)
 #endif
+
+/* Note  that  XA  and  XB  are not offered; neither is G3 (debut of */
+/* relative/immediate).                                              */
 
 #if defined(_390)
 /* ESA/390 - ALS1 */
 ARCHLVL(_ARCH_390_NAME,  ARCH_390, ALS1)
+ARCHLVL("ESA",           ARCH_390, ALS1)
 ARCHLVL("ESA390",        ARCH_390, ALS1)
 ARCHLVL("S/390",         ARCH_390, ALS1)
 ARCHLVL("S390",          ARCH_390, ALS1)
+ARCHLVL("390",           ARCH_390, ALS1)
 ARCHLVL("ALS1",          ARCH_390, ALS1)
 #endif
 
@@ -234,6 +300,13 @@ FACILITY(MSA_EXTENSION_3,  Z390,         NONE,      Z390,          ALS3)
 #endif
 #if defined(_FEATURE_MESSAGE_SECURITY_ASSIST_EXTENSION_4)
 FACILITY(MSA_EXTENSION_4,  Z390,         NONE,      Z390,          ALS3)
+#endif
+#if CAN_IAF2 != IAF2_ATOMICS_UNAVAILABLE
+/* Note that this facility is available in ESA mode too (SIE) */
+FACILITY(INTERLOCKED_ACCESS_2, Z390,     NONE,      Z390,          ALS1 | ALS2 | ALS3)
+#endif
+#if defined(_FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)
+FACILITY(MISC_INST_EXTN_1,Z390,          NONE,      Z390,          ALS3)
 #endif
 
 /* The Following entries are not part of STFL(E) but do indicate the availability of facilities */
@@ -394,7 +467,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_370][fbyte] |= fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "en", _ARCH_370_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "en", _ARCH_370_NAME );
             }
 #endif
 #if defined(_390)
@@ -403,7 +476,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_390][fbyte] |= fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "en", _ARCH_390_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "en", _ARCH_390_NAME );
             }
 #endif
 #if defined(_900)
@@ -412,7 +485,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_900][fbyte] |= fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "en", _ARCH_900_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "en", _ARCH_900_NAME );
             }
 #endif
     }
@@ -424,7 +497,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_370][fbyte] &= ~fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "dis", _ARCH_370_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "dis", _ARCH_370_NAME );
             }
 #endif
 #if defined(_390)
@@ -433,7 +506,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_390][fbyte] &= ~fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "dis", _ARCH_390_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "dis", _ARCH_390_NAME );
             }
 #endif
 #if defined(_900)
@@ -442,7 +515,7 @@ int fbyte, fbit;
             {
                 sysblk.facility_list[ARCH_900][fbyte] &= ~fbit;
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", get_facname(bitno), "dis", _ARCH_900_NAME));
+                    WRMSG( HHC00898, "I", get_facname(bitno), "dis", _ARCH_900_NAME );
             }
 #endif
     }
@@ -457,7 +530,7 @@ int fbyte, fbit;
 
     if( !(facility->supported & mode) )
     {
-        logmsg(MSG(HHC00896, "E", facility->name));
+        WRMSG( HHC00896, "E", facility->name );
         return;
     }
 
@@ -470,7 +543,7 @@ int fbyte, fbit;
                 sysblk.facility_list[ARCH_370][fbyte] |= fbit;
 
             if(MLVL(VERBOSE))
-                logmsg(MSG(HHC00898, "I", facility->name, "en", _ARCH_370_NAME));
+                WRMSG( HHC00898, "I", facility->name, "en", _ARCH_370_NAME );
         }
         else
         {
@@ -480,7 +553,7 @@ int fbyte, fbit;
                     sysblk.facility_list[ARCH_370][fbyte] &= ~fbit;
 
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", facility->name, "dis", _ARCH_370_NAME));
+                    WRMSG( HHC00898, "I", facility->name, "dis", _ARCH_370_NAME );
             }
         }
     }
@@ -494,7 +567,7 @@ int fbyte, fbit;
                 sysblk.facility_list[ARCH_390][fbyte] |= fbit;
 
             if(MLVL(VERBOSE))
-                logmsg(MSG(HHC00898, "I", facility->name, "en", _ARCH_390_NAME));
+                WRMSG( HHC00898, "I", facility->name, "en", _ARCH_390_NAME );
         }
         else
         {
@@ -505,7 +578,7 @@ int fbyte, fbit;
             }
 
             if(MLVL(VERBOSE))
-                logmsg(MSG(HHC00898, "I", facility->name, "dis", _ARCH_390_NAME));
+                WRMSG( HHC00898, "I", facility->name, "dis", _ARCH_390_NAME );
         }
     }
 #endif
@@ -518,7 +591,7 @@ int fbyte, fbit;
                 sysblk.facility_list[ARCH_900][fbyte] |= fbit;
 
             if(MLVL(VERBOSE))
-                logmsg(MSG(HHC00898, "I", facility->name, "en", _ARCH_900_NAME));
+                WRMSG( HHC00898, "I", facility->name, "en", _ARCH_900_NAME );
         }
         else
         {
@@ -528,7 +601,7 @@ int fbyte, fbit;
                     sysblk.facility_list[ARCH_900][fbyte] &= ~fbit;
 
                 if(MLVL(VERBOSE))
-                    logmsg(MSG(HHC00898, "I", facility->name, "dis", _ARCH_900_NAME));
+                    WRMSG( HHC00898, "I", facility->name, "dis", _ARCH_900_NAME );
             }
         }
     }
@@ -594,7 +667,7 @@ BYTE als =
 
     if(argc < 3)
     {
-        logmsg(MSG(HHC00892, "E"));
+        WRMSG( HHC00892, "E" );
         return 0;
     }
 
@@ -602,7 +675,7 @@ BYTE als =
     {
         if(!(ab = get_archtab(argv[3])))
         {
-            logmsg(MSG(HHC00895, "E", argv[3]));
+            WRMSG( HHC00895, "E", argv[3] );
             return 0;
         }
         als = arch2als[ab->archmode];
@@ -617,7 +690,7 @@ BYTE als =
       && bitno >= 0 && bitno <= STFL_HMAX)
         force_facbit(bitno,enable,als);
     else
-        logmsg(MSG(HHC00893, "E", argv[2]));
+        WRMSG( HHC00893, "E", argv[2] );
 
     return 0;
 }
@@ -641,19 +714,19 @@ BYTE als =
 
 int archlvl_cmd(int argc, char *argv[], char *cmdline)
 {
-    int i;
+    int     storage_reset = 0;
 
     UNREFERENCED(cmdline);
 
     if (argc < 2)
     {
-        logmsg(MSG(HHC02203, "I", "archmode", get_arch_mode_string(NULL)));
+        WRMSG( HHC02203, "I", "archmode", get_arch_mode_string(NULL) );
         return 0;
     }
 
     if ( argc > 4 )
     {
-        logmsg(MSG(HHC02299, "E", argv[0]));
+        WRMSG( HHC02299, "E", argv[0] );
         return -1;
     }
 
@@ -664,7 +737,7 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
 
         if ( argc > 3 )
         {
-            logmsg(MSG(HHC02299, "E", argv[0]));
+            WRMSG( HHC02299, "E", argv[0] );
             return -1;
         }
 
@@ -678,9 +751,9 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
             if( argc < 3 || CMD(argv[2],all,3) || !strcasecmp( argv[2], tb->name ) )
             {
                 fcnt++;
-                logmsg(MSG(HHC00890, "I", tb->name,
+                WRMSG( HHC00890, "I", tb->name,
                        sysblk.facility_list[sysblk.arch_mode][fbyte] & fbit
-                        ? "En" : "Dis"));
+                        ? "En" : "Dis" );
             }
         }
 
@@ -698,9 +771,9 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
 
                 fbyte = bitno / 8;
                 fbit = 0x80 >> (bitno % 8);
-                logmsg(MSG(HHC00890, "I", get_facname(bitno),
+                WRMSG( HHC00890, "I", get_facname(bitno),
                        sysblk.facility_list[sysblk.arch_mode][fbyte] & fbit
-                        ? "En" : "Dis"));
+                        ? "En" : "Dis" );
             }
             else
             {
@@ -713,35 +786,46 @@ int archlvl_cmd(int argc, char *argv[], char *cmdline)
     }
 
     /* Make sure all CPUs are deconfigured or stopped */
-
-    OBTAIN_INTLOCK(NULL);
-    if(sysblk.cpus)
-        for(i = 0; i < sysblk.maxcpu; i++)
-            if(IS_CPU_ONLINE(i) && sysblk.regs[i]->cpustate == CPUSTATE_STARTED)
-            {
-                RELEASE_INTLOCK(NULL);
-                logmsg(MSG(HHC02253, "E"));
-                return HERRCPUONL;
-            }
-    RELEASE_INTLOCK(NULL);
+    if (are_any_cpus_started())
+    {
+        // "All CPU's must be stopped to change architecture"
+        WRMSG( HHC02253, "E" );
+        return HERRCPUONL;
+    }
 
     if(!set_archlvl(argv[1]))
         if(update_archlvl(argc, argv))
         {
-            logmsg(MSG(HHC02205, "E", argv[1], ""));
+            WRMSG( HHC02205, "E", argv[1], "" );
             return -1;
         }
 
     sysblk.dummyregs.arch_mode = sysblk.arch_mode;
 
-    OBTAIN_INTLOCK(NULL);
-    system_reset (sysblk.pcpu, 0, sysblk.arch_mode);
-    RELEASE_INTLOCK(NULL);
+    if (sysblk.arch_mode > ARCH_370 &&
+        sysblk.mainsize  > 0        &&
+        sysblk.mainsize  < (1 << SHIFT_MEBIBYTE))
+    {
+        /* Default main storage to 1M and perform initial system
+           reset */
+        storage_reset = (configure_storage(1 << (SHIFT_MEBIBYTE - 12)) == 0);
+    }
+    else
+    {
+        OBTAIN_INTLOCK(NULL);
+        system_reset (sysblk.pcpu, 0, sysblk.arch_mode);
+        RELEASE_INTLOCK(NULL);
+    }
 
     if ( argc == 2 )
     {
         if ( MLVL(VERBOSE) )
-            logmsg(MSG(HHC02204, "I", "archmode", get_arch_mode_string(NULL)));
+        {
+            WRMSG( HHC02204, "I", "archmode", get_arch_mode_string(NULL) );
+            if (storage_reset)
+                WRMSG( HHC17003, "I", "MAIN", fmt_memsize_KB((U64)sysblk.mainsize >> SHIFT_KIBIBYTE),
+                                 "main", sysblk.mainstor_locked ? "":"not " );
+        }
     }
 
     return 0;

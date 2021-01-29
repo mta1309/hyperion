@@ -109,6 +109,10 @@
 /*-------------------------------------------------------------------*/
 
 #include "hstdinc.h"
+#ifndef _TAPEDEV_C_
+#define _TAPEDEV_C_
+#endif
+
 #include "hercules.h"  /* need Hercules control blocks               */
 #include "tapedev.h"   /* Main tape handler header file              */
 
@@ -496,55 +500,191 @@ DEVINITTAB      DevInitTab[]  =         /* Initialization table      */
 };
 
 /*-------------------------------------------------------------------*/
+/* static template/prototype configuration data                      */
+/*-------------------------------------------------------------------*/
+/*                                                                   */
+/*             GA32-0127 IBM 3490E Hardware Reference                */
+/*                                                                   */
+/* Read Configuration Data (X'FA')                                   */
+/*                                                                   */
+/* A Read Configuration Data command causes 160 bytes of data to     */
+/* be transferred from the control unit to the channel.  The data    */
+/* transferred by this command is referred to as a configuration     */
+/* record and is associated with the addressed device-path pair.     */
+/* The configuration record from each device-path pair provides the  */
+/* host with identifiers of node elements internal to the subsystem. */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
+static const BYTE cfgdata[] =       // (prototype data)
+{
+// ---------------- Device NED ---------------------------------------------------
+0xCC,                               // 0:      NED code
+0x01,                               // 1:      Type  (X'01' = I/O Device)
+0x02,                               // 2:      Class (X'02' = Magnetic Tape)
+0x00,                               // 3:      (Reserved)
+0xF0,0xF0,0xF3,0xF4,0xF9,0xF0,      // 4-9:    Type  ('003490')
+0xC3,0xF1,0xF0,                     // 10-12:  Model ('C10')
+0xC8,0xD9,0xC3,                     // 13-15:  Manufacturer ('HRC' = Hercules)
+0xE9,0xE9,                          // 16-17:  Plant of Manufacture ('ZZ' = Herc)
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      // 18-29:  Sequence Number
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      //
+0x00, 0x00,                         // 30-31: Tag (x'000n', n = Logical Drive Address)
+// ---------------- Control Unit NED ---------------------------------------------
+0xC4,                               // 32:     NED code
+0x02,                               // 33:     Type  (X'02' = Control Unit)
+0x00,                               // 34:     Class (X'00' = Undefined)
+0x00,                               // 35:     (Reserved)
+0xF0,0xF0,0xF3,0xF4,0xF9,0xF0,      // 36-41:  Type  ('003490')
+0xC3,0xF1,0xF0,                     // 42-44:  Model ('C10')
+0xC8,0xD9,0xC3,                     // 45-47:  Manufacturer ('HRC' = Hercules)
+0xE9,0xE9,                          // 48-49:  Plant of Manufacture ('ZZ' = Herc)
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      // 50-61:  Sequence Number
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      //
+0x00, 0x00,                         // 62-63:  Tag (x'0000')
+// ---------------- Library NED --------------------------------------------------
+0x00,                               // 64:     NED code   (x'00' = Not Used)
+0x00,                               // 65:     Type
+0x00,                               // 66:     Class
+0x00,                               // 67:     (Reserved)
+0x00,0x00,0x00,0x00,0x00,0x00,      // 68-73:  Type
+0x00,0x00,0x00,                     // 74-76:  Model
+0x00,0x00,0x00,                     // 77-79:  Manufacturer
+0x00,0x00,                          // 80-81:  Plant of Manufacture
+0x00,0x00,0x00,0x00,0x00,0x00,      // 82-93:  Sequence Number
+0x00,0x00,0x00,0x00,0x00,0x00,      //
+0x00, 0x00,                         // 94-95:  Tag
+// ---------------- Token NED ---------------------------------------------------
+0xEC,                               // 96:       NED code
+0x00,                               // 97:       Type  (X'00' = Unspecified)
+0x00,                               // 98:       Class (X'00' = Undefined)
+0x00,                               // 99:       (Reserved)
+0xF0,0xF0,0xF3,0xF4,0xF9,0xF0,      // 100-105:  Type  ('003490')
+0xC3,0xF1,0xF0,                     // 106-108:  Model ('C10')
+0xC8,0xD9,0xC3,                     // 109-111:  Manufacturer ('HRC' = Hercules)
+0xE9,0xE9,                          // 112-113:  Plant of Manufacture ('ZZ' = Herc)
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      // 114-125:  Sequence Number
+0xF0,0xF0,0xF0,0xF0,0xF0,0xF0,      //
+0x00, 0x00,                         // 126-127:  Tag (x'0000')
+// ---------------- General NEQ --------------------------------------------------
+0x80,                               // 128:      NED code
+0x80,                               // 129:      Record Selector:
+                                    //           x'80' = Control Unit 0
+                                    //           x'81' = Control Unit 1
+0x00,0x80,                          // 130-131:  Interface Id:
+                                    //           x'0080' = CU Channel Adapter A
+                                    //           x'0040' = CU Channel Adapter B
+0x00,                               // 132:      Device-Dependent Timeout
+0x00,0x00,0x00,                     // 133-135:  (Reserved)
+0x00,                               // 136:      Extended Information:
+                                    //           x'00' for Logical Drive Addresses 0-7
+                                    //           x'01' for Logical Drive Addresses 8-F
+0x00,0x00,0x00,0x00,0x00,0x00,0x00, // 137-159:  (Reserved)
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,
+};
+
+CASSERT( sizeof(cfgdata) == 160, tapedev_c )
+
+/*-------------------------------------------------------------------*/
+/* Read Configuration Data function                                  */
+/*-------------------------------------------------------------------*/
+static int tape_read_configuration_data( DEVBLK* dev, BYTE* buffer, int bufsz )
+{
+    int   copylen;
+    BYTE  work[ sizeof( cfgdata ) ];
+
+    /* Copy prototype Configuration Data to work area */
+    memcpy( work, cfgdata, sizeof( work ));
+
+    /* Fixup values for this particular device/type...  NOTE: we
+       only fixup the Device and Control Unit NEDs here. The Token
+       NED's type/model values come from the Device NED's values.
+    */
+    if (0x3480 == dev->devtype)
+    {
+        memcpy (&work[7],  "\xF4\xF8",     2);      // '48'
+        memcpy (&work[39], "\xF4\xF8",     2);      // '48'
+
+        memcpy (&work[10], "\xC4\xF3\xF1", 3);      // 'D31'
+        memcpy (&work[42], "\xC4\xF3\xF1", 3);      // 'D31'
+    }
+    else if (0x3490 == dev->devtype)
+    {
+//      memcpy (&work[7],  "\xF4\xF9",     2);      // '49'
+//      memcpy (&work[39], "\xF4\xF9",     2);      // '49'
+
+//      memcpy (&work[10], "\xC3\xF1\xF0", 3);      // 'C10'
+//      memcpy (&work[42], "\xC3\xF1\xF0", 3);      // 'C10'
+    }
+    else if (0x3590 == dev->devtype)
+    {
+        memcpy (&work[7],  "\xF5\xF9",     2);      // '59'
+        memcpy (&work[39], "\xF5\xF9",     2);      // '59'
+
+        memcpy (&work[10], "\xC2\xF1\xC1", 3);      // 'B1A'
+        memcpy (&work[42], "\xC1\xF5\xF0", 3);      // 'A50'
+    }
+
+    memcpy (&work[100], &work[4], 9);       // (set Token NED Type/Model from Device NED)
+
+    work[31] |= (dev->devnum & 0x0F);       // (set Logical Drive Address)
+
+    if ((dev->devnum & 0x0F) > 7)
+        work[136] = 0x01;                   // (set Extended Information)
+
+    /* Finally, copy the work area into the caller's buffer */
+    copylen = bufsz < (int) sizeof( work ) ? bufsz : (int) sizeof( work );
+    memcpy( buffer, work, copylen );
+
+    /* Return to them the number of bytes we provided */
+    return copylen;
+}
+
+/*-------------------------------------------------------------------*/
 /* Initialize the device handler                                     */
 /*-------------------------------------------------------------------*/
 static int tapedev_init_handler (DEVBLK *dev, int argc, char *argv[])
 {
 int             rc;
 DEVINITTAB*     pDevInitTab;
-int             attn = 0;
 
-    /* Set flag so attention will be raised for re-init */
-    if(dev->devtype)
-    {
-        attn = 1;
-    }
+    dev->rcd = &tape_read_configuration_data;
 
     /* Close current tape */
-    if(dev->fd>=0)
+    if (dev->fd >= 0)
     {
-
-    /* Prevent accidental re-init'ing of already loaded tape drives */
-    if (sysblk.nomountedtapereinit)
-    {
-        char*  devclass;
-
-        tapedev_query_device(dev, &devclass, 0, NULL);
-
-        if (1
-            && strcmp(devclass,"TAPE") == 0
-            && (0
-                || TAPEDEVT_SCSITAPE == dev->tapedevt
-                || (argc >= 3 && strcmp(argv[2], TAPE_UNLOADED) != 0)
-               )
-        )
+        /* Prevent accidental re-init'ing of already loaded tape drives */
+        if (sysblk.nomountedtapereinit)
         {
-            ASSERT( dev->tmh && dev->tmh->tapeloaded );
-            if (dev->tmh->tapeloaded( dev, NULL, 0 ))
+            char*  devclass;
+
+            tapedev_query_device( dev, &devclass, 0, NULL );
+
+            if (1
+                && strcmp( devclass,"TAPE" ) == 0
+                && (0
+                    || TAPEDEVT_SCSITAPE == dev->tapedevt
+                    || (argc >= 3 && strcmp( argv[2], TAPE_UNLOADED ) != 0)
+                   )
+            )
             {
-                release_lock (&dev->lock);
-                WRMSG(HHC02243, "E", SSID_TO_LCSS(dev->ssid), dev->devnum);
-                return -1;
+                ASSERT( dev->tmh && dev->tmh->tapeloaded );
+                if (dev->tmh->tapeloaded( dev, NULL, 0 ))
+                {
+                    release_lock( &dev->lock );
+                    WRMSG( HHC02243, "E", SSID_TO_LCSS( dev->ssid ), dev->devnum );
+                    return -1;
+                }
             }
         }
+
+        dev->tmh->close( dev );
+        dev->fd = -1;
     }
 
-        dev->tmh->close(dev);
-        dev->fd=-1;
-    }
-
-    autoload_close(dev);
-    dev->tdparms.displayfeat=0;
+    autoload_close( dev );
+    dev->tdparms.displayfeat = 0;
 
     /* reset excps count */
     dev->excps = 0;
@@ -667,10 +807,6 @@ int             attn = 0;
     dev->forced_logging      = 0;   // (always, initially)
     dev->noautomount         = 0;   // (always, initially)
 
-    /* Initialize SCSI tape control fields */
-#if defined(OPTION_SCSI_TAPE)
-    dev->sstat = GMT_DR_OPEN(-1);
-#endif
     /* Clear the DPA */
     memset (dev->pgid, 0, sizeof(dev->pgid));
     /* Clear Drive password - Adrian */
@@ -730,19 +866,30 @@ int             attn = 0;
     if (dev->devchar[8] & 0x08)     // SIC supported?
         dev->SIC_supported = 1;     // remember that fact
 
+#if defined(OPTION_SCSI_TAPE)
+    /* Initialize SCSI tape status field (must not do
+       this until AFTER mountnewtape has been called
+       since dev->stape_online is otherwise undefined) */
+    dev->sstat = dev->stape_online ? 0 : GMT_DR_OPEN( -1 );
+#endif
+
 #ifdef OPTION_SYNCIO
+    /* Initialize syncio fields */
     if (dev->tapedevt == TAPEDEVT_SCSITAPE)
         dev->syncio = 0;  // (SCSI i/o too slow; causes Machine checks)
     else
         dev->syncio = 2;  // (aws/het/etc are fast; syncio likely safe)
-#endif // OPTION_SYNCIO
+#endif
+
+    /* Request a maximum sized device I/O buffer */
+    dev->bufsize = MAX_BLKLEN;
 
     /* Make attention pending if necessary */
-    if(attn)
+    if (dev->reinit)
     {
-        release_lock (&dev->lock);
-        device_attention (dev, CSW_DE);
-        obtain_lock (&dev->lock);
+        release_lock( &dev->lock );
+        device_attention( dev, CSW_DE );
+        obtain_lock( &dev->lock );
     }
 
     return rc;
@@ -1096,16 +1243,17 @@ int gettapetype (DEVBLK *dev, char **short_descr)
 
 PARSER  ptab  [] =
 {
+    { "-d",         NULL },
     { "awstape",    NULL },
     { "idrc",       "%d" },
     { "compress",   "%d" },
     { "method",     "%d" },
     { "level",      "%d" },
     { "chunksize",  "%d" },
-    { "maxsize",    "%s" },
+    { "maxsize",    PARSER_STR_TYPE },
     { "maxsizeK",   "%d" },
     { "maxsizeM",   "%d" },
-    { "eotmargin",  "%s" },
+    { "eotmargin",  PARSER_STR_TYPE },
     { "strictsize", "%d" },
     { "readonly",   "%d" },
     { "ro",         NULL },
@@ -1118,6 +1266,7 @@ PARSER  ptab  [] =
     { "--blkid-24", NULL },   /* (synonym for --blkid-22) */
     { "--blkid-32", NULL },
     { "--no-erg",   NULL },
+    { "--online",   NULL },
     { NULL,         NULL },   /* (end of table) */
 };
 
@@ -1129,6 +1278,7 @@ PARSER  ptab  [] =
 enum
 {
     TDPARM_NONE,
+    TDPARM_DEBUG,
     TDPARM_AWSTAPE,
     TDPARM_IDRC,
     TDPARM_COMPRESS,
@@ -1150,7 +1300,8 @@ enum
     TDPARM_BLKID22,
     TDPARM_BLKID24,
     TDPARM_BLKID32,
-    TDPARM_NOERG
+    TDPARM_NOERG,
+    TDPARM_ONLINE
 };
 
 /*-------------------------------------------------------------------*/
@@ -1177,6 +1328,11 @@ enum
 /*    --blkid-32       for SCSI tape only, means the hardware        */
 /*                     only supports full 32-bit block-ids.          */
 /*                                                                   */
+/*    --online         for SCSI tape only, means the drive does not  */
+/*                     use the clearing/setting of the GMT_DR_OPEN   */
+/*                     flag to indicate when a tape is mounted but   */
+/*                     rather uses the GMT_ONLINE flag instead.      */
+/*                                                                   */
 /*-------------------------------------------------------------------*/
 int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
 {
@@ -1184,10 +1340,11 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
     char        msg[80];
     int         i;                      /* Loop control              */
     int         rc, optrc;              /* various rtns return codes */
-    union {                             /* Parser results            */
-        U32     num;                    /* Parser results            */
-        BYTE    str[ 80 ];              /* Parser results            */
-    } res;                              /* Parser results            */
+
+    union {                                 /* Parser results        */
+        U32  num;                           /* Parser results        */
+        BYTE str[ MAX_PARSER_STRLEN + 1 ];  /* Parser results        */
+    } res;                                  /* Parser results        */
 
 
     /* Release the previous OMA descriptor array if allocated */
@@ -1206,7 +1363,7 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
         hostpath(dev->filename, argv[0], sizeof(dev->filename));
     }
 
-    /* Determine tape device type... */
+    /* Determine tape device type... (initializes "dev->tapedevt") */
     VERIFY( gettapetype( dev, &short_descr ) == 0 );
 
     /* (sanity check) */
@@ -1217,9 +1374,6 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
 
     /* Initialize device dependent fields */
     dev->fd                = -1;
-#if defined(OPTION_SCSI_TAPE)
-    dev->sstat             = GMT_DR_OPEN(-1);
-#endif
     dev->omadesc           = NULL;
     dev->omafiles          = 0;
     dev->curfilen          = 1;
@@ -1240,6 +1394,8 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
 
 #if defined(OPTION_SCSI_TAPE)
     // Real 3590's support Erase Gap and use 32-bit blockids.
+    // Note that these are just defaults and may be changed
+    // further below after processing our remaining options.
 
     if (TAPEDEVT_SCSITAPE == dev->tapedevt
         &&     0x3590     == dev->devtype)
@@ -1263,6 +1419,10 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
             // "%1d:%04X Tape file '%s', type '%s': option '%s' rejected: '%s'"
             WRMSG(HHC00223, "E", SSID_TO_LCSS(dev->ssid), dev->devnum, dev->filename, TTYPSTR(dev->tapedevt), argv[i], "unrecognized");
             optrc = -1;
+            break;
+
+        case TDPARM_DEBUG:
+            dev->debug = 1;
             break;
 
         case TDPARM_AWSTAPE:
@@ -1361,7 +1521,7 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
                 BYTE    f       = '\0';
                 BYTE    c       = '\0';
 
-                rc = sscanf((const char*)res.str, "%"I64_FMT"u%c%c", &maxsize, &f, &c);
+                rc = sscanf((const char*)res.str, "%"SCNu64"%c%c", &maxsize, &f, &c);
                 if ( rc < 1 || rc > 2 )
                 {
                     WRMSG( HHC01451, "E", res.str, "maxsize" );
@@ -1424,7 +1584,7 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
                 BYTE    f           = '\0';
                 BYTE    c           = '\0';
 
-                rc = sscanf((const char*)res.str, "%"I64_FMT"u%c%c", &eotmargin, &f, &c);
+                rc = sscanf((const char*)res.str, "%"SCNu64"%c%c", &eotmargin, &f, &c);
                 if ( rc < 1 || rc > 2 )
                 {
                     WRMSG( HHC01451, "E", res.str, "eotmargin" );
@@ -1546,6 +1706,15 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
             }
             dev->stape_no_erg = 1;
             break;
+
+        case TDPARM_ONLINE:
+            if (TAPEDEVT_SCSITAPE != dev->tapedevt)
+            {
+                // "%1d:%04X Tape file '%s', type '%s': option '%s' rejected: '%s'"
+                _HHC00223E(); optrc = -1; break;
+            }
+            dev->stape_online = 1;
+            break;
 #endif /* defined(OPTION_SCSI_TAPE) */
 
         default:
@@ -1568,6 +1737,11 @@ int  mountnewtape ( DEVBLK *dev, int argc, char **argv )
 
     if (0 != rc)
         return -1;
+
+#if defined(OPTION_SCSI_TAPE)
+    if (dev->tapedevt == TAPEDEVT_SCSITAPE)
+        dev->sstat = dev->stape_online ? 0 : GMT_DR_OPEN( -1 );
+#endif
 
     /* Adjust the display if necessary */
     if(dev->tdparms.displayfeat)
@@ -1646,7 +1820,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
                 mem >>= 10;
             }
         }
-        MSGBUF( fmt_mem, " maxsize=%"I64_FMT"u%c", mem, suffix[i]);
+        MSGBUF( fmt_mem, " maxsize=%"PRIu64"%c", mem, suffix[i]);
 
         mem = (U64)dev->eotmargin;
 
@@ -1660,7 +1834,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
                 mem >>= 10;
             }
         }
-        MSGBUF( fmt_eot, " eotmargin=%"I64_FMT"u%c", mem, suffix[i]);
+        MSGBUF( fmt_eot, " eotmargin=%"PRIu64"%c", mem, suffix[i]);
     }
 
     if ( strcmp( dev->filename, TAPE_UNLOADED ) == 0 )
@@ -1679,7 +1853,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
             if ( dev->stape_no_erg ) strlcat( devparms, " --no-erg", sizeof(devparms) );
         }
 #endif
-        snprintf(buffer, buflen, "%s%s%s IO[%" I64_FMT "u]%s%s deonirq=%c",
+        snprintf(buffer, buflen, "%s%s%s IO[%"PRIu64"]%s%s deonirq=%c",
             devparms,
             dev->tdparms.displayfeat ? ", Display: " : "",
             dev->tdparms.displayfeat ?    dispmsg    : "",
@@ -1695,7 +1869,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
 
         if ( TAPEDEVT_SCSITAPE != dev->tapedevt )
         {
-            MSGBUF( tapepos, "[%d:%08"I64_FMT"X] ", dev->curfilen, dev->nxtblkpos );
+            MSGBUF( tapepos, "[%d:%08"PRIX64"] ", dev->curfilen, dev->nxtblkpos );
         }
 #if defined(OPTION_SCSI_TAPE)
         else // (this is a SCSI tape drive)
@@ -1733,7 +1907,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
         {
             // Not a SCSI tape,  -or-  mounted SCSI tape...
 
-            snprintf( buffer, buflen, "%s%s %s%s%s IO[%" I64_FMT "u]",
+            snprintf( buffer, buflen, "%s%s %s%s%s IO[%"PRIu64"]",
                 devparms, (dev->readonly ? " ro" : ""),
                 tapepos,
                 dev->tdparms.displayfeat ? "Display: " : "",
@@ -1745,7 +1919,7 @@ static void tapedev_query_device ( DEVBLK *dev, char **devclass, int buflen, cha
         {
             // UNmounted SCSI tape...
 
-            snprintf( buffer, buflen, "%s%s (%sNOTAPE)%s%s IO[%" I64_FMT "u]",
+            snprintf( buffer, buflen, "%s%s (%sNOTAPE)%s%s IO[%"PRIu64"]",
                 devparms, (dev->readonly ? " ro" : ""),
                 dev->fd < 0              ?   "closed; "  : "",
                 dev->tdparms.displayfeat ? ", Display: " : "",
@@ -2695,5 +2869,5 @@ int generic_tmhcall ( GENTMH_PARMS* pGenParms )
         }
     }
 
-    return -1;      // (never reached)
+    UNREACHABLE_CODE( return -1 );
 }

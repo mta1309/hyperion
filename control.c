@@ -48,6 +48,11 @@
 #include "opcode.h"
 #include "inline.h"
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
+
 /* Temporary debug */
 extern  int     ipending_cmd(int,void *,void *);
 
@@ -749,7 +754,7 @@ U32     old;                            /* old value                 */
     }
     else
     {
-        PTT(PTT_CL_CSF,"*CSP",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
+        PTT_CSF("*CSP",regs->GR_L(r1),regs->GR_L(r2),regs->psw.IA_L);
 
         /* Otherwise yield */
         regs->GR_L(r1) = CSWAP32(old);
@@ -794,7 +799,7 @@ VADR    effective_addr2;                /* Effective address         */
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_INF,"DIAG",regs->GR_L(r1),regs->GR_L(r3),(U32)(effective_addr2 & 0xffffff));
+    PTT_INF("DIAG",regs->GR_L(r1),regs->GR_L(r3),(U32)(effective_addr2 & 0xffffff));
 
     /* Process diagnose instruction */
     ARCH_DEP(diagnose_call) (effective_addr2, b2, r1, r3, regs);
@@ -1141,7 +1146,7 @@ BYTE    storkey;
             {
                 SIE_TRANSLATE(&n, ACCTYPE_SIE, regs);
 
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
                 regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -1212,7 +1217,7 @@ BYTE    storkey;
                     /* host real to host absolute */
                     n = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
 
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     regs->GR_LHLCL(r1) = storkey
                                        | (STORAGE_KEY(n, regs) & 0xFE);
 #else
@@ -1223,7 +1228,7 @@ BYTE    storkey;
             }
         }
         else /* !sie_pref */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
             regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -1232,7 +1237,7 @@ BYTE    storkey;
     else /* !SIE_MODE */
 #endif /*defined(_FEATURE_SIE)*/
         /* Insert the storage key into R1 register bits 24-31 */
-#if defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_2K_STORAGE_KEYS)
         regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
         regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -1293,7 +1298,7 @@ BYTE    storkey;
             SIE_TRANSLATE(&n, ACCTYPE_SIE, regs);
 
                 /* Insert the storage key into R1 register bits 24-31 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
                 regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -1373,7 +1378,7 @@ BYTE    storkey;
                     n = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
 
                     /* Insert the storage key into R1 register bits 24-31 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     regs->GR_LHLCL(r1) = storkey | (STORAGE_KEY(n, regs) & 0xFE);
 #else
                     regs->GR_LHLCL(r1) = storkey | ((STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE);
@@ -1383,7 +1388,7 @@ BYTE    storkey;
     }
         else /* sie_pref */
             /* Insert the storage key into R1 register bits 24-31 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
             regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -1392,7 +1397,7 @@ BYTE    storkey;
     else /* !SIE_MODE */
 #endif /*defined(_FEATURE_SIE)*/
         /* Insert the storage key into R1 register bits 24-31 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         regs->GR_LHLCL(r1) = STORAGE_KEY(n, regs) & 0xFE;
 #else
         regs->GR_LHLCL(r1) = (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)) & 0xFE;
@@ -2058,6 +2063,13 @@ int     b2;                             /* Base of effective addr    */
 VADR    effective_addr2;                /* Effective address         */
 
     RX(inst, regs, r1, b2, effective_addr2);
+
+#if defined(FEATURE_ECPSVM)
+    if(ecpsvm_dolra(regs,r1,b2,effective_addr2)==0)
+    {
+        return;
+    }
+#endif
 
     ARCH_DEP(load_real_address_proc) (regs, r1, b2, effective_addr2);
 
@@ -4036,14 +4048,14 @@ BYTE    storkey;                        /* Storage key               */
               && SIE_STATB(regs, RCPO2, RCPBY))
             {
                 SIE_TRANSLATE(&n, ACCTYPE_SIE, regs);
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 storkey = STORAGE_KEY(n, regs);
 #else
                 storkey = STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs);
 #endif
 
                 /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
                 STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4096,7 +4108,7 @@ BYTE    storkey;                        /* Storage key               */
                                          regs->hostregs, ACCTYPE_SIE))
                 {
                     ra = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     realkey = STORAGE_KEY(ra, regs)
 #else
                     realkey = (STORAGE_KEY1(ra, regs) | STORAGE_KEY2(ra, regs))
@@ -4104,7 +4116,7 @@ BYTE    storkey;                        /* Storage key               */
                             & (STORKEY_REF | STORKEY_CHANGE);
 
                     /* Reset reference and change bits in storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(ra, regs) &= ~(STORKEY_REF | STORKEY_CHANGE);
 #else
                     STORAGE_KEY1(ra, regs) &= ~(STORKEY_REF | STORKEY_CHANGE);
@@ -4129,13 +4141,13 @@ BYTE    storkey;                        /* Storage key               */
         }
         else /* regs->sie_perf */
         {
-#if defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_2K_STORAGE_KEYS)
             storkey = STORAGE_KEY(n, regs);
 #else
             storkey = STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs);
 #endif
             /* Reset the reference bit in the storage key */
-#if defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_2K_STORAGE_KEYS)
             STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
             STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4146,13 +4158,13 @@ BYTE    storkey;                        /* Storage key               */
     else
 #endif /*defined(_FEATURE_SIE)*/
     {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         storkey =  STORAGE_KEY(n, regs);
 #else
         storkey =  STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs);
 #endif
             /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
         STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4217,7 +4229,7 @@ BYTE    storkey;                        /* Storage key               */
               ) && SIE_STATB(regs, RCPO2, RCPBY))
             {
                 SIE_TRANSLATE(&n, ACCTYPE_SIE, regs);
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 storkey = STORAGE_KEY(n, regs);
 #else
             storkey = STORAGE_KEY1(n, regs)
@@ -4225,7 +4237,7 @@ BYTE    storkey;                        /* Storage key               */
 #endif
                                         ;
             /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
             STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4286,7 +4298,7 @@ BYTE    storkey;                        /* Storage key               */
                                          regs->hostregs, ACCTYPE_SIE))
                 {
                     ra = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     realkey = STORAGE_KEY(ra, regs) & (STORKEY_REF | STORKEY_CHANGE);
 #else
                     realkey = (STORAGE_KEY1(ra, regs) | STORAGE_KEY2(ra, regs))
@@ -4294,7 +4306,7 @@ BYTE    storkey;                        /* Storage key               */
 #endif
                     /* Reset the reference and change bits in
                        the real machine storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(ra, regs) &= ~(STORKEY_REF | STORKEY_CHANGE);
 #else
                     STORAGE_KEY1(ra, regs) &= ~(STORKEY_REF | STORKEY_CHANGE);
@@ -4319,7 +4331,7 @@ BYTE    storkey;                        /* Storage key               */
         }
         else
         {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             storkey = STORAGE_KEY(n, regs);
 #else
             storkey = STORAGE_KEY1(n, regs)
@@ -4327,7 +4339,7 @@ BYTE    storkey;                        /* Storage key               */
 #endif
                                     ;
             /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
             STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4338,7 +4350,7 @@ BYTE    storkey;                        /* Storage key               */
     else
 #endif /*defined(_FEATURE_SIE)*/
     {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         storkey = STORAGE_KEY(n, regs);
 #else
         storkey = STORAGE_KEY1(n, regs)
@@ -4346,7 +4358,7 @@ BYTE    storkey;                        /* Storage key               */
 #endif
                                 ;
         /* Reset the reference bit in the storage key */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
         STORAGE_KEY(n, regs) &= ~(STORKEY_REF);
 #else
         STORAGE_KEY1(n, regs) &= ~(STORKEY_REF);
@@ -4534,7 +4546,7 @@ U64     dreg;                           /* Clock value               */
 
     RETURN_INTCHECK(regs);
 
-//  /*debug*/logmsg("Set TOD clock=%16.16" I64_FMT "X\n", dreg);
+//  /*debug*/logmsg("Set TOD clock=%16.16"PRIX64"\n", dreg);
 
 }
 
@@ -4563,7 +4575,7 @@ U64     dreg;                           /* Clock value               */
     /* Fetch clock comparator value from operand location */
     dreg = ARCH_DEP(vfetch8) ( effective_addr2, b2, regs );
 
-//  /*debug*/logmsg("Set clock comparator=%16.16" I64_FMT "X\n", dreg);
+//  /*debug*/logmsg("Set clock comparator=%16.16"PRIX64"\n", dreg);
 
     dreg >>= 8;
 
@@ -4641,7 +4653,7 @@ S64     dreg;                           /* Timer value               */
 
     RELEASE_INTLOCK(regs);
 
-//  /*debug*/logmsg("Set CPU timer=%16.16" I64_FMT "X\n", dreg);
+//  /*debug*/logmsg("Set CPU timer=%16.16"PRIX64"\n", dreg);
 
     RETURN_INTCHECK(regs);
 }
@@ -5004,7 +5016,7 @@ RADR    n;                              /* Absolute storage addr     */
                     n = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
 
                     realkey =
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                               STORAGE_KEY(n, regs)
 #else
                               (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs))
@@ -5030,7 +5042,7 @@ RADR    n;                              /* Absolute storage addr     */
                 if(!sr)
 #endif /*defined(_FEATURE_STORAGE_KEY_ASSIST)*/
                 {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
                     STORAGE_KEY(n, regs) |= regs->GR_LHLCL(r1)
                                     & (STORKEY_KEY | STORKEY_FETCH);
@@ -5048,7 +5060,7 @@ RADR    n;                              /* Absolute storage addr     */
         else
         {
             /* Update the storage key from R1 register bits 24-30 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
             STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
             STORAGE_KEY(n, regs) |= regs->GR_LHLCL(r1) & ~(STORKEY_BADFRM);
 #else
@@ -5063,7 +5075,7 @@ RADR    n;                              /* Absolute storage addr     */
 #endif /*defined(_FEATURE_SIE)*/
     {
         /* Update the storage key from R1 register bits 24-30 */
-#if defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_2K_STORAGE_KEYS)
         STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
         STORAGE_KEY(n, regs) |= regs->GR_LHLCL(r1) & ~(STORKEY_BADFRM);
 #else
@@ -5316,7 +5328,7 @@ BYTE    r1key;
                         n = APPLY_PREFIXING(regs->hostregs->dat.raddr, regs->hostregs->PX);
 
                         protkey =
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                                   STORAGE_KEY(n, regs)
 #else
                                   (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs))
@@ -5349,7 +5361,7 @@ BYTE    r1key;
                     if(!sr)
 #endif /*defined(_FEATURE_STORAGE_KEY_ASSIST)*/
                     {
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                         STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
                         STORAGE_KEY(n, regs) |= r1key
                                         & (STORKEY_KEY | STORKEY_FETCH);
@@ -5369,7 +5381,7 @@ BYTE    r1key;
 #if defined(FEATURE_CONDITIONAL_SSKE)
                 /* Perform conditional SSKE procedure */
                 if (ARCH_DEP(conditional_sske_procedure)(regs, r1, m3,
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(FEATURE_2K_STORAGE_KEYS)
                         STORAGE_KEY(n, regs),
 #else
                         (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)),
@@ -5378,7 +5390,7 @@ BYTE    r1key;
                     return;
 #endif /*defined(FEATURE_CONDITIONAL_SSKE)*/
                 /* Update the storage key from R1 register bits 24-30 */
-#if !defined(_FEATURE_2K_STORAGE_KEYS)
+#if !defined(FEATURE_2K_STORAGE_KEYS)
                 STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
                 STORAGE_KEY(n, regs) |= r1key & ~(STORKEY_BADFRM);
 #else
@@ -5395,7 +5407,7 @@ BYTE    r1key;
 #if defined(FEATURE_CONDITIONAL_SSKE)
             /* Perform conditional SSKE procedure */
             if (ARCH_DEP(conditional_sske_procedure)(regs, r1, m3,
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(FEATURE_2K_STORAGE_KEYS)
                     STORAGE_KEY(n, regs),
 #else
                     (STORAGE_KEY1(n, regs) | STORAGE_KEY2(n, regs)),
@@ -5405,7 +5417,7 @@ BYTE    r1key;
 #endif /*defined(FEATURE_CONDITIONAL_SSKE)*/
 
             /* Update the storage key from R1 register bits 24-30 */
-#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(_FEATURE_2K_STORAGE_KEYS)
+#if defined(FEATURE_4K_STORAGE_KEYS) && !defined(FEATURE_2K_STORAGE_KEYS)
             STORAGE_KEY(n, regs) &= STORKEY_BADFRM;
             STORAGE_KEY(n, regs) |= r1key & ~(STORKEY_BADFRM);
 #else
@@ -5571,12 +5583,12 @@ static char *ordername[] = {
     /* Load the parameter from R1 (if R1 odd), or R1+1 (if even) */
     parm = (r1 & 1) ? regs->GR_L(r1) : regs->GR_L(r1+1);
 
-    PTT(PTT_CL_SIG,"SIGP",parm,cpad,order);
+    PTT_SIG("SIGP",parm,cpad,order);
 
     /* Return condition code 3 if target CPU does not exist */
     if (cpad >= sysblk.maxcpu)
     {
-        PTT(PTT_CL_ERR,"*SIGP",parm,cpad,order);
+        PTT_ERR("*SIGP",parm,cpad,order);
         regs->psw.cc = 3;
         return;
     }
@@ -5587,7 +5599,7 @@ static char *ordername[] = {
     if (order == SIGP_SENSE && !IS_CPU_ONLINE(cpad)
      && cpad >= sysblk.hicpu)
     {
-        PTT(PTT_CL_ERR,"*SIGP",parm,cpad,order);
+        PTT_ERR("*SIGP",parm,cpad,order);
         regs->psw.cc = 3;
         return;
     }
@@ -6213,7 +6225,7 @@ static char *ordername[] = {
     RELEASE_INTLOCK(regs);
 
     if(status)
-        PTT(PTT_CL_ERR,"*SIGP",parm,cpad,order);
+        PTT_ERR("*SIGP",parm,cpad,order);
 
     /* If status is non-zero, load the status word into
        the R1 register and return condition code 1 */
@@ -6304,7 +6316,7 @@ U64     dreg;                           /* Clock value               */
     /* Store clock comparator value at operand location */
     ARCH_DEP(vstore8) ((dreg << 8), effective_addr2, b2, regs );
 
-//  /*debug*/logmsg("Store clock comparator=%16.16" I64_FMT "X\n", dreg);
+//  /*debug*/logmsg("Store clock comparator=%16.16"PRIX64"\n", dreg);
 
     RETURN_INTCHECK(regs);
 }
@@ -6458,7 +6470,7 @@ S64     dreg;                           /* Double word workarea      */
     /* Store CPU timer value at operand location */
     ARCH_DEP(vstore8) ( dreg, effective_addr2, b2, regs );
 
-//  /*debug*/logmsg("Store CPU timer=%16.16" I64_FMT "X\n", dreg);
+//  /*debug*/logmsg("Store CPU timer=%16.16"PRIX64"\n", dreg);
 
     RETURN_INTCHECK(regs);
 }
@@ -6718,7 +6730,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_INF,"STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+    PTT_INF("STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
 
 #if defined(DEBUG_STSI)
     logmsg("control.c: STSI %d.%d.%d ia="F_VADR" sysib="F_VADR"\n",
@@ -6749,7 +6761,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
     )
     {
-        PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+        PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
 #ifdef DEBUG_STSI
         logmsg("control.c: STSI cc=3 function code invalid\n");
 #endif /*DEBUG_STSI*/
@@ -6833,7 +6845,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
     )
     {
-        PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+        PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
 #ifdef DEBUG_STSI
         logmsg("control.c: STSI cc=3 selector codes invalid\n");
 #endif /*DEBUG_STSI*/
@@ -6895,7 +6907,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 break;
 
             default:
-                PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+                PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
                 regs->psw.cc = 3;
             } /* selector 2 */
             break;
@@ -6945,13 +6957,13 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 break;
 
             default:
-                PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+                PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
                 regs->psw.cc = 3;
             } /* selector 2 */
             break;
 
         default:
-            PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+            PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
             regs->psw.cc = 3;
         } /* selector 1 */
         break;
@@ -6961,7 +6973,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
 #if defined(_FEATURE_HYPERVISOR)
          if(!FACILITY_ENABLED(LOGICAL_PARTITION,regs))
          {
-             PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+             PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
              regs->psw.cc = 3;
              break;
          }
@@ -7016,13 +7028,13 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 break;
 
             default:
-                PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+                PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
                 regs->psw.cc = 3;
             } /* selector 2 */
             break;
 
         default:
-            PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+            PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
             regs->psw.cc = 3;
         } /* selector 1 */
         break;
@@ -7082,7 +7094,7 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 tle += sizeof(TLECNTNR);
 
                 /* For each type of CPU */
-                for (cputype = 0; cputype <= SCCB_PTYP_MAX; cputype++)
+                for (cputype = 0; cputype <= MAX_SCCB_PTYP; cputype++)
                 {
                     tlecpu = (TLECPU *)tle;
 
@@ -7134,20 +7146,20 @@ static BYTE hexebcdic[16] = { 0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7,
                 break;
 
             default:
-                PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+                PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
                 regs->psw.cc = 3;
             } /* selector 2 */
             break;
 
         default:
-            PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+            PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
             regs->psw.cc = 3;
         } /* selector 1 */
         break;
 #endif /*defined(FEATURE_CONFIGURATION_TOPOLOGY_FACILITY)*/
 
     default:
-        PTT(PTT_CL_ERR,"*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
+        PTT_ERR("*STSI",regs->GR_L(0),regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff));
         regs->psw.cc = 3;
     } /* function code */
 

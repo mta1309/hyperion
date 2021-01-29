@@ -7,8 +7,10 @@
 /*-------------------------------------------------------------------*/
 /* The "DISABLE_xxx_WARNING" and "ENABLE_xxx_WARNING" macros allow   */
 /* you to temporarily suppress certain harmless compiler warnings.   */
+/* Sample usage: DISABLE_GCC_WARNING( "-Wpointer-to-int-cast" )      */
+/* DISABLE_MSVC_WARNING( 4142 ) // "benign redefinition of type"     */
 /* Use the "_DISABLE" macro before the source statement which is     */
-/* causing the problem and the "_ENABLE" macro shortly afterwards.   */
+/* causing the problem and the "ENABLE" macro shortly afterwards.    */
 /* PLEASE DO NOT GO OVERBOARD (overdo or overuse) THE SUPPRESSION    */
 /* OF WARNINGS! Most warnings are actually bugs waiting to happen.   */
 /* The "DISABLE_xxx_WARNING" and "ENABLE_xxx_WARNING" macros are     */
@@ -16,84 +18,90 @@
 /* be properly investigated and resolved.                            */
 /*-------------------------------------------------------------------*/
 
-#include "ccfixme.h"            /* need "QSTR" macro, etc */
-
 #ifndef _CCNOWARN_H_
 #define _CCNOWARN_H_
 
-  /*---------------------------------------------------------------*/
-  /*                    Microsoft Visual C++                       */
-  /*---------------------------------------------------------------*/
+#include "ccfixme.h"      /* need HAVE_GCC_DIAG_PRAGMA, QPRAGMA, etc */
+
+  /*-----------------------------------------------------------------*/
+  /*                            MSVC                                 */
+  /*-----------------------------------------------------------------*/
 
   #if defined( _MSVC_ )
 
-    #define DISABLE_MSVC_WARNING( _num, _msg )      \
-                                                    \
-        __pragma( warning( push ) )                 \
-        __pragma( warning( disable : _num ) )       \
-                           FIXME(    _msg )
-    #define ENABLE_MSVC_WARNING( _num )             \
-                                                    \
-        __pragma( warning( pop ) )
+    #define DISABLE_MSVC_WARNING( _num )    __pragma( warning( disable : _num ) )
+    #define ENABLE_MSVC_WARNING( _num )     __pragma( warning( default : _num ) )
 
-    /* Globally disable some uninteresting MSVC compiler warnings */
+    #define PUSH_MSVC_WARNINGS()            __pragma( warning( push ))
+    #define POP_MSVC_WARNINGS()             __pragma( warning( pop  ))
 
-    #pragma warning( disable: 4127 ) // "conditional expression is constant"
-    #pragma warning( disable: 4142 ) // "benign redefinition of type"
-    #pragma warning( disable: 4146 ) // "unary minus operator applied to unsigned type, result still unsigned"
-    #pragma warning( disable: 4200 ) // "nonstandard extension used : zero-sized array in struct/union"
-    #pragma warning( disable: 4244 ) // (floating-point only?) "conversion from 'x' to 'y', possible loss of data"
-    #pragma warning( disable: 4267 ) // "conversion from size_t to int possible loss of data"
-    #pragma warning( disable: 4748 ) // "/GS can not protect parameters and local variables from local buffer overrun because optimizations are disabled in function"
+    /* Globally disable some uninteresting MSVC compiler warnings    */
 
+    DISABLE_MSVC_WARNING( 4127 ) // "conditional expression is constant"
+    DISABLE_MSVC_WARNING( 4142 ) // "benign redefinition of type"
+    DISABLE_MSVC_WARNING( 4146 ) // "unary minus operator applied to unsigned type, result still unsigned"
+    DISABLE_MSVC_WARNING( 4200 ) // "nonstandard extension used : zero-sized array in struct/union"
+    DISABLE_MSVC_WARNING( 4244 ) // (floating-point only?) "conversion from 'x' to 'y', possible loss of data"
+    DISABLE_MSVC_WARNING( 4267 ) // "conversion from size_t to int possible loss of data"
+    DISABLE_MSVC_WARNING( 4748 ) // "/GS can not protect parameters and local variables from local buffer overrun because optimizations are disabled in function"
+
+  #endif /* defined( _MSVC_ ) */
+
+  #ifndef   PUSH_MSVC_WARNINGS
+    #define PUSH_MSVC_WARNINGS()                     /* (do nothing) */
+    #define POP_MSVC_WARNINGS()                      /* (do nothing) */
+    #define DISABLE_MSVC_WARNING( _str )             /* (do nothing) */
+    #define ENABLE_MSVC_WARNING(  _str )             /* (do nothing) */
   #endif
 
-  #ifndef   DISABLE_MSVC_WARNING
-    #define DISABLE_MSVC_WARNING( _opt, _msg )      /* (do nothing) */
-    #define ENABLE_MSVC_WARNING(  _opt )            /* (do nothing) */
-  #endif
+  /*-----------------------------------------------------------------*/
+  /*                       GCC or CLANG                              */
+  /*-----------------------------------------------------------------*/
 
-  /*---------------------------------------------------------------*/
-  /*                    GNU Compiler Collection                    */
-  /*---------------------------------------------------------------*/
+  #if defined(HAVE_GCC_DIAG_PRAGMA)
 
-  #if defined( __GNUC__ )
-    #ifdef HAVE_GCC_DIAG_PRAGMA
-      #define PRAGMA_GCC_DIAG( _opt )               _Pragma( GCC diagnostic _opt )
-      #define GCC_WARNING_ON(   _opt )              PRAGMA_GCC_DIAG( warning QSTR2( -W, _opt ) )
-      #define GCC_WARNING_OFF(  _opt, _msg )        PRAGMA_GCC_DIAG( ignored QSTR2( -W, _opt ) )  \
-                                                                      FIXME(            _msg )
-      #ifdef HAVE_GCC_DIAG_PUSHPOP
-        #define DISABLE_GCC_WARNING( _opt, _msg )   PRAGMA_GCC_DIAG( push )  \
-                                                    GCC_WARNING_OFF( _opt, _msg )
-        #define ENABLE_GCC_WARNING(  _opt )         PRAGMA_GCC_DIAG( pop )
-      #else
-        #define DISABLE_GCC_WARNING( _opt, _msg )   GCC_WARNING_OFF( _opt, _msg )
-        #define ENABLE_GCC_WARNING(  _opt )         GCC_WARNING_ON(  _opt )
-      #endif
+    #define DISABLE_GCC_WARNING( _str )   QPRAGMA( GCC diagnostic ignored _str )
+    #define ENABLE_GCC_WARNING(  _str )   QPRAGMA( GCC diagnostic warning _str )
 
-      /* Globally disable some rather annoying GCC compiler warnings which */
-      /* frequently occurs due to our build multiple architectures design. */
-
-      #if GCC_VERSION >= 40304
-      #pragma GCC diagnostic ignored "-Wunused-function"          // "'xxxxxxxx' defined but not used"
-      #endif
-      #if GCC_VERSION >= 40600
-      #pragma GCC diagnostic ignored "-Wunused-but-set-variable"  // "variable 'xxx' set but not used"
-      #endif
-
+    #if defined(HAVE_GCC_SET_UNUSED_WARNING)
+      #define DISABLE_GCC_UNUSED_SET_WARNING            \
+              DISABLE_GCC_WARNING("-Wunused-but-set-variable")
     #endif
-  #endif
+
+    #if defined(HAVE_GCC_UNUSED_FUNC_WARNING)
+      #define DISABLE_GCC_UNUSED_FUNCTION_WARNING       \
+              DISABLE_GCC_WARNING("-Wunused-function")
+    #endif
+
+    #if defined(HAVE_GCC_DIAG_PUSHPOP)
+      #define PUSH_GCC_WARNINGS()         QPRAGMA( GCC diagnostic push )
+      #define POP_GCC_WARNINGS()          QPRAGMA( GCC diagnostic pop  )
+    #endif
+
+  #endif /* defined( HAVE_GCC_DIAG_PRAGMA ) */
 
   #ifndef   DISABLE_GCC_WARNING
-    #define DISABLE_GCC_WARNING( _opt, _msg )       /* (do nothing) */
-    #define ENABLE_GCC_WARNING(  _opt )             /* (do nothing) */
+    #define DISABLE_GCC_WARNING( _str )              /* (do nothing) */
+    #define ENABLE_GCC_WARNING(  _str )              /* (do nothing) */
   #endif
 
-  /*---------------------------------------------------------------*/
-  /* (((((((((  define support for other compilers here  ))))))))) */
-  /*---------------------------------------------------------------*/
+  #if !defined(DISABLE_GCC_UNUSED_SET_WARNING)
+    #define DISABLE_GCC_UNUSED_SET_WARNING           /* (do nothing) */
+  #endif
 
-  /* ( don't forget to define a "FIXME" macro too. See ccfixme.h ) */
+  #if !defined(DISABLE_GCC_UNUSED_FUNCTION_WARNING)
+    #define DISABLE_GCC_UNUSED_FUNCTION_WARNING      /* (do nothing) */
+  #endif
+
+  #ifndef   PUSH_GCC_WARNINGS
+    #define PUSH_GCC_WARNINGS()                      /* (do nothing) */
+    #define POP_GCC_WARNINGS()                       /* (do nothing) */
+  #endif
+
+  /*-----------------------------------------------------------------*/
+  /*            define support for other compilers here              */
+  /*-----------------------------------------------------------------*/
+
+  /* Don't forget to define all of the "FIXME" et al. macros too!    */
 
 #endif /* _CCNOWARN_H_ */

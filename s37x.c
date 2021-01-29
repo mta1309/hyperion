@@ -50,7 +50,7 @@ struct  s37x_inst_table_header {
 #define INST37X_TABLE_START(_tbn) \
 static struct s37x_inst_table_entry s37x_table_ ## _tbn[] = {
 
-/* INST37X 
+/* INST37X
    The instruction itself. 1st parm is function address
    2nd parm is opcode or opcode extension */
 
@@ -66,7 +66,7 @@ static struct s37x_inst_table_entry s37x_table_ ## _tbn[] = {
 static struct s37x_inst_table_header s37x_inst_table_header_ ## _tbn = { \
     s37x_table_ ## _tbn, \
     0x ## _tbn };
-    
+
 /* INST37X_INSERT_TABLE_START
    The table of opcode tables */
 #define INST37X_INSERT_TABLE_START \
@@ -81,7 +81,7 @@ static struct s37x_inst_table_header *s37x_table_table[] = {
     NULL };
 
 /* STRUCTURE :
-   s37x_table_table is a NULL terminated  array of pointers to 
+   s37x_table_table is a NULL terminated  array of pointers to
         s37x_inst_table_header structures
 
    Each s37x_inst_table_header (called s37x_inst_table_header_XX)
@@ -98,7 +98,7 @@ static struct s37x_inst_table_header *s37x_table_table[] = {
        function address for the new instruction function */
 
 
-    
+
 /**********************************************************/
 /* The actual instruction tables                          */
 /**********************************************************/
@@ -106,6 +106,8 @@ INST37X_TABLE_START(00)
  /*71*/   INST37X (multiply_single,0x71)
  /*84*/   INST37X (branch_relative_on_index_high,0x84)
  /*85*/   INST37X (branch_relative_on_index_low_or_equal,0x85)
+ /*A8*/   INST37X (move_long_extended,0xA8)
+ /*A9*/   INST37X (compare_logical_long_extended,0xA9)
  /*D0*/   INST37X (translate_and_test_reverse,0xd0)
  /*E1*/   INST37X (pack_unicode,0xe1)
  /*E2*/   INST37X (unpack_unicode,0xe2)
@@ -135,7 +137,7 @@ INST37X_TABLE_START(b2)
  /*B257*/ INST37X (compare_until_substring_equal,0x57)
  /*B25D*/ INST37X (compare_logical_string,0x5d)
  /*B25E*/ INST37X (search_string,0x5e)
- /*B263*/ INST37X (compression_call,0x63)
+ /*B263*/ INST37X (cmpsc_2012,0x63)
  /*B299*/ INST37X (set_bfp_rounding_mode_2bit,0x99)
  /*B29C*/ INST37X (store_fpc,0x9c)
  /*B29D*/ INST37X (load_fpc,0x9d)
@@ -151,34 +153,34 @@ INST37X_TABLE_START(b3)
  /*B301*/ INST37X (load_negative_bfp_short_reg,0x01)
  /*B302*/ INST37X (load_and_test_bfp_short_reg,0x02)
  /*B303*/ INST37X (load_complement_bfp_short_reg,0x03)
- /*B304*/ INST37X (load_lengthened_bfp_short_to_long_reg,0x04)
- /*B305*/ INST37X (load_lengthened_bfp_long_to_ext_reg,0x05)
- /*B306*/ INST37X (load_lengthened_bfp_short_to_ext_reg,0x06)
- /*B307*/ INST37X (multiply_bfp_long_to_ext_reg,0x07)
- /*B308*/ INST37X (compare_and_signal_bfp_short_reg,0x08)
- /*B309*/ INST37X (compare_bfp_short_reg,0x09)
- /*B30A*/ INST37X (add_bfp_short_reg,0x0a)
- /*B30B*/ INST37X (subtract_bfp_short_reg,0x0b)
- /*B30C*/ INST37X (multiply_bfp_short_to_long_reg,0x0c)
- /*B30D*/ INST37X (divide_bfp_short_reg,0x0d)
- /*B30E*/ INST37X (multiply_add_bfp_short_reg,0x0e)
- /*B30F*/ INST37X (multiply_subtract_bfp_short_reg,0x0f)
+ /*B304*/ INST37X (load_lengthened_bfp_short_to_long,0x04)
+ /*B305*/ INST37X (load_lengthened_bfp_long_to_ext,0x05)
+ /*B306*/ INST37X (load_lengthened_bfp_short_to_ext,0x06)
+ /*B307*/ INST37X (multiply_bfp_long_to_ext,0x07)
+ /*B308*/ INST37X (compare_and_signal_bfp_short,0x08)
+ /*B309*/ INST37X (compare_bfp_short,0x09)
+ /*B30A*/ INST37X (add_bfp_short,0x0a)
+ /*B30B*/ INST37X (subtract_bfp_short,0x0b)
+ /*B30C*/ INST37X (multiply_bfp_short_to_long,0x0c)
+ /*B30D*/ INST37X (divide_bfp_short,0x0d)
+ /*B30E*/ INST37X (multiply_addsub_bfp_short,0x0e)
+ /*B30F*/ INST37X (multiply_addsub_bfp_short,0x0f)
  /*B310*/ INST37X (load_positive_bfp_long_reg,0x10)
  /*B311*/ INST37X (load_negative_bfp_long_reg,0x11)
  /*B312*/ INST37X (load_and_test_bfp_long_reg,0x12)
  /*B313*/ INST37X (load_complement_bfp_long_reg,0x13)
- /*B314*/ INST37X (squareroot_bfp_short_reg,0x14)
- /*B315*/ INST37X (squareroot_bfp_long_reg,0x15)
+ /*B314*/ INST37X (squareroot_bfp_short,0x14)
+ /*B315*/ INST37X (squareroot_bfp_long,0x15)
  /*B316*/ INST37X (squareroot_bfp_ext_reg,0x16)
- /*B317*/ INST37X (multiply_bfp_short_reg,0x17)
- /*B318*/ INST37X (compare_and_signal_bfp_long_reg,0x18)
- /*B319*/ INST37X (compare_bfp_long_reg,0x19)
- /*B31A*/ INST37X (add_bfp_long_reg,0x1a)
- /*B31B*/ INST37X (subtract_bfp_long_reg,0x1b)
- /*B31C*/ INST37X (multiply_bfp_long_reg,0x1c)
- /*B31D*/ INST37X (divide_bfp_long_reg,0x1d)
- /*B31E*/ INST37X (multiply_add_bfp_long_reg,0x1e)
- /*B31F*/ INST37X (multiply_subtract_bfp_long_reg,0x1f)
+ /*B317*/ INST37X (multiply_bfp_short,0x17)
+ /*B318*/ INST37X (compare_and_signal_bfp_long,0x18)
+ /*B319*/ INST37X (compare_bfp_long,0x19)
+ /*B31A*/ INST37X (add_bfp_long,0x1a)
+ /*B31B*/ INST37X (subtract_bfp_long,0x1b)
+ /*B31C*/ INST37X (multiply_bfp_long,0x1c)
+ /*B31D*/ INST37X (divide_bfp_long,0x1d)
+ /*B31E*/ INST37X (multiply_addsub_bfp_long,0x1e)
+ /*B31F*/ INST37X (multiply_addsub_bfp_long,0x1f)
  /*B324*/ INST37X (load_lengthened_float_short_to_long_reg,0x24)
  /*B325*/ INST37X (load_lengthened_float_long_to_ext_reg,0x25)
  /*B326*/ INST37X (load_lengthened_float_short_to_ext_reg,0x26)
@@ -397,8 +399,8 @@ INST37X_TABLE_START(ed)
  /*ED0B*/ INST37X (subtract_bfp_short,0x0b)
  /*ED0C*/ INST37X (multiply_bfp_short_to_long,0x0c)
  /*ED0D*/ INST37X (divide_bfp_short,0x0d)
- /*ED0E*/ INST37X (multiply_add_bfp_short,0x0e)
- /*ED0F*/ INST37X (multiply_subtract_bfp_short,0x0f)
+ /*ED0E*/ INST37X (multiply_addsub_bfp_short,0x0e)
+ /*ED0F*/ INST37X (multiply_addsub_bfp_short,0x0f)
  /*ED10*/ INST37X (test_data_class_bfp_short,0x10)
  /*ED11*/ INST37X (test_data_class_bfp_long,0x11)
  /*ED12*/ INST37X (test_data_class_bfp_ext,0x12)
@@ -411,8 +413,8 @@ INST37X_TABLE_START(ed)
  /*ED1B*/ INST37X (subtract_bfp_long,0x1b)
  /*ED1C*/ INST37X (multiply_bfp_long,0x1c)
  /*ED1D*/ INST37X (divide_bfp_long,0x1d)
- /*ED1E*/ INST37X (multiply_add_bfp_long,0x1e)
- /*ED1F*/ INST37X (multiply_subtract_bfp_long,0x1f)
+ /*ED1E*/ INST37X (multiply_addsub_bfp_long,0x1e)
+ /*ED1F*/ INST37X (multiply_addsub_bfp_long,0x1f)
  /*ED24*/ INST37X (load_lengthened_float_short_to_long,0x24)
  /*ED25*/ INST37X (load_lengthened_float_long_to_ext,0x25)
  /*ED26*/ INST37X (load_lengthened_float_short_to_ext,0x26)

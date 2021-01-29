@@ -697,7 +697,6 @@ sl_fmtdate( char *dest, char *src, int fromto )
 
             default:
                 return( NULL );
-            break;
         }
 
         /*
@@ -1547,7 +1546,6 @@ sl_ds2( SLLABEL *lab,
 
             default:
                 return( SLE_TRTCH );
-            break;
         }
     }
 

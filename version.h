@@ -16,6 +16,14 @@
 #define _HERCULES_H_
 
 #include "hercules.h"
+/* What follows is a relatively ugly kludge to let the Windows build  */
+/* catch up gracefully to the recent enhancements to the open source  */
+/* build.                                                             */
+/* Note: for CMake builds, _dynamic_version is replaced by #defines   */
+/* in config.h                                                        */
+#if defined(_MSVC_) && !defined(HAVE_CONFIG_H)
+#include "_dynamic_version.h"
+#endif  /* _MSVC_  */
 
 #ifndef _VERSION_C_
 #ifndef _HUTIL_DLL_
@@ -28,40 +36,36 @@
 #endif /* _LOGGER_C_ */
 
 #if !defined(VERSION)
-#if defined(V1) && defined(V2) && defined(V3) && defined(V4)
-#define VER V1##.##V2##.##V3##.##V4
-#define VERSION QSTR(VER)
+  #if defined(VERS_MAJ) && defined(VERS_INT) && defined(VERS_MIN) && defined(VERS_BLD)
+    #define VER VERS_MAJ##.##VERS_INT##.##VERS_MIN##.##VERS_BLD
+    #define VERSION QSTR(VER)
+  #endif
 #endif
+
+#if defined( _MSVC_ )
+  /* Some modules, such as dyngui, might need these values,
+     since they are ALWAYS numeric whereas VERSION is not. */
+  #if !defined(VERS_MAJ) || !defined(VERS_INT) || !defined(VERS_MIN) || !defined(VERS_BLD)
+    #error "VERSION not defined properly"
+  #endif
 #endif
 
 /*
-  Some modules, such as dyngui, might need these values,
-  since they are ALWAYS numeric whereas VERSION is not.
-*/
-#if defined( _MSVC_ ) && (!defined(V1) || !defined(V2) || !defined(V3) || !defined(V4))
-  #error "VERSION not defined properly"
-#endif
-
-/*
-  The 'VERSION' string can be any value the user wants.
+    The 'VERSION' string can be any value the user wants.
 */
 #if !defined(VERSION)
-  #ifndef _MSVC_
-    #warning No version specified
-  #else
-    WARNING("No version specified")
-  #endif
-  #define VERSION              "(unknown!)"
+  WARNING("No version specified")
+  #define VERSION              "0.0.0.0-(unknown!)"  /* ensure a numeric unknown version  */
   #define CUSTOM_BUILD_STRING  "('VERSION' was not defined!)"
 #endif
 
-#define HDL_VERS_HERCULES VERSION
-#define HDL_SIZE_HERCULES sizeof(VERSION)
+#define HDL_VERS_HERCULES          VERSION
+#define HDL_SIZE_HERCULES   sizeof(VERSION)
 
-VER_DLL_IMPORT void display_version(FILE *f, char *prog, const char verbose);
-VER_DLL_IMPORT void display_version_2(FILE *f, char *prog, const char verbose,int httpfd);
-VER_DLL_IMPORT int get_buildinfo_strings(const char*** pppszBldInfoStr);
+VER_DLL_IMPORT void display_version       ( FILE* f, int httpfd, char* prog );
+VER_DLL_IMPORT void display_build_options ( FILE* f, int httpfd );
+VER_DLL_IMPORT int  get_buildinfo_strings ( const char*** pppszBldInfoStr );
 
 #define HERCULES_COPYRIGHT \
-       "(c) Copyright 1999-2013 by Roger Bowler, Jan Jaeger, and others"
+       "(C) Copyright 1999-2016 by Roger Bowler, Jan Jaeger, and others"
 #endif // _HERCULES_H_

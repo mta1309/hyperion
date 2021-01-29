@@ -207,7 +207,7 @@ asn_asx_tran_excp:
 _DAT_C_STATIC int ARCH_DEP(authorize_asn) (U16 ax, U32 aste[],
                                                int atemask, REGS *regs)
 {
-U32     ato;                            /* Authority table origin    */
+RADR    ato;                            /* Authority table origin    */
 int     atl;                            /* Authority table length    */
 BYTE    ate;                            /* Authority table entry     */
 
@@ -575,7 +575,7 @@ U16     eax;                            /* Authorization index       */
 #endif /*defined(FEATURE_ACCESS_REGISTERS)*/
 
     switch(arn) {
-      
+
     case USE_INST_SPACE:
         switch(regs->AEA_AR(USE_INST_SPACE)) {
 
@@ -592,8 +592,8 @@ U16     eax;                            /* Authorization index       */
         } /* end switch(regs->AEA_AR(USE_INST_SPACE)) */
 
         regs->dat.asd = regs->CR(regs->AEA_AR(USE_INST_SPACE));
-        break;      
-        
+        break;
+
     case USE_PRIMARY_SPACE:
         regs->dat.stid = TEA_ST_PRIMARY;
         regs->dat.asd = regs->CR(1);
@@ -850,7 +850,7 @@ U32     ptl;                            /* Page table length         */
     /* Look up the address in the TLB */
     if (   ((vaddr & TLBID_PAGEMASK) | regs->tlbID) == regs->tlb.TLB_VADDR(tlbix)
         && (regs->tlb.common[tlbix] || regs->dat.asd == regs->tlb.TLB_ASD(tlbix))
-        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr) 
+        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr)
         && !(acctype & ACC_NOTLB) )
     {
         pte = regs->tlb.TLB_PTE(tlbix);
@@ -1005,7 +1005,7 @@ U32     ptl;                            /* Page table length         */
     /* [3.11.4] Look up the address in the TLB */
     if (   ((vaddr & TLBID_PAGEMASK) | regs->tlbID) == regs->tlb.TLB_VADDR(tlbix)
         && (regs->tlb.common[tlbix] || regs->dat.asd == regs->tlb.TLB_ASD(tlbix))
-        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr) 
+        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr)
         && !(acctype & ACC_NOTLB) )
     {
         pte = regs->tlb.TLB_PTE(tlbix);
@@ -1133,12 +1133,12 @@ U16     sx, px;                         /* Segment and page index,
     /* Extract the private space bit from the ASCE */
     regs->dat.pvtaddr = ((regs->dat.asd & (ASCE_P|ASCE_R)) != 0);
 
-//  logmsg("asce=%16.16" I64_FMT "X\n",regs->dat.asd);
+//  logmsg("asce=%16.16"PRIX64"\n",regs->dat.asd);
 
     /* [3.11.4] Look up the address in the TLB */
     if (   ((vaddr & TLBID_PAGEMASK) | regs->tlbID) == regs->tlb.TLB_VADDR(tlbix)
         && (regs->tlb.common[tlbix] || regs->dat.asd == regs->tlb.TLB_ASD(tlbix))
-        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr) 
+        && !(regs->tlb.common[tlbix] && regs->dat.pvtaddr)
         && !(acctype & ACC_NOTLB) )
     {
         pte = regs->tlb.TLB_PTE(tlbix);
@@ -1221,7 +1221,7 @@ U16     sx, px;                         /* Segment and page index,
                    All bytes must be fetched concurrently as observed by
                    other CPUs */
                 rte = ARCH_DEP(fetch_doubleword_absolute) (rto, regs);
-//              logmsg("r1te:%16.16" I64_FMT "X=>%16.16" I64_FMT "X\n",rto,rte);
+//              logmsg("r1te:%16.16"PRIX64"=>%16.16"PRIX64"\n",rto,rte);
 
                 /* Region-first translation exception if the bit 58 of
                    the region-first table entry is set (region invalid) */
@@ -1275,7 +1275,7 @@ U16     sx, px;                         /* Segment and page index,
                    All bytes must be fetched concurrently as observed by
                    other CPUs */
                 rte = ARCH_DEP(fetch_doubleword_absolute) (rto, regs);
-//              logmsg("r2te:%16.16" I64_FMT "X=>%16.16" I64_FMT "X\n",rto,rte);
+//              logmsg("r2te:%16.16"PRIX64"=>%16.16"PRIX64"\n",rto,rte);
 
                 /* Region-second translation exception if the bit 58 of
                    the region-second table entry is set (region invalid) */
@@ -1329,7 +1329,7 @@ U16     sx, px;                         /* Segment and page index,
                    All bytes must be fetched concurrently as observed by
                    other CPUs */
                 rte = ARCH_DEP(fetch_doubleword_absolute) (rto, regs);
-//              logmsg("r3te:%16.16" I64_FMT "X=>%16.16" I64_FMT "X\n",rto,rte);
+//              logmsg("r3te:%16.16"PRIX64"=>%16.16"PRIX64"\n",rto,rte);
 
                 /* Region-third translation exception if the bit 58 of
                    the region-third table entry is set (region invalid) */
@@ -1382,7 +1382,7 @@ U16     sx, px;                         /* Segment and page index,
             /* Fetch segment table entry from absolute storage.  All bytes
                must be fetched concurrently as observed by other CPUs */
             ste = ARCH_DEP(fetch_doubleword_absolute) (sto, regs);
-//          logmsg("ste:%16.16" I64_FMT "X=>%16.16" I64_FMT "X\n",sto,ste);
+//          logmsg("ste:%16.16"PRIX64"=>%16.16"PRIX64"\n",sto,ste);
 
             /* Segment translation exception if segment invalid */
             if (ste & ZSEGTAB_I)
@@ -1398,7 +1398,7 @@ U16     sx, px;                         /* Segment and page index,
                entry indicates a common segment */
             if (regs->dat.pvtaddr && (ste & ZSEGTAB_C))
                 goto tran_spec_excp;
-        
+
 #if defined(FEATURE_ENHANCED_DAT_FACILITY)
             if(FACILITY_ENABLED(ENHANCED_DAT,regs)
               && (regs->CR_L(0) & CR0_ED)
@@ -1412,7 +1412,7 @@ U16     sx, px;                         /* Segment and page index,
                 if (unlikely(acctype & ACC_LPTEA))
                 {
                     regs->dat.raddr = sto | (regs->dat.protect ? 0x04 : 0);
-//                  logmsg("raddr:%16.16" I64_FMT "X cc=2\n",regs->dat.raddr);
+//                  logmsg("raddr:%16.16"PRIX64" cc=2\n",regs->dat.raddr);
                     regs->dat.xcode = 0;
                     cc = 2;
                     return cc;
@@ -1424,7 +1424,7 @@ U16     sx, px;                         /* Segment and page index,
                 /* Fake 4K PFRA for TLB purposes */
                 regs->dat.rpfra = ((ste & ZSEGTAB_SFAA) | (vaddr & ~ZSEGTAB_SFAA)) & PAGEFRAME_PAGEMASK;
 
-//              logmsg("raddr:%16.16" I64_FMT "X cc=0\n",regs->dat.raddr);
+//              logmsg("raddr:%16.16"PRIX64" cc=0\n",regs->dat.raddr);
 
                 /* [3.11.4.2] Place the translated address in the TLB */
                 if (!(acctype & ACC_NOTLB))
@@ -1477,7 +1477,7 @@ U16     sx, px;                         /* Segment and page index,
             /* Fetch the page table entry from absolute storage.  All bytes
                must be fetched concurrently as observed by other CPUs */
             pte = ARCH_DEP(fetch_doubleword_absolute) (pto, regs);
-//          logmsg("pte:%16.16" I64_FMT "X=>%16.16" I64_FMT "X\n",pto,pte);
+//          logmsg("pte:%16.16"PRIX64"=>%16.16"PRIX64"\n",pto,pte);
 
             /* Page translation exception if page invalid */
             if (pte & ZPGETAB_I)
@@ -1535,7 +1535,7 @@ address_excp:
 tran_spec_excp:
 #if defined(FEATURE_ESAME)
 //    logmsg("dat.c: translation specification exception...\n");
-//    logmsg("       pte = %16.16" I64_FMT "X, ste = %16.16" I64_FMT "X, rte=%16.16" I64_FMT "X\n",
+//    logmsg("       pte = %16.16"PRIX64", ste = %16.16"PRIX64", rte=%16.16"PRIX64"\n",
 //        pte, ste, rte);
 #else
 //    logmsg("dat.c: translation specification exception...\n");
@@ -1808,7 +1808,22 @@ RADR ptemask;
     {
         INVALIDATE_AIA(regs->guestregs);
         for (i = 0; i < TLBN; i++)
-            if ((regs->guestregs->tlb.TLB_PTE(i) & ptemask) == pte)
+/************************************************************************** @PJJ */
+/* The guest registers in the SIE copy TLB PTE entries for DAT-OFF guests * @PJJ */
+/* like CMS do NOT actually contain the PTE (but rather the host primary  * @PJJ */
+/* virtual address, both masked with TBLID_PAGEMASK).  In order to check  * @PJJ */
+/* if such guest TLB entry needs to be cleared, one needs to check the    * @PJJ */
+/* parallel host registers TLB PTE entry.  Hence that the if-test that    * @PJJ */
+/* follows needed to be expanded.  Originally it was just :               * @PJJ */
+/*                                                                        * @PJJ */
+/*          if ((regs->guestregs->tlb.TLB_PTE(i) & ptemask) == pte)       * @PJJ */
+/*                                                                        * @PJJ */
+/* and it is now expanded with the additional test as follows :           * @PJJ */
+/*                                                                        * @PJJ */
+/*                                        (Peter J. Jansen, 29-Jul-2016)  * @PJJ */
+/************************************************************************** @PJJ */
+            if ((regs->guestregs->tlb.TLB_PTE(i) & ptemask) == pte ||    /* @PJJ */
+                 (regs->hostregs->tlb.TLB_PTE(i) & ptemask) == pte)      /* @PJJ */
                 regs->guestregs->tlb.TLB_VADDR(i) &= TLBID_PAGEMASK;
     }
     else
@@ -2238,7 +2253,7 @@ int     ix = TLBIX(addr);               /* TLB index                 */
             regs->tlb.TLB_ASD(ix) = regs->dat.asd;
             /* Ensure that the private bit is percolated to the guest such that LAP is applied correctly */
             regs->dat.pvtaddr = regs->hostregs->dat.pvtaddr;
-            
+
             /* Build tlb entry of XC dataspace */
             regs->dat.asd = regs->hostregs->dat.asd ^ TLB_HOST_ASD;
             regs->CR(CR_ALB_OFFSET + arn) = regs->dat.asd;
@@ -2248,13 +2263,29 @@ int     ix = TLBIX(addr);               /* TLB index                 */
         }
 
         /* Convert host real address to host absolute address */
-        regs->hostregs->dat.aaddr = aaddr =
-              APPLY_PREFIXING (regs->hostregs->dat.raddr, regs->hostregs->PX);
-        apfra = APPLY_PREFIXING(regs->hostregs->dat.rpfra, regs->hostregs->PX);
+        /* ISW 20181005 */
+        /* Use the Prefixing logic of the SIE host (not the guest) */
+        switch(regs->hostregs->arch_mode)
+        {
+            case ARCH_390:
+                regs->hostregs->dat.aaddr = aaddr =
+                        s390_apply_prefixing( regs->hostregs->dat.raddr, regs->hostregs->PX );
+                apfra = s390_apply_prefixing( regs->hostregs->dat.rpfra, regs->hostregs->PX );
+                break;
+            case ARCH_900:
+                regs->hostregs->dat.aaddr = aaddr =
+                        z900_apply_prefixing( regs->hostregs->dat.raddr, regs->hostregs->PX );
+                apfra = z900_apply_prefixing( regs->hostregs->dat.rpfra, regs->hostregs->PX );
+                break;
+            /* No S/370 or any other SIE host exist */
+            default:
+            case ARCH_370:
+                CRASH();
+        }
 
         if(regs->hostregs->dat.aaddr > regs->hostregs->mainlim)
             goto vabs_addr_excp;
-        /* Take into account SIE guests with a 2K page scheme 
+        /* Take into account SIE guests with a 2K page scheme
            because the SIE host may be operating with a 4K page
            system */
 #if defined(FEATURE_2K_STORAGE_KEYS)

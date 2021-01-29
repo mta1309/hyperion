@@ -76,7 +76,7 @@ static CKDDEV ckdtab[] = {
  {"3375",      0x3375,0x02,0x20,0x0e,  959,3,12,36000,35616, 832,36000,196,0x5007, 1, 32,384,160,   0,  0,0,"3880"},
  {"3375-1",    0x3375,0x02,0x20,0x0e,  959,3,12,36000,35616, 832,36000,196,0x5007, 1, 32,384,160,   0,  0,0,"3880"},
  {"3375-x",    0x3375,0x02,0x20,0x0e,65535,0,12,36000,35616, 832,36000,196,0x5007, 1, 32,384,160,   0,  0,0,"3880"},
- 
+
 /* name         type model clas code prime a hd    r0    r1 har0   len sec    rps  f f1  f2   f3   f4 f5 f6  cu */
  {"3380",      0x3380,0x02,0x20,0x0e,  885,1,15,47988,47476,1088,47968,222,0x5007, 1, 32,492,236,   0,  0,0,"3880"},
  {"3380-1",    0x3380,0x02,0x20,0x0e,  885,1,15,47988,47476,1088,47968,222,0x5007, 1, 32,492,236,   0,  0,0,"3880"},
@@ -327,7 +327,7 @@ U32 i;                                  /* Loop Index                */
         for (i = 0; i < (int)BLKTAB_NUM; i++)
         {
             if ((name && !strcmp(name, blktab[i].name)) ||
-                (U32)devt == (U32)blktab[i].devt || 
+                (U32)devt == (U32)blktab[i].devt ||
                 (U32)devt == (U32)(blktab[i].devt & 0xff))
                 return &blktab[i];
         }
@@ -336,7 +336,8 @@ U32 i;                                  /* Loop Index                */
     default:
         return NULL;
     }
-    return NULL;
+
+    UNREACHABLE_CODE( return NULL );
 }
 
 /*-------------------------------------------------------------------*/
@@ -382,7 +383,7 @@ int len;
         )
     {
       len = 0;
-    }    
+    }
 
     return len;
 }
@@ -511,7 +512,7 @@ BYTE buf[256];
                         dev->ckdtab->devt, dev->ckdtab->model);
     for (i = 4; i < 30; i++)
         buf[i] = host_to_guest(buf[i]);
-    store_hw(buf + 30, 0x0300);
+    store_hw(buf + 30, dev->devnum);        /* Uniquely tag within system */
 
     /* Bytes 32-63: NED 2  Node element descriptor for the string */
     store_fw (buf + 32, 0xc4000000);
@@ -519,7 +520,7 @@ BYTE buf[256];
                         dev->ckdtab->devt, dev->ckdtab->model);
     for (i = 36; i < 62; i++)
         buf[i] = host_to_guest(buf[i]);
-    store_hw (buf + 62, 0x0300);
+    store_hw (buf + 62, 0x0000);
 
     /* Bytes 64-95: NED 3  Node element descriptor for the storage director */
     store_fw (buf + 64, 0xd4020000);
@@ -527,7 +528,8 @@ BYTE buf[256];
                         dev->ckdcu->devt, dev->ckdcu->model);
     for (i = 68; i < 94; i++)
         buf[i] = host_to_guest(buf[i]);
-    store_hw (buf + 94, 0x0300);
+    buf[94] = 0x00;
+    buf[95] = (dev->devnum >> 8) & 0xFF;
 
     /* Bytes 96-127: NED 4  Node element descriptor for the subsystem */
     store_fw (buf + 96, 0xF0000001);
@@ -535,7 +537,7 @@ BYTE buf[256];
                         dev->ckdcu->devt);
     for (i = 100; i < 126; i++)
         buf[i] = host_to_guest(buf[i]);
-    store_hw (buf + 126, 0x0300);
+    store_hw (buf + 126, 0x0000);
 
     /* Bytes 128-223: zeroes */
 
@@ -583,10 +585,10 @@ BYTE buf[44];
     num = 40;
 
     /* Build an additional 4 bytes of data for the 3990-6 */
-    if (MODEL6(dev->ckdcu)) 
+    if (MODEL6(dev->ckdcu))
     {
         buf[0] = 0x01;            /* Set 3990-6 enhanced flag */
-        num = 44;                   
+        num = 44;
     } /* end if(3990-6) */
 
     /* Copy subsystem status to the I/O buf */
@@ -606,7 +608,7 @@ int dasd_build_fba_devid (FBADEV *fba, BYTE *devid)
     memset( devid, 0, 256 );
 
     devid[0] = 0xff;
-    devid[1] = (fba->cu >> 8) & 0xff; 
+    devid[1] = (fba->cu >> 8) & 0xff;
     devid[2] = fba->cu & 0xff;
     devid[3] = 0x01;                  /* assume model is 1 */
     devid[4] = (fba->devt >> 8) & 0xff;

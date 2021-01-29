@@ -9,7 +9,13 @@
 
 #include "hstdinc.h"
 
+#ifndef _LOADMEM_C_
 #define _LOADMEM_C_
+#endif
+
+#ifndef _HENGINE_DLL_
+#define _HENGINE_DLL_
+#endif
 
 #include "hercules.h"
 
@@ -49,7 +55,7 @@ REGS *regs;
     {
         loadaddr = argv[2];
 
-        if (sscanf(loadaddr, "%"I64_FMT"x", &work64) !=1)
+        if (sscanf(loadaddr, "%"SCNx64, &work64) !=1)
         {
             WRMSG(HHC02205, "E", loadaddr, ": invalid address" );
             return -1;
@@ -78,7 +84,7 @@ REGS *regs;
     // "Loading file %s to location %s"
     {
         char buf1[32];
-        MSGBUF( buf1, "%"I64_FMT"X", (U64) aaddr );
+        MSGBUF( buf1, "%"PRIX64, (U64) aaddr );
         WRMSG(HHC02250, "I", fname, buf1 );
     }
 
@@ -204,7 +210,7 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
     {
         loadaddr = argv[2];
 
-        if (sscanf(loadaddr, "%"I64_FMT"x", &work64) !=1)
+        if (sscanf(loadaddr, "%"SCNx64, &work64) !=1)
         {
             WRMSG(HHC02205, "E", loadaddr, ": invalid address" );
             return -1;
@@ -495,9 +501,7 @@ int loadtext_cmd(int argc, char *argv[], char *cmdline)
                 /* if record is "SPB" then process */
                 else if (ObjectSPB)
                 {
-                    aaddr = (MAX(aaddr, ahighaddr) + 4093) &&
-                            0xFFFFF000;
-
+                    aaddr = (MAX(aaddr, ahighaddr) + 4093) & 0xFFFFF000;
 
                     /* Warn if further action may exceed storage */
 

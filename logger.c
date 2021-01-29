@@ -17,20 +17,26 @@
 #define _HUTIL_DLL_
 
 #include "hercules.h"
-#include "opcode.h"             /* Required for SETMODE macro        */
+#include "opcode.h"                     /* Required for SETMODE      */
+
+/*********************************************************************/
+/* logger work variables                                             */
+/*********************************************************************/
+
 static COND  logger_cond;
 static LOCK  logger_lock;
 static TID   logger_tid;
 
-static int   logger_init_flg = FALSE;   /* will be reset by logger_init() */
+static int   logger_init_flg = FALSE;   /* reset by logger_init()    */
 
 static char *logger_buffer;
 static int   logger_bufsize;
 
-static int   logger_currmsg;
-static int   logger_wrapped;
+static int   logger_currmsg;            /* index of most recent msg  */
+static int   logger_wrapped;            /* msg buffer has wrapped    */
 
-static int   logger_active=0;
+static int   logger_active = 0;         /* set by logger_thread,     */
+                                        /* cleared by logger_term    */
 
 static FILE *logger_syslog[2];          /* Syslog read/write pipe    */
        int   logger_syslogfd[2];        /*   pairs                   */
@@ -38,24 +44,115 @@ static FILE *logger_hrdcpy;             /* Hardcopy log or zero      */
 static int   logger_hrdcpyfd;           /* Hardcopt fd or -1         */
 static char  logger_filename[MAX_PATH];
 
-/* Find the index for a specific line number in the log,             */
-/* one being the most recent line                                    */
+
+/*********************************************************************/
+/*              log_read  -  read system log                         */
+/*********************************************************************/
+/*                                                                   */
+/* parameters:                                                       */
+/*                                                                   */
+/*   msg        pointer to char pointer. The char pointer will       */
+/*              point to one or more messages upon return.           */
+/*                                                                   */
+/*   msgidx     index value used on multiple read requests. Pass     */
+/*              a value of -1 on the first call to begin reading     */
+/*              from the oldest message in the log. On the next      */
+/*              call pass the updated value to retrieve the next     */
+/*              group of messages.                                   */
+/*                                                                   */
+/*   block      LOG_NOBLOCK - non blocking request                   */
+/*              LOG_BLOCK   - blocking request                       */
+/* returns:                                                          */
+/*                                                                   */
+/*   length of msg data returned or zero.                            */
+/*                                                                   */
+/* PROGRAMMING NOTE:                                                 */
+/*                                                                   */
+/*   The string of message data that *msg points to when the return  */
+/*   value is non-zero is NOT null terminated! (since it is in fact  */
+/*   a pointer directly into the system's live message buffer). You  */
+/*   should take care to NEVER attempt to call strlen on this value! */
+/*                                                                   */
+/*   A zero is returned whenever: a) no new messages have arrived    */
+/*   since the last time the function was called, or b) the logger   */
+/*   facility is no longer active (i.e. Hercules itself has ended).  */
+/*                                                                   */
+/*********************************************************************/
+DLL_EXPORT int log_read( char** msg, int* msgidx, int block )
+{
+int bytes_returned;
+
+    obtain_lock( &logger_lock );
+
+    while (*msgidx == logger_currmsg && block)
+    {
+        if (logger_active)
+        {
+            wait_condition( &logger_cond, &logger_lock );
+        }
+        else
+        {
+            *msgidx = logger_currmsg;
+            *msg = logger_buffer + logger_currmsg;
+            release_lock( &logger_lock );
+            return 0;
+        }
+    }
+
+    if (*msgidx != logger_currmsg)
+    {
+        if (*msgidx < 0)
+            *msgidx = logger_wrapped ? logger_currmsg : 0;
+
+        if (*msgidx < 0 || *msgidx >= logger_bufsize)
+            *msgidx = 0;
+
+        *msg = logger_buffer + *msgidx;
+
+        if (*msgidx >= logger_currmsg)
+        {
+            bytes_returned = logger_bufsize - *msgidx;
+            *msgidx = 0;
+        }
+        else
+        {
+            bytes_returned = logger_currmsg - *msgidx;
+            *msgidx = logger_currmsg;
+        }
+    }
+    else
+        bytes_returned = 0;
+
+    release_lock( &logger_lock );
+
+    return bytes_returned;
+}
+
+
+/*********************************************************************/
+/*             log_line  -  find index for given line                */
+/*********************************************************************/
+/* Find the buffer index for a specific line, with the the value 1   */
+/* indicating the last (most current) line, 2 meaning the last two   */
+/* lines, 3 meaning the three most current lines, ... etc.           */
+/*                                                                   */
 /* Example:                                                          */
-/*   read the last 5 lines in the syslog:                            */
 /*                                                                   */
-/*   int msgnum;                                                     */
-/*   int msgidx;                                                     */
-/*   char *msgbuf;                                                   */
+/*   char*  msgbuf;                                                  */
+/*   int    msglen;                                                  */
+/*   int    msgidx;                                                  */
 /*                                                                   */
-/*        msgidx = log_line(5);                                      */
-/*        while((msgcnt = log_read(&msgbuf, &msgidx, LOG_NOBLOCK)))  */
-/*            function_to_process_log(msgbuf, msgcnt);               */
+/*   // read the last 5 lines of syslog...                           */
+/*   msgidx = log_line(5);                                           */
+/*   while ((msglen = log_read( &msgbuf, &msgidx, LOG_NOBLOCK )))    */
+/*       function_to_process_log( msgbuf, msglen );                  */
 /*                                                                   */
+/*********************************************************************/
 DLL_EXPORT int log_line(int linenumber)
 {
 char *msgbuf[2] = {NULL, NULL}, *tmpbuf = NULL;
 int  msgidx[2] = { -1, -1 };
-int  msgcnt[2] = {0, 0};
+int  msglen[2] = {0, 0};
 int  i;
 
     if(!linenumber++)
@@ -65,17 +162,17 @@ int  i;
     do {
         msgidx[0] = msgidx[1];
         msgbuf[0] = msgbuf[1];
-        msgcnt[0] = msgcnt[1];
-    } while((msgcnt[1] = log_read(&msgbuf[1], &msgidx[1], LOG_NOBLOCK)));
+        msglen[0] = msglen[1];
+    } while((msglen[1] = log_read(&msgbuf[1], &msgidx[1], LOG_NOBLOCK)));
 
     for(i = 0; i < 2 && linenumber; i++)
         if(msgidx[i] != -1)
         {
             for(; linenumber > 0; linenumber--)
             {
-                if(!(tmpbuf = (void *)memrchr(msgbuf[i],'\n',msgcnt[i])))
+                if(!(tmpbuf = (void *)memrchr(msgbuf[i],'\n',msglen[i])))
                     break;
-                msgcnt[i] = (int)(tmpbuf - msgbuf[i]);
+                msglen[i] = (int)(tmpbuf - msgbuf[i]);
             }
             if(!linenumber)
                 break;
@@ -84,84 +181,47 @@ int  i;
     while(i < 2 && tmpbuf && (*tmpbuf == '\r' || *tmpbuf == '\n'))
     {
         tmpbuf++;
-        msgcnt[i]++;
+        msglen[i]++;
     }
 
-    return i ? msgcnt[i] + msgidx[0] : msgcnt[i];
+    return i ? msglen[i] + msgidx[0] : msglen[i];
 }
 
+#if !defined( _MSVC_ )
 
-/* log_read - read system log                                        */
-/* parameters:                                                       */
-/*   buffer   - pointer to bufferpointer                             */
-/*              the bufferpointer will be returned                   */
-/*   msgindex - an index used on multiple read requests              */
-/*              a value of -1 ensures that reading starts at the     */
-/*              oldest entry in the log                              */
-/*   block    - LOG_NOBLOCK - non blocking request                   */
-/*              LOG_BLOCK   - blocking request                       */
-/* returns:                                                          */
-/*   number of bytes in buffer or zero                               */
-/*                                                                   */
-/*                                                                   */
-DLL_EXPORT int log_read(char **buffer, int *msgindex, int block)
+static int  saved_stdout;
+
+static void logger_redirect()
 {
-int bytes_returned;
+    /* Save current stdout for later */
+    saved_stdout = dup( STDOUT_FILENO );
 
-    obtain_lock(&logger_lock);
-
-    if(*msgindex == logger_currmsg && block)
+    /* Redirect stdout to the logger */
+    if (dup2( logger_syslogfd[ LOG_WRITE ], STDOUT_FILENO ) == -1)
     {
-        if(logger_active)
+        if (logger_hrdcpy)
         {
-            wait_condition(&logger_cond, &logger_lock);
+            // "Logger: error in function %s: %s"
+            fprintf( logger_hrdcpy, MSG( HHC02102, "E", "dup2()", strerror( errno )));
         }
-        else
-        {
-            *msgindex = logger_currmsg;
-            *buffer = logger_buffer + logger_currmsg;
-            release_lock(&logger_lock);
-            return 0;
-        }
+        exit(1);
     }
-
-    if(*msgindex != logger_currmsg)
-    {
-        if(*msgindex < 0)
-            *msgindex = logger_wrapped ? logger_currmsg : 0;
-
-        if(*msgindex < 0 || *msgindex >= logger_bufsize)
-            *msgindex = 0;
-
-        *buffer = logger_buffer + *msgindex;
-
-        if(*msgindex >= logger_currmsg)
-        {
-            bytes_returned = logger_bufsize - *msgindex;
-            *msgindex = 0;
-        }
-        else
-        {
-            bytes_returned = logger_currmsg - *msgindex;
-            *msgindex = logger_currmsg;
-        }
-    }
-    else
-        bytes_returned = 0;
-
-    release_lock(&logger_lock);
-
-    return bytes_returned;
 }
 
+DLL_EXPORT void logger_unredirect()
+{
+    /* Restore stdout if needed */
+    if ( saved_stdout > 0 )
+    {  
+        dup2(  saved_stdout, STDOUT_FILENO );
+        close( saved_stdout );
+    }    
+}
+
+#endif // !defined( _MSVC_ )
 
 static void logger_term(void *arg)
 {
-    char *lmsbuf = NULL;             /* xxx                       */
-    int   lmsnum = -1;               /* xxx                       */
-    int   lmscnt = -1;               /* xxx                       */
-    char* term_msg = MSG(HHC02103, "I");
-
     UNREFERENCED(arg);
 
     log_wakeup(NULL);
@@ -170,7 +230,7 @@ static void logger_term(void *arg)
     /* Flush all pending logger o/p before redirecting?? */
     fflush(stdout);
 
-    if(logger_active)
+    if (logger_active)
     {
         /* Redirect all output to stderr */
         dup2(STDERR_FILENO, STDOUT_FILENO);
@@ -180,7 +240,7 @@ static void logger_term(void *arg)
         log_wakeup(NULL);
         usleep(1000);
 
-        if ( logger_tid != 0 && !sysblk.shutdown )
+        if (logger_tid != 0 && !sysblk.shutdown)
         {
             sleep(2);
             /* Logger is now terminating */
@@ -194,69 +254,39 @@ static void logger_term(void *arg)
 
         }
 
-        fwrite("\n",1,1,stderr);
-        /* Read and display any msgs still remaining in the system log */
-        lmsnum = log_line(-1);
-        while((lmscnt = log_read(&lmsbuf, &lmsnum, LOG_BLOCK)))
+        fprintf( stderr, "\n" );
+
+        /* In external GUI mode, the external GUI will receive this
+           message when the logger_thread writes it to the hardcopy
+           file just before it exits. If we also issued it here too,
+           it would end up receiving the message twice, so we skip
+           issuing it here if we're running in external GUI mode.
+
+           In all OTHER cases however (i.e. if we're NOT running in
+           external GUI mode), it's unimportant to us whether or not
+           it also gets written to the hardcopy file. We ALWAYS need
+           to issue the message here so that it appears on the screen.
+        */
+        if (!daemon_task)
         {
-            char *p = NULL;
-            char *strtok_str = NULL;
-
-            lmsbuf[lmscnt-1] = '\0';
-
-            p = strtok_r( lmsbuf, "\n", &strtok_str );
-            while ( (p = strtok_r(NULL, "\n", &strtok_str ) ) != NULL )
-            {
-                char*   pLeft = p;
-                int     nLeft = (int)strlen(p);
-
-#if defined( OPTION_MSGCLR )
-                /* Remove "<pnl,..." color string if it exists */
-                if (1
-                    && nLeft > 5
-                    && strncasecmp( pLeft, "<pnl", 4 ) == 0
-                    && (pLeft = memchr( pLeft+4, '>', nLeft-4 )) != NULL
-                   )
-                {
-                    pLeft++;
-                    nLeft -= (int)(pLeft - p);
-                }
-#endif // defined( OPTION_MSGCLR )
-                if (nLeft)
-                {
-                    fwrite(pLeft,nLeft,1,stderr);
-                    fwrite("\n",1,1,stderr);
-                }
-            }
+            // "Logger: logger thread terminating"
+            FWRMSG( stderr, HHC02103, "I" );
+            fflush( stderr );
         }
-
-        fwrite( term_msg, strlen(term_msg), 1, stderr );
-
-        fflush(stderr);
     }
 }
+
 static void logger_logfile_write( void* pBuff, size_t nBytes )
 {
     char* pLeft = (char*)pBuff;
     int   nLeft = (int)nBytes;
-#if defined( OPTION_MSGCLR )
-    /* Remove "<pnl,..." color string if it exists */
-    if (1
-        && nLeft > 5
-        && strncasecmp( pLeft, "<pnl", 4 ) == 0
-        && (pLeft = memchr( pLeft+4, '>', nLeft-4 )) != NULL
-        )
-    {
-        pLeft++;
-        nLeft -= (int)(pLeft - (char*)pBuff);
-    }
 
-#endif // defined( OPTION_MSGCLR )
     /* (ignore any errors; we did the best we could) */
     if (nLeft)
     {
         if ( fwrite( pLeft, nLeft, 1, logger_hrdcpy ) != 1 )
         {
+            // "Logger: error in function %s: %s"
             fprintf(logger_hrdcpy, MSG(HHC02102, "E", "fwrite()",
                 strerror(errno)));
         }
@@ -272,7 +302,7 @@ static void logger_logfile_write( void* pBuff, size_t nBytes )
  * quite a delay at times when there is a high system activity. Moving the timestamp
  * to logmsg() will fix this.
  * The timestamp option should also NOT depend on anything like daemon mode.
- * logs entries should always be timestamped, in a fixed format, such that
+ * log entries should always be timestamped, in a fixed format, such that
  * log readers may decide to skip the timestamp when displaying (ie panel.c).
  */
 static void logger_logfile_timestamp()
@@ -289,31 +319,28 @@ static void logger_logfile_timestamp()
     }
 }
 
+DLL_EXPORT void logger_timestamped_logfile_write( void* pBuff, size_t nBytes )
+{
+    if (logger_hrdcpy)
+    {
+        if (!sysblk.logoptnotime)
+            logger_logfile_timestamp();
+        logger_logfile_write( pBuff, nBytes );
+    }
+}
+
 static void* logger_thread(void *arg)
 {
 int bytes_read;
 
     UNREFERENCED(arg);
 
-    /* Set root mode in order to set priority */
-    SETMODE(ROOT);
-
     /* Set device thread priority; ignore any errors */
-    if(setpriority(PRIO_PROCESS, 0, sysblk.devprio))
-       WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-
-    /* Back to user mode */
-    SETMODE(USER);
+    set_thread_priority(0, sysblk.devprio);
 
 #if !defined( _MSVC_ )
-    /* Redirect stdout to the logger */
-    if(dup2(logger_syslogfd[LOG_WRITE],STDOUT_FILENO) == -1)
-    {
-        if(logger_hrdcpy)
-            fprintf(logger_hrdcpy, MSG(HHC02102, "E", "dup2()", strerror(errno)));
-        exit(1);
-    }
-#endif /* !defined( _MSVC_ ) */
+    logger_redirect();
+#endif
 
     setvbuf (stdout, NULL, _IONBF, 0);
 
@@ -335,12 +362,16 @@ int bytes_read;
         bytes_read = read_pipe(logger_syslogfd[LOG_READ],logger_buffer + logger_currmsg,
           ((logger_bufsize - logger_currmsg) > LOG_DEFSIZE ? LOG_DEFSIZE : logger_bufsize - logger_currmsg));
 
-        if(bytes_read == -1)
+        if (bytes_read == 0)    /* Has pipe been closed? */
+            break;              /* Yes, then we are done */
+
+        if (bytes_read < 0)
         {
             int read_pipe_errno = HSO_errno;
 
-            // (ignore any/all errors at shutdown)
-            if (sysblk.shutdown) continue;
+            /* Ignore any/all errors during shutdown */
+            if (sysblk.shutdown)
+                continue;
 
             if (HSO_EINTR == read_pipe_errno)
                 continue;
@@ -348,6 +379,7 @@ int bytes_read;
             obtain_lock(&logger_lock);
             if(logger_hrdcpy)
             {
+                // "Logger: error in function %s: %s"
                 fprintf(logger_hrdcpy, MSG(HHC02102, "E", "read_pipe()",
                                         strerror(read_pipe_errno)));
             }
@@ -365,19 +397,7 @@ int bytes_read;
             {
                 char* pLeft2 = logger_buffer + logger_currmsg;
                 int   nLeft2 = bytes_read;
-#if defined( OPTION_MSGCLR )
-            /* Remove "<pnl,..." color string if it exists */
-                if (1
-                    && nLeft2 > 5
-                    && strncasecmp( pLeft2, "<pnl", 4 ) == 0
-                    && (pLeft2 = memchr( pLeft2+4, '>', nLeft2-4 )) != NULL
-                )
-                {
-                    pLeft2++;
-                    nLeft2 -= (int)(pLeft2 - (logger_buffer + logger_currmsg));
-                }
 
-#endif // defined( OPTION_MSGCLR )
                 /* (ignore any errors; we did the best we could) */
                 if (nLeft2)
                     fwrite( pLeft2, nLeft2, 1, stderr );
@@ -400,7 +420,8 @@ int bytes_read;
 
             if (needstamp)
             {
-                if (!sysblk.logoptnotime) logger_logfile_timestamp();
+                if (!sysblk.logoptnotime)
+                    logger_logfile_timestamp();
                 needstamp = 0;
             }
 
@@ -410,35 +431,8 @@ int bytes_read;
                 nRight  = nLeft - (int)(pRight - pLeft);
                 nLeft  -= nRight;
 
-#if defined( OPTION_MSGCLR )
-                /* Remove "<pnl...>" color string if it exists */
-                {
-                    char* pLeft2 = pLeft;
-                    int   nLeft2 = nLeft;
-
-                    if (1
-                        && nLeft > 5
-                        && strncasecmp( pLeft, "<pnl", 4 ) == 0
-                        && (pLeft2 = memchr( pLeft+4, '>', nLeft-4 )) != NULL
-                    )
-                    {
-                        pLeft2++;
-                        nLeft2 -= (int)(pLeft2 - pLeft);
-                    }
-                    else
-                    {
-                        pLeft2 = pLeft;
-                        nLeft2 = nLeft;
-                    }
-                    if (nLeft2)
-                        logger_logfile_write( pLeft2, nLeft2 );
-                }
-#else // !defined( OPTION_MSGCLR )
-
                 if (nLeft)
                     logger_logfile_write( pLeft, nLeft );
-
-#endif // defined( OPTION_MSGCLR )
 
                 pLeft = pRight;
                 nLeft = nRight;
@@ -449,7 +443,8 @@ int bytes_read;
                     break;
                 }
 
-                if (!sysblk.logoptnotime) logger_logfile_timestamp();
+                if (!sysblk.logoptnotime)
+                    logger_logfile_timestamp();
             }
 
             if (nLeft)
@@ -470,8 +465,10 @@ int bytes_read;
         obtain_lock(&logger_lock);
         broadcast_condition(&logger_cond);
         release_lock(&logger_lock);
-    }
 
+    } /* end while(logger_active) */
+
+    logger_active = 0;
     logger_tid = 0;
 
     /* Logger is now terminating */
@@ -480,11 +477,10 @@ int bytes_read;
     /* Write final message to hardcopy file */
     if (logger_hrdcpy)
     {
-        char* term_msg = MSG(HHC02103, "I");
-        size_t term_msg_len = strlen(term_msg);
-        if (!sysblk.logoptnotime)
-            logger_logfile_timestamp();
-        logger_logfile_write( term_msg, term_msg_len );
+        char buf[64];
+        // "Logger: logger thread terminating"
+        MSGBUF( buf, MSG( HHC02103, "I" ));
+        logger_timestamped_logfile_write( buf, strlen( buf ));
     }
 
     /* Redirect all msgs to stderr */
@@ -508,9 +504,6 @@ DLL_EXPORT void logger_init(void)
     initialize_lock (&logger_lock);
     logger_init_flg = TRUE;
 
-    /* this is a conditional macro based upon OPTION_MSGLCK */
-    INIT_MSGLCK;
-
     obtain_lock(&logger_lock);
 
     if(fileno(stdin)>=0 ||
@@ -520,16 +513,17 @@ DLL_EXPORT void logger_init(void)
         logger_syslog[LOG_WRITE] = stderr;
 
         /* If standard error is redirected, then use standard error
-        as the log file. */
-        if(!isatty(STDOUT_FILENO) && !isatty(STDERR_FILENO))
+           as the log file. */
+        if(sysblk.daemon_mode)
         {
-            /* Ignore standard output to the extent that it is
-            treated as standard error */
-            logger_hrdcpyfd = dup(STDOUT_FILENO);
             strlcpy(logger_filename, "STDOUT redirected from command line",
                     sizeof(logger_filename));
+            /* Ignore standard output to the extent that it is
+               treated as standard error */
+            logger_hrdcpyfd = dup(STDOUT_FILENO);
             if(dup2(STDERR_FILENO,STDOUT_FILENO) == -1)
             {
+                // "Logger: error in function %s: %s"
                 fprintf(stderr, MSG(HHC02102, "E", "dup2()", strerror(errno)));
                 exit(1);
             }
@@ -538,22 +532,24 @@ DLL_EXPORT void logger_init(void)
         {
             if(!isatty(STDOUT_FILENO))
             {
-                logger_hrdcpyfd = dup(STDOUT_FILENO);
                 strlcpy(logger_filename, "STDOUT redirected from command line",
                         sizeof(logger_filename));
+                logger_hrdcpyfd = dup(STDOUT_FILENO);
                 if(dup2(STDERR_FILENO,STDOUT_FILENO) == -1)
                 {
+                    // "Logger: error in function %s: %s"
                     fprintf(stderr, MSG(HHC02102, "E", "dup2()", strerror(errno)));
                     exit(1);
                 }
             }
-            if(!isatty(STDERR_FILENO))
+            else if(!isatty(STDERR_FILENO))
             {
                 strlcpy(logger_filename, "STDERR redirected from command line",
                         sizeof(logger_filename));
                 logger_hrdcpyfd = dup(STDERR_FILENO);
                 if(dup2(STDOUT_FILENO,STDERR_FILENO) == -1)
                 {
+                    // "Logger: error in function %s: %s"
                     fprintf(stderr, MSG(HHC02102, "E", "dup2()", strerror(errno)));
                     exit(1);
                 }
@@ -563,13 +559,15 @@ DLL_EXPORT void logger_init(void)
         if(logger_hrdcpyfd == -1)
         {
             logger_hrdcpyfd = 0;
+            // "Logger: error in function %s: %s"
             fprintf(stderr, MSG(HHC02102, "E", "dup()", strerror(errno)));
         }
 
         if(logger_hrdcpyfd)
         {
             if(!(logger_hrdcpy = fdopen(logger_hrdcpyfd,"w")))
-            fprintf(stderr, MSG(HHC02102, "E", "fdopen()", strerror(errno)));
+                // "Logger: error in function %s: %s"
+                fprintf(stderr, MSG(HHC02102, "E", "fdopen()", strerror(errno)));
         }
 
         if(logger_hrdcpy)
@@ -586,12 +584,14 @@ DLL_EXPORT void logger_init(void)
     {
         char buf[40];
         MSGBUF(buf, "malloc(%d)", logger_bufsize);
+        // "Logger: error in function %s: %s"
         fprintf(stderr, MSG(HHC02102, "E", buf, strerror(errno)));
         exit(1);
     }
 
     if(create_pipe(logger_syslogfd))
     {
+        // "Logger: error in function %s: %s"
         fprintf(stderr, MSG(HHC02102, "E", "create_pipe()", strerror(errno)));
         exit(1);  /* Hercules running without syslog */
     }
@@ -640,6 +640,7 @@ int   new_hrdcpyfd = -1;
 
         if(!logger_hrdcpy)
         {
+            // "Logger: log not active"
             WRMSG(HHC02100, "E");
             return;
         }
@@ -649,19 +650,10 @@ int   new_hrdcpyfd = -1;
             logger_hrdcpy = 0;
             logger_hrdcpyfd = 0;
             release_lock(&logger_lock);
-            if ( sysblk.emsg & EMSG_TS )
-            {
-                struct timeval  now;
-                time_t          tt;
-                char            hhmmss[10];
-
-                gettimeofday( &now, NULL ); tt = now.tv_sec;
-                strlcpy( hhmmss, ctime(&tt)+11, sizeof(hhmmss) );
-                hhmmss[8] = '\0';
-                fprintf(temp_hrdcpy, "%s ", hhmmss);
-            }
+            // "Logger: log closed"
             fprintf(temp_hrdcpy,MSG(HHC02101, "I"));
             fclose(temp_hrdcpy);
+            // "Logger: log closed"
             WRMSG(HHC02101, "I");
             return;
         }
@@ -678,6 +670,7 @@ int   new_hrdcpyfd = -1;
                             S_IRUSR  | S_IWUSR | S_IRGRP);
         if(new_hrdcpyfd < 0)
         {
+            // "Logger: error in function %s: %s"
             WRMSG(HHC02102, "E","open()",strerror(errno));
             return;
         }
@@ -685,6 +678,7 @@ int   new_hrdcpyfd = -1;
         {
             if(!(new_hrdcpy = fdopen(new_hrdcpyfd,"w")))
             {
+                // "Logger: error in function %s: %s"
                 WRMSG(HHC02102,"E", "fdopen()", strerror(errno));
                 return;
             }
@@ -708,17 +702,7 @@ int   new_hrdcpyfd = -1;
                     else
                         MSGBUF(buf,"'%s'",filename);
 
-                    if ( sysblk.emsg & EMSG_TS )
-                    {
-                        struct timeval  now;
-                        time_t          tt;
-                        char            hhmmss[10];
-
-                        gettimeofday( &now, NULL ); tt = now.tv_sec;
-                        strlcpy( hhmmss, ctime(&tt)+11, sizeof(hhmmss) );
-                        hhmmss[8] = '\0';
-                        fprintf(temp_hrdcpy, "%s ", hhmmss);
-                    }
+                    // "Logger: log switched to %s"
                     fprintf(temp_hrdcpy, MSG(HHC02104, "I", pzbuf));
                     fclose(temp_hrdcpy);
                 }
@@ -735,15 +719,13 @@ DLL_EXPORT void log_wakeup(void *arg)
     if ( logger_init_flg )
     {
         obtain_lock(&logger_lock);
-
         broadcast_condition(&logger_cond);
-
         release_lock(&logger_lock);
     }
 }
 
 /* is logger active */
-DLL_EXPORT int logger_status(void)
+DLL_EXPORT int logger_isactive()
 {
     return logger_active;
 }

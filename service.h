@@ -39,7 +39,7 @@
 #define SCLP_RESOURCE_SHIFT     8
 
 /*-------------------------------------------------------------------*/
-/* Service Call Control Block structure definitions                  */
+/* Service Call Control Block (SCCB) header layout                   */
 /*-------------------------------------------------------------------*/
 typedef struct _SCCB_HEADER {
         HWORD   length;                 /* Total length of SCCB      */
@@ -94,7 +94,19 @@ typedef struct _SCCB_HEADER {
 #define SCCB_RESP_EXCEEDS_SCCB  0xF0
 // #endif /*FEATURE_SYSTEM_CONSOLE*/
 
-/* SCP information data area */
+/*-------------------------------------------------------------------*/
+/* The following maximum value constants define the architectural    */
+/* limit for the amount of real storage based on the realinum and    */
+/* realiszm field widths in the below _SCCB_SCP_INFO structure.      */
+/*-------------------------------------------------------------------*/
+#define MAX_STORINCR        0xFFFFULL    /* SCP realinum field limit */
+#define MAX_INCRSIZE_MB     0xFFULL      /* SCP realiszm field limit */
+#define MAX_1MINCR_STORSIZE (MAX_STORINCR * (       1        * _1M))
+#define MAX_SCP_STORSIZE    (MAX_STORINCR * (MAX_INCRSIZE_MB * _1M))
+
+/*-------------------------------------------------------------------*/
+/* SCCB System Control Program (SCP) information block layout        */
+/*-------------------------------------------------------------------*/
 typedef struct _SCCB_SCP_INFO {
         HWORD   realinum;               /* Number of real storage
                                            increments installed      */
@@ -146,7 +158,7 @@ typedef struct _SCCB_SCP_INFO {
                                            units of 1M, valid only
                                            if realiszm is zero       */
         DBLWRD  grnmx;                  /* Maximum increment number
-                                           when it is larger then
+                                           when it is larger than
                                            64K or when ESAME is on   */
         BYTE    resv8[16];              /* Reserved                  */
     } SCCB_SCP_INFO;
@@ -244,22 +256,24 @@ typedef struct _SCCB_CPU_INFO {
 #define SCCB_CPF4_OMISION_GR_ALTERATION_370             0x80
 #define SCCB_CPF5_GUEST_WAIT_STATE_ASSIST               0x40
 
-/* Definitions for processor type code */
+/*-------------------------------------------------------------------*/
+/* Processor type codes  (mostly for diag 224)                       */
+/*-------------------------------------------------------------------*/
+/* PROGRAMMING NOTE: if you define/add a new value to the below,     */
+/* be sure to ALSO update the 'ptypes' table in 'hsccmd.c'!          */
+/*-------------------------------------------------------------------*/
 #define SCCB_PTYP_CP                                    0
-#define SCCB_PTYP_ICF                                   1
-#define SCCB_PTYP_IFA                                   2
+#define SCCB_PTYP_UNKNOWN                               1
+#define SCCB_PTYP_ZAAP                                  2
 #define SCCB_PTYP_IFL                                   3
-#define SCCB_PTYP_SUP                                   5
-#define SCCB_PTYP_MAX                                   5 /*(maximum value)*/
+#define SCCB_PTYP_ICF                                   4
+#define SCCB_PTYP_ZIIP                                  5
+#define MAX_SCCB_PTYP /*(see above PROGRAMMING NOTE!)*/ 5
 
-/* processor type macro */
-#define PTYPSTR(i) ( \
-        sysblk.ptyp[(i)] == SCCB_PTYP_CP  ? "CP" :  \
-        sysblk.ptyp[(i)] == SCCB_PTYP_ICF ? "CF" :  \
-        sysblk.ptyp[(i)] == SCCB_PTYP_IFA ? "AP" :  \
-        sysblk.ptyp[(i)] == SCCB_PTYP_IFL ? "IL" :  \
-        sysblk.ptyp[(i)] == SCCB_PTYP_SUP ? "IP" :  \
-        "<unknown processor type>")
+/*-------------------------------------------------------------------*/
+/* Processor type macro                                              */
+/*-------------------------------------------------------------------*/
+#define PTYPSTR(cpu_num)        ptyp2short( sysblk.ptyp[(cpu_num)] )
 
 /* Macro converts event type to event mask */
 #define EVDMASK(_type) \

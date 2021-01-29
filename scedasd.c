@@ -119,7 +119,122 @@ char tempreal[MAX_PATH];
     return fullpath;
 }
 
+#define    CHUNKSIZE   (64 * 1024 * 1024)
+CASSERT(   CHUNKSIZE < (INT_MAX - PAGEFRAME_PAGESIZE), scedasd_c )
+CASSERT( !(CHUNKSIZE &            PAGEFRAME_BYTEMASK), scedasd_c )
+
 #endif /* !defined(_SCEDASD_C) */
+
+/*-------------------------------------------------------------------*/
+/* Function to Load (read) specified file into absolute main storage */
+/*-------------------------------------------------------------------*/
+int ARCH_DEP(load_main) (char *fname, RADR startloc, int noisy)
+{
+U64 loaded;
+RADR aaddr;
+RADR pageaddr;
+int fd;
+int pages;
+size_t chunk;
+int bytes;
+time_t begtime, curtime;
+char fmt_mem[8];
+
+    fd = HOPEN (fname, O_RDONLY|O_BINARY);
+    if (fd < 0)
+    {
+        if(errno != ENOENT)
+            WRMSG(HHC00600,"E",fname,"open()",strerror(errno));
+        return fd;
+    }
+
+    /* Calculate size of first chunk to reach page boundary */
+    chunk = PAGEFRAME_PAGESIZE - (startloc & PAGEFRAME_BYTEMASK);
+    aaddr = startloc;
+
+    if (noisy)
+    {
+        loaded = 0;
+        time( &begtime );
+    }
+
+    /* Read file into storage until end of file or end of storage */
+    for (;;)
+    {
+        if (chunk > (sysblk.mainsize - aaddr))
+            chunk = (sysblk.mainsize - aaddr);
+
+        bytes = read(fd, sysblk.mainstor + aaddr, chunk);
+
+        chunk = CHUNKSIZE;
+
+        /* Check for I/O error */
+        if (bytes < 0)
+        {
+            // "SCE file %s: error in function %s: %s"
+            WRMSG(HHC00600, "E", fname, "read()",strerror(errno));
+            close(fd);
+            return -1;
+        }
+
+        /* Check for end-of-file */
+        if (bytes == 0)
+        {
+            close(fd);
+            return 0;
+        }
+
+        /* Update the storage keys for all of the pages we just read */
+        pages = ROUND_UP( bytes, PAGEFRAME_PAGESIZE ) / PAGEFRAME_PAGESIZE;
+        pageaddr = aaddr;
+
+        do
+        {
+            STORAGE_KEY(pageaddr, &sysblk) |= STORKEY_REF|STORKEY_CHANGE;
+            pageaddr += PAGEFRAME_PAGESIZE;
+        }
+        while (--pages);
+
+        aaddr += bytes;
+        aaddr &= PAGEFRAME_PAGEMASK;
+
+        /* Check if end of storge reached */
+        if (aaddr >= sysblk.mainsize)
+        {
+            int rc;
+            if (read(fd, &rc, 1) > 0)
+            {
+                rc = +1;
+                if (noisy)
+                {
+                    // "SCE file %s: load main terminated at end of mainstor"
+                    WRMSG(HHC00603, "W", fname);
+                }
+            }
+            else /* ignore any error; we're at end of storage anyway */
+                rc = 0;
+            close(fd);
+            return rc;
+        }
+
+        /* Issue periodic progress messages */
+        if (noisy)
+        {
+            loaded += bytes;
+            time( &curtime );
+
+            if (difftime( curtime, begtime ) > 2.0)
+            {
+                begtime = curtime;
+                // "%s bytes %s so far..."
+                WRMSG( HHC02317, "I",
+                    fmt_memsize_rounded( loaded, fmt_mem, sizeof( fmt_mem )),
+                        "loaded" );
+            }
+        }
+    } /* end for (;;) */
+
+} /* end function load_main */
 
 
 /*-------------------------------------------------------------------*/
@@ -226,117 +341,6 @@ int     rc = 0;                         /* Return codes (work)       */
     return ARCH_DEP(common_load_finish) (regs);
 
 } /* end function load_hmc */
-
-
-/*-------------------------------------------------------------------*/
-/* Function to Load (read) specified file into absolute main storage */
-/*-------------------------------------------------------------------*/
-int ARCH_DEP(load_main) (char *fname, RADR startloc, int noisy)
-{
-U64 loaded;
-RADR aaddr;
-RADR pageaddr;
-int fd;
-int chunk;
-int bytes;
-time_t begtime, curtime;
-char fmt_mem[8];
-
-    fd = HOPEN (fname, O_RDONLY|O_BINARY);
-    if (fd < 0)
-    {
-        if(errno != ENOENT)
-            WRMSG(HHC00600,"E",fname,"open()",strerror(errno));
-        return fd;
-    }
-
-    /* Calculate size of first chunk to reach page boundary */
-    chunk = PAGEFRAME_PAGESIZE - (startloc & PAGEFRAME_BYTEMASK);
-    aaddr = startloc;
-
-    if (noisy)
-    {
-        loaded = 0;
-        time( &begtime );
-    }
-
-    /* Read file into storage until end of file or end of storage */
-    for( ; ; ) {
-
-        bytes = read(fd, sysblk.mainstor + aaddr, chunk);
-
-        /* Check for I/O error */
-        if (bytes < 0)
-        {
-            // "SCE file %s: error in function %s: %s"
-            WRMSG(HHC00600, "E", fname, "read()",strerror(errno));
-            close(fd);
-            return -1;
-        }
-
-        /* Check for end-of-file */
-        if (bytes == 0)
-        {
-            close(fd);
-            return 0;
-        }
-
-        /* Update the storage keys for all of the pages we just read */
-        chunk = bytes;
-        pageaddr = aaddr;
-
-        for ( ; chunk > 0; chunk -= PAGEFRAME_PAGESIZE)
-        {
-            STORAGE_KEY(pageaddr, &sysblk) |= STORKEY_REF|STORKEY_CHANGE;
-            pageaddr += PAGEFRAME_PAGESIZE;
-        }
-
-        aaddr += bytes;
-        aaddr &= PAGEFRAME_PAGEMASK;
-
-        /* Check if end of storge reached */
-        if (aaddr >= sysblk.mainsize)
-        {
-            int rc;
-            if (read(fd, &rc, 1) > 0)
-            {
-                rc = +1;
-                if (noisy)
-                {
-                    // "SCE file %s: load main terminated at end of mainstor"
-                    WRMSG(HHC00603, "W", fname);
-                }
-            }
-            else /* ignore any error; we're at end of storage anyway */
-                rc = 0;
-            close(fd);
-            return rc;
-        }
-
-        /* Issue periodic progress messages */
-        if (noisy)
-        {
-            loaded += bytes;
-            time( &curtime );
-
-            if (difftime( curtime, begtime ) > 2.0)
-            {
-                begtime = curtime;
-                // "%s bytes %s so far..."
-                WRMSG( HHC02317, "I",
-                    fmt_memsize_rounded( loaded, fmt_mem, sizeof( fmt_mem )),
-                        "loaded" );
-            }
-        }
-
-        chunk = (64 * 1024 * 1024);
-
-        if (chunk > (sysblk.mainsize - aaddr))
-            chunk = (sysblk.mainsize - aaddr);
-
-    } /* end for( ; ; ) */
-
-} /* end function load_main */
 
 
 #if defined(FEATURE_SCEDIO)
@@ -642,7 +646,7 @@ char    fname[MAX_PATH];
 
 
     default:
-        PTT(PTT_CL_ERR,"*SERVC",(U32)scediov_bk->type,(U32)scediov_bk->flag1,scediov_bk->flag2);
+        PTT_ERR("*SERVC",(U32)scediov_bk->type,(U32)scediov_bk->flag1,scediov_bk->flag2);
         return FALSE;
 
     }
@@ -677,7 +681,7 @@ SCCB_SCEDIO_BK  *scedio_bk = (SCCB_SCEDIO_BK*) arg;
         break;
 
     default:
-        PTT(PTT_CL_ERR,"*SERVC",(U32)scedio_bk->flag0,(U32)scedio_bk->flag1,scedio_bk->flag3);
+        PTT_ERR("*SERVC",(U32)scedio_bk->flag0,(U32)scedio_bk->flag1,scedio_bk->flag3);
     }
 
 
@@ -756,7 +760,7 @@ static int scedio_pending;
                 evd_len += sizeof(SCCB_SCEDIOV_BK);
                 break;
             default:
-                PTT(PTT_CL_ERR,"*SERVC",(U32)evd_hdr->type,(U32)scedio_bk->flag1,scedio_bk->flag3);
+                PTT_ERR("*SERVC",(U32)evd_hdr->type,(U32)scedio_bk->flag1,scedio_bk->flag3);
             }
 
             /* Set length in event header */
@@ -806,7 +810,7 @@ static int scedio_pending;
             static_scedio_bk.io.v = *scediov_bk;
             break;
         default:
-            PTT(PTT_CL_ERR,"*SERVC",(U32)evd_hdr->type,(U32)scedio_bk->flag1,scedio_bk->flag3);
+            PTT_ERR("*SERVC",(U32)evd_hdr->type,(U32)scedio_bk->flag1,scedio_bk->flag3);
         }
 
         /* Create the scedio thread */

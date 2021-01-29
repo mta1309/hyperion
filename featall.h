@@ -84,6 +84,8 @@
 
 #define OPTION_SINGLE_CPU_DW            /* Performance option (ia32) */
 #define OPTION_IODELAY_KLUDGE           /* IODELAY kludge for linux  */
+#define OPTION_MVS_TELNET_WORKAROUND    /* Handle non-std MVS telnet */
+//#define OPTION_LONG_HOSTINFO            /* Detailed host & logo info */
 
 #if defined(OPTION_SYNCIO) && defined(OPTION_NOSYNCIO)
   #error Either OPTION_SYNCIO or OPTION_NOSYNCIO must be specified, not both
@@ -94,7 +96,6 @@
 #undef  OPTION_FOOTPRINT_BUFFER /* 2048 ** Size must be a power of 2 */
 #undef  OPTION_INSTRUCTION_COUNTING     /* First use trace and count */
 #define OPTION_CKD_KEY_TRACING          /* Trace CKD search keys     */
-#undef  OPTION_CMPSC_DEBUGLVL      /* 3 ** 1=Exp 2=Comp 3=Both debug */
 #undef  MODEL_DEPENDENT_STCM            /* STCM, STCMH always store  */
 #define OPTION_NOP_MODEL158_DIAGNOSE    /* NOP mod 158 specific diags*/
 #define FEATURE_ALD_FORMAT            0 /* Use fmt0 Access-lists     */
@@ -102,15 +103,6 @@
 #define FEATURE_LCSS_MAX              4 /* Number of supported lcss's*/
 // #define SIE_DEBUG_PERFMON            /* SIE performance monitor   */
 #define OPTION_HTTP_SERVER              /* HTTP server support       */
-#define OPTION_CONFIG_SYMBOLS           /* $(defsym) support         */
-#define OPTION_BUILTIN_SYMBOLS          /* "LPARNAME", "DATE", etc.  */
-
-#if 0
-#define OPTION_CMDTGT                   /* the cmdtgt command        */
-#define OPTION_MSGCLR                   /* Colored messages          */
-#define OPTION_MSGHLD                   /* Sticky messages           */
-#define OPTION_MSGLCK                   /* Lock during msg write     */
-#endif
 
 #if !defined(OPTION_SCP_MSG_PREFIX) && !defined(NO_SCP_MSG_PREFIX)
 #define NO_SCP_MSG_PREFIX               /* Prefix scp msg with HHC*  */
@@ -126,29 +118,51 @@
 #define  NO_SHUTDOWN_CONFIRMATION       /* Confirm quit and ssd cmds */
 #endif
 
-#if !defined(OPTION_LOCK_CONFIG_FILE) && !defined(NO_LOCK_CONFIG_FILE)
-#define  NO_LOCK_CONFIG_FILE            /* Keep Configuration file
-                                           locked during execution   */
-#endif
-
 #define OPTION_OPTINST                  /* Optimized instructions    */
 #undef  OPTION_SHOWDVOL1                /* showdvol1 support         */
 
-#if !defined(OPTION_BUILTIN_SYMBOLS) && !defined(NO_BUILTIN_SYMBOLS)
-#define  NO_BUILTIN_SYMBOLS             /* Internal Symbols Defined  */
+#if !defined(ENABLE_CONFIG_INCLUDE) && !defined(NO_CONFIG_INCLUDE)
+#define  ENABLE_CONFIG_INCLUDE          /* enable config file includes */
 #endif
 
-#if defined(OPTION_BUILTIN_SYMBOLS) && !defined(OPTION_CONFIG_SYMBOLS)
-  #error OPTION_BUILTIN_SYMBOLS requires OPTION_CONFIG_SYMBOLS
+#if !defined(ENABLE_SYSTEM_SYMBOLS) && !defined(NO_SYSTEM_SYMBOLS)
+#define  ENABLE_SYSTEM_SYMBOLS          /* access to system symbols  */
 #endif
 
-#if defined(OPTION_MSGHLD) && !defined(OPTION_MSGCLR)
-  #error OPTION_MSGHLD requires OPTION_MSGCLR
-#endif // defined(OPTION_MSGHLD) && !defined(OPTION_MSGCLR)
+#if !defined(ENABLE_BUILTIN_SYMBOLS) && !defined(NO_BUILTIN_SYMBOLS)
+#define  ENABLE_BUILTIN_SYMBOLS          /* Internal Symbols          */
+#endif
+
+#if defined(ENABLE_BUILTIN_SYMBOLS) && !defined(ENABLE_SYSTEM_SYMBOLS)
+  #error ENABLE_BUILTIN_SYMBOLS requires ENABLE_SYMBOLS_SYMBOLS
+#endif
+
+#if defined( HAVE_FULL_KEEPALIVE )
+  #if !defined( HAVE_PARTIAL_KEEPALIVE ) || !defined( HAVE_BASIC_KEEPALIVE )
+    #error Cannot have full TCP keepalive without partial and basic as well
+  #endif
+#elif defined( HAVE_PARTIAL_KEEPALIVE )
+  #if !defined( HAVE_BASIC_KEEPALIVE )
+    #error Cannot have partial TCP keepalive without basic as well
+  #endif
+#endif
 
 #if (CKD_MAXFILES > 35)
   #error CKD_MAXFILES can not exceed design limit of 35
 #endif
+
+#if defined( OPTION_SHARED_DEVICES ) && defined( OPTION_NO_SHARED_DEVICES )
+  #error Either OPTION_SHARED_DEVICES or OPTION_NO_SHARED_DEVICES must be specified, not both
+#elif !defined( OPTION_SHARED_DEVICES ) && !defined( OPTION_NO_SHARED_DEVICES )
+  // Neither is #defined.  Use default settings.
+  #define OPTION_SHARED_DEVICES
+  #define FBA_SHARED
+#elif defined( OPTION_NO_SHARED_DEVICES )
+  #undef OPTION_SHARED_DEVICES
+  #undef FBA_SHARED
+#elif defined( OPTION_SHARED_DEVICES )
+// Leave FBA_SHARED alone, either #defined or #undefined, as desired.
+#endif // OPTION_SHARED_DEVICES
 
 /*********************************************************************/
 /*                  Hercules Mutex Locks Model                       */
@@ -217,6 +231,7 @@
 #undef FEATURE_CONFIGURATION_TOPOLOGY_FACILITY                  /*208*/
 #undef FEATURE_CPU_MEASUREMENT_COUNTER_FACILITY
 #undef FEATURE_CPU_MEASUREMENT_SAMPLING_FACILITY
+#undef FEATURE_STORE_CPU_COUNTER_MULTIPLE_FACILITY		/*ISW*/
 #undef FEATURE_CPU_RECONFIG
 #undef FEATURE_DAT_ENHANCEMENT
 #undef FEATURE_DAT_ENHANCEMENT_FACILITY_2                       /*@Z9*/
@@ -266,6 +281,7 @@
 #undef FEATURE_INTEGRATED_3270_CONSOLE
 #undef FEATURE_INTEGRATED_ASCII_CONSOLE
 #undef FEATURE_INTERLOCKED_ACCESS_FACILITY                      /*810*/
+#undef FEATURE_INTERLOCKED_ACCESS_FACILITY_2
 #undef FEATURE_INTERPRETIVE_EXECUTION
 #undef FEATURE_INTERVAL_TIMER
 #undef FEATURE_IPTE_RANGE_FACILITY                              /*810*/
@@ -282,6 +298,7 @@
 #undef FEATURE_MESSAGE_SECURITY_ASSIST_EXTENSION_3              /*810*/
 #undef FEATURE_MESSAGE_SECURITY_ASSIST_EXTENSION_4              /*810*/
 #undef FEATURE_MIDAW                                            /*@Z9*/
+#undef FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY		/*912*/
 #undef FEATURE_MOVE_PAGE_FACILITY_2
 #undef FEATURE_MOVE_WITH_OPTIONAL_SPECIFICATIONS                /*208*/
 #undef FEATURE_MPF_INFO
@@ -295,6 +312,7 @@
 #undef FEATURE_PER
 #undef FEATURE_PER2
 #undef FEATURE_PER3                                             /*@Z9*/
+#undef FEATURE_PROCESSOR_ASSIST					/*912*/
 #undef FEATURE_PFPO                                             /*407*/
 #undef FEATURE_POPULATION_COUNT_FACILITY                        /*810*/
 #undef FEATURE_PRIVATE_SPACE

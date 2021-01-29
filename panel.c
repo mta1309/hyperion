@@ -44,8 +44,6 @@
 #include "fillfnam.h"
 #include "hconsole.h"
 
-#define  DISPLAY_INSTRUCTION_OPERANDS
-
 #define PANEL_MAX_ROWS  (256)
 #define PANEL_MAX_COLS  (256)
 
@@ -211,15 +209,10 @@ static FILE *confp   = NULL;            /* Console file pointer      */
 
 ///////////////////////////////////////////////////////////////////////
 
-#define CMD_PREFIX_HERC  "herc =====> " /* Keep same len as below!   */
-#ifdef  OPTION_CMDTGT
-#define CMD_PREFIX_SCP   "scp ======> " /* Keep same len as above!   */
-#define CMD_PREFIX_PSCP  "pscp =====> " /* Keep same len as above!   */
-#endif // OPTION_CMDTGT
-
-#define CMD_PREFIX_LEN  (strlen(CMD_PREFIX_HERC))
-#define CMDLINE_ROW     ((short)(cons_rows-1))
-#define CMDLINE_COL     ((short)(CMD_PREFIX_LEN+1))
+#define CMD_PREFIX_HERC     "herc =====> "
+#define CMD_PREFIX_LEN      (strlen(CMD_PREFIX_HERC))
+#define CMDLINE_ROW         ((short)(cons_rows-1))
+#define CMDLINE_COL         ((short)(CMD_PREFIX_LEN+1))
 
 ///////////////////////////////////////////////////////////////////////
 
@@ -261,14 +254,6 @@ typedef struct _PANMSG      /* Panel message control block structure */
     struct _PANMSG*     prev;           /* --> prev entry in chain   */
     int                 msgnum;         /* msgbuf 0-relative entry#  */
     char                msg[MSG_SIZE];  /* text of panel message     */
-#if defined(OPTION_MSGCLR)
-    short               fg;             /* text color                */
-    short               bg;             /* screen background color   */
-#if defined(OPTION_MSGHLD)
-    int                 keep:1;         /* sticky flag               */
-    struct timeval      expiration;     /* when to unstick if sticky */
-#endif // defined(OPTION_MSGHLD)
-#endif // defined(OPTION_MSGCLR)
 }
 PANMSG;                     /* Panel message control block structure */
 
@@ -289,240 +274,6 @@ static int   lmsmax = LOG_DEFSIZE/2;    /* xxx                       */
 static int   keybfd = -1;               /* Keyboard file descriptor  */
 
 static REGS  copyregs, copysieregs;     /* Copied regs               */
-
-///////////////////////////////////////////////////////////////////////
-
-#if defined(OPTION_MSGCLR)  /*  -- Message coloring build option --  */
-#if defined(OPTION_MSGHLD)  /*  -- Sticky messages build option --   */
-
-#define KEEP_TIMEOUT_SECS   120         /* #seconds kept msgs expire */
-static PANMSG*  keptmsgs;               /* start of keep chain       */
-static PANMSG*  lastkept;               /* last entry in keep chain  */
-
-/*-------------------------------------------------------------------*/
-/* Remove and Free a keep chain entry from the keep chain            */
-/*-------------------------------------------------------------------*/
-static void unkeep( PANMSG* pk )
-{
-    if (pk->prev)
-        pk->prev->next = pk->next;
-    if (pk->next)
-        pk->next->prev = pk->prev;
-    if (pk == keptmsgs)
-        keptmsgs = pk->next;
-    if (pk == lastkept)
-        lastkept = pk->prev;
-    free( pk );
-    numkept--;
-}
-
-/*-------------------------------------------------------------------*/
-/* Allocate and Add a new kept message to the keep chain             */
-/*-------------------------------------------------------------------*/
-static void keep( PANMSG* p )
-{
-    PANMSG* pk;
-    ASSERT( p->keep );
-    pk = malloc( sizeof(PANMSG) );
-    memcpy( pk, p, sizeof(PANMSG) );
-    if (!keptmsgs)
-        keptmsgs = pk;
-    pk->next = NULL;
-    pk->prev = lastkept;
-    if (lastkept)
-        lastkept->next = pk;
-    lastkept = pk;
-    numkept++;
-    /* Must ensure we always have at least 2 scrollable lines */
-    while (SCROLL_LINES < 2)
-    {
-        /* Permanently unkeep oldest kept message */
-        msgbuf[keptmsgs->msgnum].keep = 0;
-        unkeep( keptmsgs );
-    }
-}
-
-/*-------------------------------------------------------------------*/
-/* Remove a kept message from the kept chain                         */
-/*-------------------------------------------------------------------*/
-static void unkeep_by_keepnum( int keepnum, int perm )
-{
-    PANMSG* pk;
-    int i;
-
-    /* Validate call */
-    if (!numkept || keepnum < 0 || keepnum > numkept-1)
-    {
-        ASSERT(FALSE);    // bad 'keepnum' passed!
-        return;
-    }
-
-    /* Chase keep chain to find kept message to be unkept */
-    for (i=0, pk=keptmsgs; pk && i != keepnum; pk = pk->next, i++);
-
-    /* If kept message found, unkeep it */
-    if (pk)
-    {
-        if (perm)
-        {
-            msgbuf[pk->msgnum].keep = 0;
-
-#if defined(_DEBUG) || defined(DEBUG)
-            msgbuf[pk->msgnum].fg = COLOR_YELLOW;
-#endif // defined(_DEBUG) || defined(DEBUG)
-        }
-        unkeep(pk);
-    }
-}
-#endif // defined(OPTION_MSGHLD)
-#endif // defined(OPTION_MSGCLR)
-
-#if defined(OPTION_MSGHLD)
-/*-------------------------------------------------------------------*/
-/* unkeep messages once expired                                      */
-/*-------------------------------------------------------------------*/
-void expire_kept_msgs(int unconditional)
-{
-  struct timeval now;
-  PANMSG *pk = keptmsgs;
-  int i;
-
-  gettimeofday(&now, NULL);
-
-  while (pk)
-  {
-    for (i=0, pk=keptmsgs; pk; i++, pk = pk->next)
-    {
-      if (unconditional || now.tv_sec >= pk->expiration.tv_sec)
-      {
-        unkeep_by_keepnum(i,1); // remove message from chain
-        break;                  // start over again from the beginning
-      }
-    }
-  }
-}
-#endif // defined(OPTION_MSGHLD)
-
-#if defined(OPTION_MSGCLR)  /*  -- Message coloring build option --  */
-/*-------------------------------------------------------------------*/
-/* Get the color name from a string                                  */
-/*-------------------------------------------------------------------*/
-
-#define CHECKCOLOR(s, cs, c, cc) if(!strncasecmp(s, cs, sizeof(cs) - 1)) { *c = cc; return(sizeof(cs) - 1); }
-
-int get_color(char *string, short *color)
-{
-       CHECKCOLOR(string, "black",        color, COLOR_BLACK)
-  else CHECKCOLOR(string, "cyan",         color, COLOR_CYAN)
-  else CHECKCOLOR(string, "blue",         color, COLOR_BLUE)
-  else CHECKCOLOR(string, "darkgrey",     color, COLOR_DARK_GREY)
-  else CHECKCOLOR(string, "green",        color, COLOR_GREEN)
-  else CHECKCOLOR(string, "lightblue",    color, COLOR_LIGHT_BLUE)
-  else CHECKCOLOR(string, "lightcyan",    color, COLOR_LIGHT_CYAN)
-  else CHECKCOLOR(string, "lightgreen",   color, COLOR_LIGHT_GREEN)
-  else CHECKCOLOR(string, "lightgrey",    color, COLOR_LIGHT_GREY)
-  else CHECKCOLOR(string, "lightmagenta", color, COLOR_LIGHT_MAGENTA)
-  else CHECKCOLOR(string, "lightred",     color, COLOR_LIGHT_RED)
-  else CHECKCOLOR(string, "lightyellow",  color, COLOR_LIGHT_YELLOW)
-  else CHECKCOLOR(string, "magenta",      color, COLOR_MAGENTA)
-  else CHECKCOLOR(string, "red",          color, COLOR_RED)
-  else CHECKCOLOR(string, "white",        color, COLOR_WHITE)
-  else CHECKCOLOR(string, "yellow",       color, COLOR_YELLOW)
-  else return(0);
-}
-
-/*-------------------------------------------------------------------*/
-/* Read, process and remove the "<pnl...>" colorizing message prefix */
-/* Syntax:                                                           */
-/*   <pnl,token,...>                                                 */
-/*     Mandatory prefix "<pnl,"                                      */
-/*     followed by one or more tokens separated by ","               */
-/*     ending with a ">"                                             */
-/* Valid tokens:                                                     */
-/*  color(fg, bg)   specifies the message's color                    */
-/*  keep            keeps message on screen until removed            */
-/*  nokeep          default - does not keep message                  */
-/*-------------------------------------------------------------------*/
-static void colormsg(PANMSG *p)
-{
-  int  i = 0;           // current message text index
-  int  len;             // length of color-name token
-  int  k = FALSE;       // keep | nokeep  ( no error is given, 1st prevails )
-
-  if(!strncasecmp(p->msg, "<pnl", 4))
-  {
-    // examine "<pnl...>" panel command(s)
-    i += 4;
-    while(p->msg[i] == ',')
-    {
-      i += 1; // skip ,
-      if(!strncasecmp(&p->msg[i], "color(", 6))
-      {
-        // inspect color command
-        i += 6; // skip color(
-        len = get_color(&p->msg[i], &p->fg);
-        if(!len)
-          break; // no valid color found
-        i += len; // skip colorname
-        if(p->msg[i] != ',')
-          break; // no ,
-        i++; // skip ,
-        len = get_color(&p->msg[i], &p->bg);
-        if(!len)
-          break; // no valid color found
-        i += len; // skip colorname
-        if(p->msg[i] != ')')
-          break; // no )
-        i++; // skip )
-      }
-      else if(!strncasecmp(&p->msg[i], "keep", 4))
-      {
-#if defined(OPTION_MSGHLD)
-        if ( !k )
-        {
-            p->keep = 1;
-            gettimeofday(&p->expiration, NULL);
-            p->expiration.tv_sec += sysblk.keep_timeout_secs;
-        }
-
-#endif // defined(OPTION_MSGHLD)
-        i += 4; // skip keep
-        k = TRUE;
-      }
-      else if(!strncasecmp(&p->msg[i], "nokeep", 6))
-      {
-#if defined(OPTION_MSGHLD)
-          if ( !k )
-          {
-              p->keep = 0;
-              p->expiration.tv_sec = 0;
-              p->expiration.tv_usec = 0;
-          }
-#endif
-          i += 6;   // skip nokeep
-          k = TRUE;
-      }
-      else
-        break; // rubbish
-    }
-    if(p->msg[i] == '>')
-    {
-      // Remove "<pnl...>" string from message
-      i += 1;
-      memmove(p->msg, &p->msg[i], MSG_SIZE - i);
-      memset(&p->msg[MSG_SIZE - i], SPACE, i);
-      return;
-    }
-  }
-
-  /* rubbish or no panel command */
-  p->fg = COLOR_DEFAULT_FG;
-  p->bg = COLOR_DEFAULT_BG;
-#if defined(OPTION_MSGHLD)
-  p->keep = 0;
-#endif // defined(OPTION_MSGHLD)
-}
-#endif // defined(OPTION_MSGCLR)
 
 /*-------------------------------------------------------------------*/
 /* Screen manipulation primitives                                    */
@@ -566,145 +317,58 @@ static int lines_remaining()
     return (SCROLL_LINES - visible_lines());
 }
 
-static void scroll_up_lines( int numlines, int doexpire )
+static void scroll_up_lines( int numlines )
 {
     int i;
-
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
 
     for (i=0; i < numlines && topmsg != oldest_msg(); i++)
-    {
         topmsg = topmsg->prev;
-
-        // If new topmsg is simply the last entry in the keep chain
-        // then we didn't really backup a line (all we did was move
-        // our topmsg ptr), so if that's the case then we need to
-        // continue backing up until we reach a non-kept message.
-        // Only then is the screen actually scrolled up one line.
-#if defined(OPTION_MSGHLD)
-        while (1
-            && topmsg->keep
-            && lastkept
-            && lastkept->msgnum == topmsg->msgnum
-        )
-        {
-            unkeep( lastkept );
-            if (topmsg == oldest_msg())
-                break;
-            topmsg = topmsg->prev;
-        }
-#endif
-    }
 }
 
-static void scroll_down_lines( int numlines, int doexpire )
+static void scroll_down_lines( int numlines )
 {
     int i;
-
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
 
     for (i=0; i < numlines && topmsg != newest_msg(); i++)
     {
-        // If the topmsg should be kept and is not already in our
-        // keep chain, then adding it to our keep chain before
-        // setting topmsg to the next entry does not really scroll
-        // the screen any (all it does is move the topmsg ptr),
-        // so if that's the case then we need to keep doing that
-        // until we eventually find the next non-kept message.
-        // Only then is the screen really scrolled down one line.
-#if defined(OPTION_MSGHLD)
-        while (1
-            && topmsg->keep
-            && (!lastkept || topmsg->msgnum != lastkept->msgnum)
-        )
-        {
-            keep( topmsg );
-            topmsg = topmsg->next;
-            if (topmsg == newest_msg())
-                break;
-        }
-#endif
         if (topmsg != newest_msg())
             topmsg = topmsg->next;
     }
 }
 
-static void page_up( int doexpire )
+static void page_up()
 {
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
-    scroll_up_lines( SCROLL_LINES - 1, 0 );
+    scroll_up_lines( SCROLL_LINES - 1 );
 }
-static void page_down( int doexpire )
+static void page_down()
 {
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
-    scroll_down_lines( SCROLL_LINES - 1, 0 );
+    scroll_down_lines( SCROLL_LINES - 1 );
 }
 
-static void scroll_to_top_line( int doexpire )
+static void scroll_to_top_line()
 {
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
     topmsg = oldest_msg();
-#if defined(OPTION_MSGHLD)
-    while (keptmsgs)
-        unkeep( keptmsgs );
-#endif
 }
 
-static void scroll_to_bottom_line( int doexpire )
+static void scroll_to_bottom_line()
 {
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
     while (topmsg != newest_msg())
-        scroll_down_lines( 1, 0 );
+        scroll_down_lines( 1 );
 }
 
-static void scroll_to_bottom_screen( int doexpire )
+static void scroll_to_bottom_screen()
 {
-#if defined(OPTION_MSGHLD)
-    if (doexpire)
-        expire_kept_msgs(0);
-#else
-    UNREFERENCED(doexpire);
-#endif // defined(OPTION_MSGHLD)
-    scroll_to_bottom_line( 0 );
-    page_up( 0 );
+    scroll_to_bottom_line();
+    page_up();
 }
 
 static void do_panel_command( void* cmd )
 {
     char *cmdsep;
     if (!is_currline_visible())
-        scroll_to_bottom_screen( 1 );
-    strlcpy( cmdline, cmd, sizeof(cmdline) );
+        scroll_to_bottom_screen();
+    if (cmd != (void*)cmdline)
+        strlcpy( cmdline, cmd, sizeof(cmdline) );
     if ( sysblk.cmdsep != NULL &&
          strlen(sysblk.cmdsep) == 1 &&
          strstr(cmdline, sysblk.cmdsep) != NULL )
@@ -774,30 +438,6 @@ static void get_dim (int *y, int *x)
         (*y)--;
 #endif // defined(WIN32) && !defined( _MSVC_ )
 }
-
-#if defined(OPTION_EXTCURS)
-static int get_keepnum_by_row( int row )
-{
-    // PROGRAMMING NOTE: right now all of our kept messages are
-    // always placed at the very top of the screen (starting on
-    // line 1), but should we at some point in the future decide
-    // to use the very top line of the screen for something else
-    // (such as a title or status line for example), then all we
-    // need to do is modify the below variable and the code then
-    // adjusts itself automatically. (I try to avoid hard-coded
-    // constants whenever possible). -- Fish
-
-   static int keep_beg_row = 1;  // screen 1-relative line# of first kept msg
-
-    if (0
-        || row <  keep_beg_row
-        || row > (keep_beg_row + numkept - 1)
-    )
-        return -1;
-
-    return (row - keep_beg_row);
-}
-#endif /*defined(OPTION_EXTCURS)*/
 
 static void set_color (short fg, short bg)
 {
@@ -914,7 +554,7 @@ static void draw_fw (U32 fw)
 static void draw_dw (U64 dw)
 {
     char buf[17];
-    snprintf (buf, sizeof(buf), "%16.16"I64_FMT"X", dw);
+    snprintf (buf, sizeof(buf), "%16.16"PRIX64, dw);
     draw_text (buf);
 }
 
@@ -1080,6 +720,8 @@ static void NP_screen_redraw (REGS *regs)
     draw_text ("| ");
     set_color (COLOR_WHITE, COLOR_BLUE);
 
+#if defined(OPTION_SHARED_DEVICES)
+
     /* Center "Peripherals" on the right-hand-side */
     i = 40 + snprintf(buf, sizeof(buf),
                       "Peripherals [Shared Port %u]",
@@ -1090,6 +732,8 @@ static void NP_screen_redraw (REGS *regs)
         fill_text (' ', 40 + ((cons_cols - i) / 2));
     draw_text (buf);
     fill_text (' ', (short)cons_cols);
+
+#endif // defined(OPTION_SHARED_DEVICES)
 
     /* Line 2 - peripheral headings */
     set_pos (2, 41);
@@ -1207,7 +851,12 @@ static void NP_screen_redraw (REGS *regs)
         draw_text ("MIPS");
     }
 
-    if (sysblk.hicpu || sysblk.shrdport)
+    if (0
+        || sysblk.hicpu
+#if defined(OPTION_SHARED_DEVICES)
+        || sysblk.shrdport
+#endif // defined(OPTION_SHARED_DEVICES)
+    )
     {
         set_pos ((BUTTONS_LINE+1), 10);
         draw_text ("IO/s");
@@ -1688,7 +1337,13 @@ static void NP_update(REGS *regs)
         NPmips = sysblk.mipsrate;
         NPmips_valid = 1;
     }
-    if (((!NPsios_valid || NPsios != sysblk.siosrate) && sysblk.hicpu) || sysblk.shrdport)
+
+    if (0
+        || (sysblk.hicpu && (!NPsios_valid || NPsios != sysblk.siosrate))
+#if defined(OPTION_SHARED_DEVICES)
+        || sysblk.shrdport
+#endif // defined(OPTION_SHARED_DEVICES)
+    )
     {
         set_color (COLOR_LIGHT_YELLOW, COLOR_BLACK);
         set_pos (BUTTONS_LINE, 8);
@@ -1939,14 +1594,11 @@ DLL_EXPORT void update_maxrates_hwm()       // (update high-water-mark values)
 
     if ( elapsed_secs >= ( maxrates_rpt_intvl * 60 ) )
     {
+#if 0
+        // I'll ask if I want to know, please.
         if (sysblk.panel_init)
-        {
-            panel_command(
-#if defined(OPTION_CMDTGT)
-                          "herc "
+            panel_command( "maxrates" );
 #endif
-                                "maxrates");
-        }
 
         prev_high_mips_rate = curr_high_mips_rate;
         prev_high_sios_rate = curr_high_sios_rate;
@@ -2050,36 +1702,27 @@ char   *kbbuf = NULL;                   /* Keyboard input buffer      */
 int     kblen;                          /* Number of chars in kbbuf   */
 U32     aaddr;                          /* Absolute address for STO   */
 char    buf[1024];                      /* Buffer workarea            */
+size_t  loopcount;                    /* Number of iterations done   */
 
     SET_THREAD_NAME("panel_display");
 
+    set_thread_priority(0,0);     /* (don't actually change priority) */
+
     /* Display thread started message on control panel */
-    WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Control panel");
+    WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), "Control panel");
 
     hdl_adsc("panel_cleanup",panel_cleanup, NULL);
 
     history_init();
 
-#if       defined( OPTION_CONFIG_SYMBOLS )
+#if defined( ENABLE_BUILTIN_SYMBOLS )
     /* Set Some Function Key Defaults */
     {
-        set_symbol("PF01", "SUBST IMMED "
-#if defined(OPTION_CMDTGT)
-                                       "herc "
-#endif
-                                            "help &0");
-        set_symbol("PF11", "IMMED "
-#if defined(OPTION_CMDTGT)
-                                 "herc "
-#endif
-                                      "devlist TAPE");
-        set_symbol("PF10", "SUBST DELAY "
-#if defined(OPTION_CMDTGT)
-                                       "herc "
-#endif
-                                            "devinit &*");
+        set_symbol("PF01", "SUBST IMMED help &0");
+        set_symbol("PF11", "IMMED devlist TAPE");
+        set_symbol("PF10", "SUBST DELAY devinit &*");
     }
-#endif
+#endif  /* #if defined( ENABLE_BUILTIN_SYMBOLS ) */
 
     /* Set up the input file descriptors */
     confp = stderr;
@@ -2120,14 +1763,6 @@ char    buf[1024];                      /* Buffer workarea            */
         curmsg->prev = curmsg - 1;
         curmsg->msgnum = i;
         memset(curmsg->msg,SPACE,MSG_SIZE);
-#if defined(OPTION_MSGCLR)
-        curmsg->bg = COLOR_DEFAULT_FG;
-        curmsg->fg = COLOR_DEFAULT_BG;
-#if defined(OPTION_MSGHLD)
-        curmsg->keep = 0;
-        memset( &curmsg->expiration, 0, sizeof(curmsg->expiration) );
-#endif // defined(OPTION_MSGHLD)
-#endif // defined(OPTION_MSGCLR)
     }
 
     /* Complete the circle */
@@ -2138,9 +1773,6 @@ char    buf[1024];                      /* Buffer workarea            */
     curmsg = topmsg = NULL;
     wrapped = 0;
     numkept = 0;
-#if defined(OPTION_MSGHLD)
-    keptmsgs = lastkept = NULL;
-#endif // defined(OPTION_MSGHLD)
 
     /* Set screen output stream to NON-buffered */
     setvbuf (confp, NULL, _IONBF, 0);
@@ -2180,7 +1812,7 @@ char    buf[1024];                      /* Buffer workarea            */
 #endif
 
     /* Process messages and commands */
-    while ( 1 )
+    for (loopcount = 0; ; loopcount++)
     {
 #if defined( _MSVC_ )
         /* Wait for keyboard input */
@@ -2236,6 +1868,7 @@ char    buf[1024];                      /* Buffer workarea            */
         if (rc < 0 )
         {
             if (errno == EINTR) continue;
+            // "select: %s"
             fprintf (stderr, MSG(HHC00014, "E", strerror(errno) ) );
             break;
         }
@@ -2243,15 +1876,21 @@ char    buf[1024];                      /* Buffer workarea            */
         ADJ_SCREEN_SIZE();
 
         /* If keyboard input has arrived then process it */
-        if (FD_ISSET(keybfd, &readset))
+        if (loopcount && FD_ISSET(keybfd, &readset))
         {
             /* Read character(s) from the keyboard */
             kblen = read (keybfd, kbbuf, kbbufsize-1);
 
             if (kblen < 0)
             {
+                // "keyboard read: %s"
                 fprintf (stderr, MSG(HHC00015, "E", strerror(errno) ) );
                 break;
+            }
+            if (!kblen)
+            {
+                panel_command("quit");             /* Force shutdown */
+                break;                /* EOF on input.  Don't loop   */
             }
 
             kbbuf[kblen] = '\0';
@@ -2296,21 +1935,13 @@ char    buf[1024];                      /* Buffer workarea            */
                         case 's':
                             if (!sysblk.hicpu)
                               break;
-                            do_panel_command(
-#if defined(OPTION_CMDTGT)
-                                             "herc "
-#endif
-                                                  "startall");
+                            do_panel_command( "startall" );
                             break;
                         case 'P':                   /* STOP */
                         case 'p':
                             if (!sysblk.hicpu)
                               break;
-                            do_panel_command(
-#if defined(OPTION_CMDTGT)
-                                             "herc "
-#endif
-                                                  "stopall");
+                            do_panel_command( "stopall" );
                             break;
                         case 'O':                   /* Store */
                         case 'o':
@@ -2415,11 +2046,7 @@ char    buf[1024];                      /* Buffer workarea            */
                                 redraw_status = 1;
                                 break;
                             }
-                            sprintf (cmdline,
-#if defined(OPTION_CMDTGT)
-                                             "herc "
-#endif
-                                                   "ipl %4.4x", NPdevnum[i]);
+                            sprintf (cmdline, "ipl %4.4x", NPdevnum[i]);
                             do_panel_command(cmdline);
                             memset(NPprompt2,0,sizeof(NPprompt2));
                             redraw_status = 1;
@@ -2440,11 +2067,7 @@ char    buf[1024];                      /* Buffer workarea            */
                                 redraw_status = 1;
                                 break;
                             }
-#if defined(OPTION_CMDTGT)
-                            MSGBUF( cmdline, "herc i %4.4x", NPdevnum[i]);
-#else
                             MSGBUF( cmdline, "i %4.4x", NPdevnum[i]);
-#endif
                             do_panel_command(cmdline);
                             memset(NPprompt2,0,sizeof(NPprompt2));
                             redraw_status = 1;
@@ -2486,11 +2109,7 @@ char    buf[1024];                      /* Buffer workarea            */
                             break;
                         case 4:                     /* POWER - 2nd part */
                             if (NPdevice == 'y' || NPdevice == 'Y')
-                                do_panel_command(
-#if defined(OPTION_CMDTGT)
-                                                 "herc "
-#endif
-                                                      "quit");
+                                do_panel_command( "quit" );
                             memset(NPprompt1, 0, sizeof(NPprompt1));
                             redraw_status = 1;
                             break;
@@ -2507,11 +2126,7 @@ char    buf[1024];                      /* Buffer workarea            */
                             if (!sysblk.hicpu)
                               break;
                             if (NPdevice == 'y' || NPdevice == 'Y')
-                                do_panel_command(
-#if defined(OPTION_CMDTGT)
-                                                 "herc "
-#endif
-                                                      "restart");
+                                do_panel_command( "restart" );
                             memset(NPprompt1, 0, sizeof(NPprompt1));
                             redraw_status = 1;
                             break;
@@ -2528,11 +2143,7 @@ char    buf[1024];                      /* Buffer workarea            */
                             if (!sysblk.hicpu)
                               break;
                             if (NPdevice == 'y' || NPdevice == 'Y')
-                                do_panel_command(
-#if defined(OPTION_CMDTGT)
-                                                 "herc "
-#endif
-                                                      "ext");
+                                do_panel_command( "ext" );
                             memset(NPprompt1, 0, sizeof(NPprompt1));
                             redraw_status = 1;
                             break;
@@ -2616,19 +2227,16 @@ char    buf[1024];                      /* Buffer workarea            */
                     else if ( !strcmp(kbbuf+i, KBD_PF20)                               ) szPF = "PF20";
                     else szPF = NULL;
 #endif
-#if    defined ( OPTION_CONFIG_SYMBOLS )
+
+#if defined(ENABLE_BUILTIN_SYMBOLS)
                     pf = (char*)get_symbol(szPF);
-#else  // !OPTION_CONFIG_SYMBOLS
+#else
                     pf = NULL;
-#endif //  OPTION_CONFIG_SYMBOLS
+#endif
 
                     if ( pf == NULL )
                     {
-#if defined(OPTION_CMDTGT)
-                        MSGBUF( msgbuf, "DELAY herc * %s UNDEFINED", szPF );
-#else
                         MSGBUF( msgbuf, "DELAY * %s UNDEFINED", szPF );
-#endif
                         pf = msgbuf;
                     }
 
@@ -2696,9 +2304,10 @@ char    buf[1024];                      /* Buffer workarea            */
                                 {
                                     char delim = *p;
 
-                                    while (*++p && *p != delim); if (!*p) break; // find end of quoted string
-
-                                    p++; if (!*p) break;                    // found end of args
+                                    do {} while (*++p && *p != delim);
+                                    if (!*p) break;                    // find end of quoted string
+                                    p++;
+                                    if (!*p) break;                    // found end of args
 
                                     if ( *p != ' ')
                                     {
@@ -2824,7 +2433,7 @@ char    buf[1024];                      /* Buffer workarea            */
                         cursor_cmdline_home();
                         redraw_cmd = 1;
                     } else {
-                        scroll_to_top_line( 1 );
+                        scroll_to_top_line();
                         redraw_msgs = 1;
                     }
                     break;
@@ -2836,7 +2445,7 @@ char    buf[1024];                      /* Buffer workarea            */
                         cursor_cmdline_end();
                         redraw_cmd = 1;
                     } else {
-                        scroll_to_bottom_screen( 1 );
+                        scroll_to_bottom_screen();
                         redraw_msgs = 1;
                     }
                     break;
@@ -2844,14 +2453,14 @@ char    buf[1024];                      /* Buffer workarea            */
 
                 /* Test for CTRL+HOME */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_CTRL_HOME) == 0) {
-                    scroll_to_top_line( 1 );
+                    scroll_to_top_line();
                     redraw_msgs = 1;
                     break;
                 }
 
                 /* Test for CTRL+END */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_CTRL_END) == 0) {
-                    scroll_to_bottom_line( 1 );
+                    scroll_to_bottom_line();
                     redraw_msgs = 1;
                     break;
                 }
@@ -2894,28 +2503,28 @@ char    buf[1024];                      /* Buffer workarea            */
 
                 /* Test for PAGEUP */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_PAGE_UP) == 0) {
-                    page_up( 1 );
+                    page_up();
                     redraw_msgs = 1;
                     break;
                 }
 
                 /* Test for PAGEDOWN */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_PAGE_DOWN) == 0) {
-                    page_down( 1 );
+                    page_down();
                     redraw_msgs = 1;
                     break;
                 }
 
                 /* Test for CTRL+UPARROW */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_CTRL_UP_ARROW) == 0) {
-                    scroll_up_lines(1,1);
+                    scroll_up_lines(1);
                     redraw_msgs = 1;
                     break;
                 }
 
                 /* Test for CTRL+DOWNARROW */
                 if (NPDup == 0 && strcmp(kbbuf+i, KBD_CTRL_DOWN_ARROW) == 0) {
-                    scroll_down_lines(1,1);
+                    scroll_down_lines(1);
                     redraw_msgs = 1;
                     break;
                 }
@@ -3057,22 +2666,9 @@ char    buf[1024];                      /* Buffer workarea            */
                     /* Get cursor pos and check if on cmdline */
                     if (!is_cursor_on_cmdline())
                     {
-                        int keepnum = get_keepnum_by_row( cur_cons_row );
-                        if (keepnum >= 0)
-                        {
-#if defined(OPTION_MSGHLD)
-                            /* ENTER pressed on kept msg; remove msg */
-                            unkeep_by_keepnum( keepnum, 1 );
-#endif
-                            redraw_msgs = 1;
-                            break;
-                        }
-                        /* ENTER pressed NOT on cmdline */
                         beep();
                         break;
                     }
-                        /* ENTER pressed on cmdline; fall through
-                           for normal ENTER keypress handling... */
                 }
 #endif // defined(OPTION_EXTCURS)
 
@@ -3082,9 +2678,6 @@ char    buf[1024];                      /* Buffer workarea            */
                         && cmdlen == 0
                         && NPDup == 0
                         && !sysblk.inststep
-#if defined( OPTION_CMDTGT )
-                        && sysblk.cmdtgt == CMDTGT_HERC
-#endif /* defined( OPTION_CMDTGT ) */
                     ) {
                         history_show();
                     } else {
@@ -3093,7 +2686,7 @@ char    buf[1024];                      /* Buffer workarea            */
                         if (NPDup == 0) {
                             if ('#' == cmdline[0] || '*' == cmdline[0]) {
                                 if (!is_currline_visible())
-                                    scroll_to_bottom_screen( 1 );
+                                    scroll_to_bottom_screen();
                                 history_requested = 0;
                                 do_panel_command(cmdline);
                                 redraw_cmd = 1;
@@ -3136,11 +2729,7 @@ char    buf[1024];                      /* Buffer workarea            */
                                         strcpy(cmdline, NPdevnam[NPasgn]);
                                     }
                                     strcpy(NPdevnam[NPasgn], "");
-                                    sprintf (NPentered,
-#if defined(OPTION_CMDTGT)
-                                                       "herc "
-#endif
-                                                             "devinit %4.4x %s",
+                                    sprintf (NPentered, "devinit %4.4x %s",
                                              NPdevnum[NPasgn], cmdline);
                                     do_panel_command(NPentered);
                                     strcpy(NPprompt2, "");
@@ -3302,7 +2891,7 @@ FinishShutdown:
                     /* Perform autoscroll if needed */
                     if (is_currline_visible()) {
                         while (lines_remaining() < 1)
-                            scroll_down_lines(1,1);
+                            scroll_down_lines(1);
                         /* Set the display update indicator */
                         redraw_msgs = 1;
                     }
@@ -3317,11 +2906,6 @@ FinishShutdown:
 
                 /* Copy message into next available PANMSG slot */
                 memcpy( curmsg->msg, readbuf, MSG_SIZE );
-
-#if defined(OPTION_MSGCLR)
-                /* Colorize and/or keep new message if needed */
-                colormsg(curmsg);
-#endif // defined(OPTION_MSGCLR)
 
             } /* end if (!readoff || readoff >= MSG_SIZE) */
         } /* end Read message bytes until newline... */
@@ -3403,33 +2987,12 @@ FinishShutdown:
                 saved_cons_row = cur_cons_row;
                 saved_cons_col = cur_cons_col;
 
-#if defined(OPTION_MSGHLD)
-                /* Unkeep kept messages if needed */
-                expire_kept_msgs(0);
-#endif // defined(OPTION_MSGHLD)
                 i = 0;
-#if defined(OPTION_MSGHLD)
-                /* Draw kept messages first */
-                for (p=keptmsgs; i < (SCROLL_LINES + numkept) && p; i++, p = p->next)
-                {
-                    set_pos (i+1, 1);
-#if defined(OPTION_MSGCLR)
-                    set_color (p->fg, p->bg);
-#else // !defined(OPTION_MSGCLR)
-                    set_color (COLOR_DEFAULT_FG, COLOR_DEFAULT_BG);
-#endif // defined(OPTION_MSGCLR)
-                    write_text (p->msg, MSG_SIZE);
-                }
-#endif // defined(OPTION_MSGHLD)
                 /* Then draw current screen */
                 for (p=topmsg; i < (SCROLL_LINES + numkept) && (p != curmsg->next || p == topmsg); i++, p = p->next)
                 {
                     set_pos (i+1, 1);
-#if defined(OPTION_MSGCLR)
-                    set_color (p->fg, p->bg);
-#else // !defined(OPTION_MSGCLR)
                     set_color (COLOR_DEFAULT_FG, COLOR_DEFAULT_BG);
-#endif // defined(OPTION_MSGCLR)
                     write_text (p->msg, MSG_SIZE);
                 }
 
@@ -3471,18 +3034,7 @@ FinishShutdown:
                 /* Display the command line */
                 set_pos (CMDLINE_ROW, 1);
                 set_color (COLOR_DEFAULT_LIGHT, COLOR_DEFAULT_BG);
-
-#if defined( OPTION_CMDTGT )
-                switch (sysblk.cmdtgt)
-                {
-                  case CMDTGT_HERC: draw_text( CMD_PREFIX_HERC ); break;
-                  case CMDTGT_SCP:  draw_text( CMD_PREFIX_SCP  ); break;
-                  case CMDTGT_PSCP: draw_text( CMD_PREFIX_PSCP ); break;
-                }
-#else // !defined( OPTION_CMDTGT )
                 draw_text( CMD_PREFIX_HERC );
-#endif // defined( OPTION_CMDTGT )
-
                 set_color (COLOR_DEFAULT_FG, COLOR_DEFAULT_BG);
                 PUTC_CMDLINE ();
                 fill_text (' ',cons_cols);
@@ -3530,8 +3082,13 @@ FinishShutdown:
 
                     if ( cnt_online > cnt_stopped && cnt_disabled == 0 )
                         state = "AMBER";
-                    if ( ( sysblk.hicpu && ( cnt_stopped == 0 && cnt_disabled == 0 ) ) ||
-                         ( !sysblk.hicpu && sysblk.shrdport ) )
+
+                    if (0
+                        || ( sysblk.hicpu && (cnt_stopped == 0 && cnt_disabled == 0))
+#if defined(OPTION_SHARED_DEVICES)
+                        || (!sysblk.hicpu && (sysblk.shrdport))
+#endif // defined(OPTION_SHARED_DEVICES)
+                    )
                         state = "GREEN";
                     set_console_title(state);
                 }
@@ -3548,7 +3105,7 @@ FinishShutdown:
                     len += sprintf(buf+len, "PSW=%8.8X%8.8X ",
                                    fetch_fw(curpsw), fetch_fw(curpsw+4));
                     if (regs->arch_mode == ARCH_900)
-                        len += sprintf (buf+len, "%16.16"I64_FMT"X ",
+                        len += sprintf (buf+len, "%16.16"PRIX64" ",
                                         fetch_dw (curpsw+8));
 #if defined(_FEATURE_SIE)
                     else
@@ -3628,9 +3185,15 @@ FinishShutdown:
                 }
 
                 /* Prepare I/O statistics */
-                if ((len + i + (numcpu ? 13 : 11)) < cons_cols &&
-                    (numcpu ||
-                     (!numcpu && sysblk.shrdport)))
+                if (1
+                    && (len + i + (numcpu ? 13 : 11)) < cons_cols
+                    && (0
+                        ||   numcpu
+#if defined(OPTION_SHARED_DEVICES)
+                        || (!numcpu && sysblk.shrdport)
+#endif // defined(OPTION_SHARED_DEVICES)
+                       )
+                )
                 {
                     if (numcpu)
                         ibuf[(int)i++] = ';',
@@ -3708,7 +3271,7 @@ FinishShutdown:
 
     sysblk.panel_init = 0;
 
-    WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Control panel");
+    WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), "Control panel");
 
     ASSERT( sysblk.shutdown );  // (why else would we be here?!)
 
@@ -3729,17 +3292,13 @@ PANMSG* p;
         clear_screen( stderr );
 
         /* Scroll to last full screen's worth of messages */
-        scroll_to_bottom_screen( 1 );
+        scroll_to_bottom_screen();
 
         /* Display messages in scrolling area */
         for (i=0, p = topmsg; i < SCROLL_LINES && p != curmsg->next; i++, p = p->next)
         {
             set_pos (i+1, 1);
-#if defined(OPTION_MSGCLR)
-            set_color (p->fg, p->bg);
-#else // !defined(OPTION_MSGCLR)
             set_color (COLOR_DEFAULT_FG, COLOR_DEFAULT_BG);
-#endif // defined(OPTION_MSGCLR)
             write_text (p->msg, MSG_SIZE);
         }
     }
@@ -3780,10 +3339,6 @@ PANMSG* p;
         free( pszCurrentDateTime           );
     }
 #endif
-
-    /* Read and display any msgs still remaining in the system log */
-    while((lmscnt = log_read(&lmsbuf, &lmsnum, LOG_NOBLOCK)))
-        fwrite(lmsbuf,lmscnt,1,stderr);
 
     set_screen_color(stderr, COLOR_DEFAULT_FG, COLOR_DEFAULT_BG);
 

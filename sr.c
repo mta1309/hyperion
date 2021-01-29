@@ -164,9 +164,9 @@ BYTE     psw[16];
     SR_WRITE_VALUE (file,SR_SYS_MAINSIZE,sysblk.mainsize,sizeof(sysblk.mainsize));
     TRACE("SR: Saving MAINSTOR...\n");
     SR_WRITE_BUF   (file,SR_SYS_MAINSTOR,sysblk.mainstor,sysblk.mainsize);
-    SR_WRITE_VALUE (file,SR_SYS_SKEYSIZE,(sysblk.mainsize/STORAGE_KEY_UNITSIZE),sizeof(U32));
+    SR_WRITE_VALUE (file,SR_SYS_SKEYSIZE,(sysblk.mainsize/_STORKEY_ARRAY_UNITSIZE),sizeof(U32));
     TRACE("SR: Saving Storage Keys...\n");
-    SR_WRITE_BUF   (file,SR_SYS_STORKEYS,sysblk.storkeys,sysblk.mainsize/STORAGE_KEY_UNITSIZE);
+    SR_WRITE_BUF   (file,SR_SYS_STORKEYS,sysblk.storkeys,sysblk.mainsize/_STORKEY_ARRAY_UNITSIZE);
     SR_WRITE_VALUE (file,SR_SYS_XPNDSIZE,sysblk.xpndsize,sizeof(sysblk.xpndsize));
     TRACE("SR: Saving Expanded Storage...\n");
     SR_WRITE_BUF   (file,SR_SYS_XPNDSTOR,sysblk.xpndstor,4096*sysblk.xpndsize);
@@ -301,6 +301,7 @@ BYTE     psw[16];
             {
                 SR_WRITE_STRING(file, SR_DEV_ARGV, "");
             }
+        SR_WRITE_VALUE(file, SR_DEV_NUMCONFDEV, dev->numconfdev, sizeof(dev->numconfdev));
         SR_WRITE_STRING(file, SR_DEV_TYPNAME, dev->typname);
 
         /* Common device fields */
@@ -381,6 +382,7 @@ IOINT   *ioq = NULL;
 char     buf[SR_MAX_STRING_LENGTH+1];
 char     zeros[16];
 S64      dreg;
+int      numconfdev=0;
 
     UNREFERENCED(cmdline);
 
@@ -400,17 +402,12 @@ S64      dreg;
 
     /* Make sure all CPUs are deconfigured or stopped */
     TRACE("SR: Waiting for CPUs to stop...\n");
-    OBTAIN_INTLOCK(NULL);
-    for (i = 0; i < sysblk.maxcpu; i++)
-        if (IS_CPU_ONLINE(i)
-         && CPUSTATE_STOPPED != sysblk.regs[i]->cpustate)
-        {
-            RELEASE_INTLOCK(NULL);
-            // "SR: all processors must be stopped to resume"
-            WRMSG(HHC02005, "E");
-            return -1;
-        }
-    RELEASE_INTLOCK(NULL);
+    if (!are_all_cpus_stopped())
+    {
+        // "SR: all processors must be stopped to resume"
+        WRMSG(HHC02005, "E");
+        return -1;
+    }
 
     file = SR_OPEN (fn, "rb");
     if (file == NULL)
@@ -519,12 +516,12 @@ S64      dreg;
 
         case SR_SYS_SKEYSIZE:
             SR_READ_VALUE(file, len, &len, sizeof(len));
-            if (len > (U32)(sysblk.mainsize/STORAGE_KEY_UNITSIZE))
+            if (len > (U32)(sysblk.mainsize/_STORKEY_ARRAY_UNITSIZE))
             {
                 char buf1[20];
                 char buf2[20];
                 MSGBUF(buf1, "%d", len);
-                MSGBUF(buf2, "%d", (U32)(sysblk.mainsize/STORAGE_KEY_UNITSIZE));
+                MSGBUF(buf2, "%d", (U32)(sysblk.mainsize/_STORKEY_ARRAY_UNITSIZE));
                 // "SR: mismatch in '%s': '%s' found, '%s' expected"
                 WRMSG(HHC02009, "E", "storkey size", buf1, buf2);
                 goto sr_error_exit;
@@ -1104,6 +1101,10 @@ S64      dreg;
             devargx = 0;
             break;
 
+        case SR_DEV_NUMCONFDEV:
+            SR_READ_VALUE(file, len, &numconfdev, sizeof(numconfdev));
+            break;
+
         case SR_DEV_ARGV:
             SR_READ_STRING(file, buf, len);
             if (devargx < devargc) devargv[devargx++] = strdup(buf);
@@ -1114,11 +1115,13 @@ S64      dreg;
             dev = find_device_by_devnum(lcss,devnum);
             if (dev == NULL)
             {
-                if (attach_device (lcss, devnum, buf, devargc, devargv))
+                if (numconfdev == 0) numconfdev = 1;
+                if (attach_device (lcss, devnum, buf, devargc, devargv, numconfdev))
                 {
                     // "SR: %04X: device initialization failed"
                     WRMSG(HHC02015, "E", devnum);
                 }
+                numconfdev = 0;
             }
             else if (strcmp(dev->typname, buf))
             {
@@ -1272,21 +1275,21 @@ S64      dreg;
             SR_SKIP_NULL_DEV(dev, file, len);
             SR_READ_VALUE(file, len, &rc, sizeof(rc));
             dev->pending = rc;
-            QUEUE_IO_INTERRUPT(&dev->ioint);
+            QUEUE_IO_INTERRUPT(&dev->ioint,FALSE);
             break;
 
         case SR_DEV_PCIPENDING:
             SR_SKIP_NULL_DEV(dev, file, len);
             SR_READ_VALUE(file, len, &rc, sizeof(rc));
             dev->pcipending = rc;
-            QUEUE_IO_INTERRUPT(&dev->pciioint);
+            QUEUE_IO_INTERRUPT(&dev->pciioint,FALSE);
             break;
 
         case SR_DEV_ATTNPENDING:
             SR_SKIP_NULL_DEV(dev, file, len);
             SR_READ_VALUE(file, len, &rc, sizeof(rc));
             dev->attnpending = rc;
-            QUEUE_IO_INTERRUPT(&dev->attnioint);
+            QUEUE_IO_INTERRUPT(&dev->attnioint,FALSE);
             break;
 
         case SR_DEV_STARTPENDING:

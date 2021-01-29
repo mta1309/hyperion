@@ -25,6 +25,11 @@
 #include "opcode.h"
 #include "inline.h"
 
+/* When an operation code has unused operand(s) (IPK, e.g.), it will */
+/* attract  a diagnostic for a set, but unused variable.  Fixing the */
+/* macros to support e.g., RS_NOOPS is not productive, so:           */
+DISABLE_GCC_UNUSED_SET_WARNING
+
 #if defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY)
 
 #if defined(FEATURE_INTERLOCKED_ACCESS_FACILITY)                /*810*/
@@ -1829,11 +1834,13 @@ VADR    addr2;                          /* Relative operand address  */
 #endif /*defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY)*/
 
 #if defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY) \
+ || defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)       /*912*/ \
  || defined(FEATURE_HIGH_WORD_FACILITY)                         /*810*/
 /*-------------------------------------------------------------------*/
 /* Rotate Then Perform Operation On Selected Bits Long Register      */
 /* Subroutine is called by RNSBG,RISBG,ROSBG,RXSBG instructions      */
 /* and also by the RISBHG,RISBLG instructions */                /*810*/
+/* and by the RISBGN instruction */                             /*912*/
 /*-------------------------------------------------------------------*/
 DEF_INST(rotate_then_xxx_selected_bits_long_reg)
 {
@@ -1843,7 +1850,9 @@ U64     mask, rota, resu;               /* 64-bit work areas         */
 int     n;                              /* Number of bits to shift   */
 int     t_bit = 0;                      /* Test-results indicator    */
 int     z_bit = 0;                      /* Zero-remaining indicator  */
+#if 0
 int     i;                              /* Loop counter              */
+#endif
 BYTE    i3, i4, i5;                     /* Immediate values          */
 BYTE    opcode;                         /* 2nd byte of opcode        */
 
@@ -1874,6 +1883,22 @@ BYTE    opcode;                         /* 2nd byte of opcode        */
             | ((n == 0) ? 0 : (regs->GR_G(r2) >> (64 - n)));
 
     /* Construct mask for selected bits */
+    if(start<=end)
+    {
+        mask = 0xffffffffffffffffll << start;
+        mask >>= start;
+        mask >>= (63-end);
+        mask <<= (63-end);
+    }
+    else
+    {
+        mask = 0xffffffffffffffffll << (end+1);
+        mask >>= (end+1);
+        mask >>= (64-start);
+        mask <<= (64-start);
+        mask ^= 0xffffffffffffffffll;
+    }
+#if 0
     for (i=0, mask=0; i < 64; i++)
     {
         mask <<= 1;
@@ -1883,6 +1908,7 @@ BYTE    opcode;                         /* 2nd byte of opcode        */
             if (i <= end || i >= start) mask |= 1;
         }
     } /* end for(i) */
+#endif
 
     /* Isolate selected bits of rotated second operand */
     rota &= mask;
@@ -1898,6 +1924,7 @@ BYTE    opcode;                         /* 2nd byte of opcode        */
     case 0x51: /* Insert Low */                                 /*810*/
     case 0x55: /* Insert */
     case 0x5D: /* Insert High */                                /*810*/
+    case 0x59: /* Insert - no CC change */                      /*912*/
         resu = rota;
         break;
     case 0x56: /* Or */
@@ -1906,6 +1933,15 @@ BYTE    opcode;                         /* 2nd byte of opcode        */
     case 0x57: /* Exclusive Or */
         resu ^= rota;
         break;
+    default:
+        /* We should never get there - trigger machine check */
+	WRMSG(HHC90550, "E", opcode);
+#if !defined(NO_SIGABEND_HANDLER)
+        signal_thread(sysblk.cputid[regs->cpuad], SIGUSR1);
+#else
+	abort();
+#endif
+
     } /* end switch(opcode) */
 
     /* And/Or/Xor set condition code according to result bits*/ /*810*/
@@ -1932,9 +1968,11 @@ BYTE    opcode;                         /* 2nd byte of opcode        */
                 (S64)regs->GR_G(r1) > 0 ? 2 : 0;
 
     /* For RISBHG,RISBLG the condition code remains unchanged*/ /*810*/
+    /* For RISBGN the condition code remains unchanged */       /*912*/
 
 } /* end DEF_INST(rotate_then_xxx_selected_bits_long_reg) */
 #endif /*defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY)*/
+       /*|| defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)*/ /*912*/
        /*|| defined(FEATURE_HIGH_WORD_FACILITY)*/               /*810*/
 
 #if defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY)
@@ -2916,7 +2954,7 @@ int     m3;                             /* Value of M field          */
     RRF_M(inst, regs, r1, r2, m3);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Copy R2 register bits 32-63 to R1 register */
         regs->GR_L(r1) = regs->GR_L(r2);
@@ -2937,7 +2975,7 @@ int     m3;                             /* Value of M field          */
     RRF_M(inst, regs, r1, r2, m3);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Copy R2 register bits 0-63 to R1 register */
         regs->GR_G(r1) = regs->GR_G(r2);
@@ -2960,7 +2998,7 @@ VADR    effective_addr2;                /* Effective address         */
     RSY(inst, regs, r1, m3, b2, effective_addr2);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Load R1 register bits 32-63 from second operand */
         regs->GR_L(r1) = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs );
@@ -2983,7 +3021,7 @@ VADR    effective_addr2;                /* Effective address         */
     RSY(inst, regs, r1, m3, b2, effective_addr2);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Load R1 register bits 0-63 from second operand */
         regs->GR_G(r1) = ARCH_DEP(vfetch8) ( effective_addr2, b2, regs );
@@ -3006,7 +3044,7 @@ VADR    effective_addr2;                /* Effective address         */
     RSY(inst, regs, r1, m3, b2, effective_addr2);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Store R1 register bits 32-63 at operand address */
         ARCH_DEP(vstore4) ( regs->GR_L(r1), effective_addr2, b2, regs );
@@ -3029,7 +3067,7 @@ VADR    effective_addr2;                /* Effective address         */
     RSY(inst, regs, r1, m3, b2, effective_addr2);
 
     /* Test M3 mask bit corresponding to condition code */
-    if (m3 & (0x80 >> regs->psw.cc))
+    if (m3 & (0x08 >> regs->psw.cc))
     {
         /* Store R1 register bits 0-63 at operand address */
         ARCH_DEP(vstore8) ( regs->GR_G(r1), effective_addr2, b2, regs );
@@ -3563,6 +3601,275 @@ U64     mask = 0x0101010101010101ULL;   /* Bit mask                  */
 
 } /* end DEF_INST(population_count) */
 #endif /*defined(FEATURE_POPULATION_COUNT_FACILITY)*/           /*810*/
+
+
+#if defined(FEATURE_LOAD_AND_TRAP_FACILITY)                     /*912*/
+
+/*-------------------------------------------------------------------*/
+/* E39F LAT   - Load and Trap                                  [RXY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(load_and_trap)
+{
+int     r1;                             /* Value of R field          */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+
+    RXY(inst, regs, r1, b2, effective_addr2);
+
+    /* Load R1 register from second operand */
+    regs->GR_L(r1) = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs );
+
+    /* Raise data exception if result is zero */
+    if (regs->GR_L(r1) == 0)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(load_and_trap) */
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* E385 LGAT  - Load Long and Trap                             [RXY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(load_long_and_trap)                                    /*912*/
+{
+int     r1;                             /* Value of R field          */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+
+    RXY(inst, regs, r1, b2, effective_addr2);
+
+    /* Load R1 register from second operand */
+    regs->GR_G(r1) = ARCH_DEP(vfetch8) ( effective_addr2, b2, regs );
+
+    /* Raise data exception if result is zero */
+    if (regs->GR_G(r1) == 0)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(load_long_and_trap) */
+#endif /*defined(FEATURE_ESAME)*/
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* E3C8 LFHAT - Load Fullword High and Trap                    [RXY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(load_fullword_high_and_trap)                           /*912*/
+{
+int     r1;                             /* Value of R field          */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+
+    RXY(inst, regs, r1, b2, effective_addr2);
+
+    /* Load R1 register bits 0-31 from second operand */
+    regs->GR_H(r1) = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs );
+
+    /* Raise data exception if result is zero */
+    if (regs->GR_H(r1) == 0)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(load_fullword_high_and_trap) */
+#endif /*defined(FEATURE_ESAME)*/
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* E39D LLGFAT - Load Logical Long Fullword and Trap           [RXY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(load_logical_long_fullword_and_trap)                   /*912*/
+{
+int     r1;                             /* Value of R field          */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+
+    RXY(inst, regs, r1, b2, effective_addr2);
+
+    /* Load R1 register from second operand */
+    regs->GR_G(r1) = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs );
+
+    /* Raise data exception if result is zero */
+    if (regs->GR_G(r1) == 0)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(load_logical_long_fullword_and_trap) */
+#endif /*defined(FEATURE_ESAME)*/
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* E39C LLGTAT - Load Logical Long Thirtyone and Trap          [RXY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(load_logical_long_thirtyone_and_trap)                  /*912*/
+{
+int     r1;                             /* Value of R field          */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+
+    RXY(inst, regs, r1, b2, effective_addr2);
+
+    /* Load R1 register from second operand */
+    regs->GR_G(r1) = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs )
+                                                        & 0x7FFFFFFF;
+
+    /* Raise data exception if result is zero */
+    if (regs->GR_G(r1) == 0)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(load_logical_long_thirtyone_and_trap) */
+#endif /*defined(FEATURE_ESAME)*/
+
+#endif /*defined(FEATURE_LOAD_AND_TRAP_FACILITY)*/              /*912*/
+
+
+#if defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)       /*912*/
+
+/*-------------------------------------------------------------------*/
+/* EB23 CLT   - Compare Logical and Trap                       [RSY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(compare_logical_and_trap)                              /*912*/
+{
+int     r1;                             /* Register number           */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+U32     n;                              /* 32-bit operand value      */
+int     m3;                             /* Mask bits                 */
+int     cc;                             /* Comparison result         */
+
+    RSY(inst, regs, r1, m3, b2, effective_addr2);
+
+    /* Load second operand from operand address */
+    n = ARCH_DEP(vfetch4) ( effective_addr2, b2, regs );
+
+    /* Compare unsigned operands and set comparison result */
+    cc = regs->GR_L(r1) < n ? 1 :
+         regs->GR_L(r1) > n ? 2 : 0;
+
+    /* Raise data exception if m3 mask bit is set */
+    if ((0x8 >> cc) & m3)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(compare_logical_and_trap) */
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* EB2B CLGT  - Compare Logical and Trap Long                  [RSY] */
+/*-------------------------------------------------------------------*/
+DEF_INST(compare_logical_and_trap_long)                         /*912*/
+{
+int     r1;                             /* Register number           */
+int     b2;                             /* Base of effective addr    */
+VADR    effective_addr2;                /* Effective address         */
+U64     n;                              /* 64-bit operand value      */
+int     m3;                             /* Mask bits                 */
+int     cc;                             /* Comparison result         */
+
+    RSY(inst, regs, r1, m3, b2, effective_addr2);
+
+    /* Load second operand from operand address */
+    n = ARCH_DEP(vfetch8) ( effective_addr2, b2, regs );
+
+    /* Compare unsigned operands and set comparison result */
+    cc = regs->GR_G(r1) < n ? 1 :
+         regs->GR_G(r1) > n ? 2 : 0;
+
+    /* Raise data exception if m3 mask bit is set */
+    if ((0x8 >> cc) & m3)
+    {
+        regs->dxc = DXC_COMPARE_AND_TRAP;
+        ARCH_DEP(program_interrupt) (regs, PGM_DATA_EXCEPTION);
+    }
+
+} /* end DEF_INST(compare_logical_and_trap_long) */
+#endif /*defined(FEATURE_ESAME)*/
+
+
+#if defined(FEATURE_ESAME)
+/*-------------------------------------------------------------------*/
+/* EC59 RISBGN - Rotate Then Insert Selected Bits No CC        [RIE] */
+/*-------------------------------------------------------------------*/
+DEF_INST(rotate_then_insert_selected_bits_long_reg_n)
+{
+    ARCH_DEP(rotate_then_xxx_selected_bits_long_reg) (inst, regs);
+} /* end DEF_INST(rotate_then_insert_selected_bits_long_reg_n) */
+#endif /*defined(FEATURE_ESAME)*/
+
+
+#endif /*defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)*/
+
+#if defined(FEATURE_EXECUTION_HINT_FACILITY)                    /*912*/
+
+/*-------------------------------------------------------------------*/
+/* C7   BPP   - Branch Prediction Preload                      [SMI] */
+/*-------------------------------------------------------------------*/
+DEF_INST(branch_prediction_preload)                             /*912*/
+{
+VADR    addr2, addr3;                   /* Effective addresses       */
+int     b3;                             /* Base of effective address */
+int     m1;                             /* Mask value                */
+
+    SMI_A0(inst, regs, m1, addr2, b3, addr3);
+
+    /* Depending on the model, the CPU may not implement
+       all of the branch-attribute codes. For codes that
+       are not recognized by the CPU, and for reserved
+       codes, the BPP instruction acts as a no-operation */
+
+} /* end DEF_INST(branch_prediction_preload) */
+
+ 
+/*-------------------------------------------------------------------*/
+/* C5   BPRP  - Branch Prediction Relative Preload             [MII] */
+/*-------------------------------------------------------------------*/
+DEF_INST(branch_prediction_relative_preload)                    /*912*/
+{
+VADR    addr2, addr3;                   /* Effective addresses       */
+int     m1;                             /* Mask value                */
+
+    MII_A0(inst, regs, m1, addr2, addr3);
+
+    /* Depending on the model, the CPU may not implement
+       all of the branch-attribute codes. For codes that
+       are not recognized by the CPU, and for reserved
+       codes, the BPRP instruction acts as a no-operation */
+        
+} /* end DEF_INST(branch_prediction_relative_preload) */
+ 
+ 
+/*-------------------------------------------------------------------*/
+/* B2FA NIAI  - Next Instruction Access Intent                  [IE] */
+/*-------------------------------------------------------------------*/
+DEF_INST(next_instruction_access_intent)                        /*912*/
+{
+BYTE    i1, i2;                         /* Immediate fields          */
+
+    IE0(inst, regs, i1, i2);
+
+    /* Depending on the model, the CPU may not recognize all of the
+       access intents. For access intents that are not recognized by
+       the CPU, the NIAI instruction acts as a no-operation */
+
+} /* end DEF_INST(next_instruction_access_intent) */
+
+#endif /*defined(FEATURE_EXECUTION_HINT_FACILITY)*/             /*912*/
 
 
 #if !defined(_GEN_ARCH)

@@ -36,7 +36,7 @@
 /*-------------------------------------------------------------------*/
 #if !defined(_reset_instcount_)
 #define _reset_instcount_
-INLINE void
+static INLINE void
 cpu_reset_instcount_and_cputime(REGS* regs)
 {
     /* Reset instruction counts, I/O counts and real CPU time */
@@ -60,7 +60,7 @@ cpu_reset_instcount_and_cputime(REGS* regs)
 /*-------------------------------------------------------------------*/
 #if !defined(_subsystem_reset_)
 #define _subsystem_reset_
-void subsystem_reset (void)
+static INLINE void subsystem_reset (void)
 {
     /* Perform subsystem reset
      *
@@ -845,7 +845,7 @@ void storage_clear()
     if (!sysblk.main_clear)
     {
         if (sysblk.mainstor) memset( sysblk.mainstor, 0x00, sysblk.mainsize );
-        if (sysblk.storkeys) memset( sysblk.storkeys, 0x00, sysblk.mainsize / STORAGE_KEY_UNITSIZE );
+        if (sysblk.storkeys) memset( sysblk.storkeys, 0x00, sysblk.mainsize / _STORKEY_ARRAY_UNITSIZE );
         sysblk.main_clear = 1;
     }
 }

@@ -91,31 +91,24 @@ CPU_BITMAP      intmask = 0;            /* Interrupt CPU mask        */
          * [2] Decrement the CPU timer for each CPU  *
          *-------------------------------------------*/
 
-        /*  If LPAR mode and not waiting, or in BASIC mode, decrement
-         *  the CPU timer and update the CPU timer interrupt state, if.
-         *  necessary.
-         */
-        if (!WAITSTATE(&regs->psw) || !sysblk.lparmode)
+        /* Set interrupt flag if the CPU timer is negative */
+        if (CPU_TIMER(regs) < 0)
         {
-            /* Set interrupt flag if the CPU timer is negative */
-            if (cpu_timer(regs) < 0)
+            if (!IS_IC_PTIMER(regs))
             {
-                if (!IS_IC_PTIMER(regs))
-                {
-                    ON_IC_PTIMER(regs);
-                    intmask |= regs->cpubit;
-                }
+                ON_IC_PTIMER(regs);
+                intmask |= regs->cpubit;
             }
-            else if(IS_IC_PTIMER(regs))
-                OFF_IC_PTIMER(regs);
         }
+        else if(IS_IC_PTIMER(regs))
+            OFF_IC_PTIMER(regs);
 
 #if defined(_FEATURE_SIE)
         /* When running under SIE also update the SIE copy */
         if(regs->sie_active)
         {
             /* Set interrupt flag if the CPU timer is negative */
-            if (cpu_timer_SIE(regs) < 0)
+            if (CPU_TIMER(regs->guestregs) < 0)
             {
                 ON_IC_PTIMER(regs->guestregs);
                 intmask |= regs->cpubit;
@@ -196,18 +189,11 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
     UNREFERENCED(argp);
 
-    /* Set root mode in order to set priority */
-    SETMODE(ROOT);
-
     /* Set timer thread priority */
-    if (setpriority(PRIO_PROCESS, 0, sysblk.todprio))
-        WRMSG (HHC00136, "W", "setpriority()", strerror(errno));
-
-    /* Back to user mode */
-    SETMODE(USER);
+    set_thread_priority(0, sysblk.todprio);
 
     /* Display thread started message on control panel */
-    WRMSG (HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Timer");
+    WRMSG (HHC00100, "I", thread_id(), get_thread_priority(0), "Timer");
     SET_THREAD_NAME_ID(-1, "CPU Timer");
 
 #ifdef OPTION_MIPS_COUNTING
@@ -267,6 +253,7 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
                 /* Calculate CPU busy percentage */
                 waittime = regs->waittime;
+                regs->waittime_accumulated += waittime;
                 regs->waittime = 0;
                 if (regs->waittod)
                 {
@@ -304,7 +291,7 @@ const U64   period = ETOD_SEC;          /* MIPS calculation period   */
 
     } /* end while */
 
-    WRMSG (HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Timer");
+    WRMSG (HHC00101, "I", thread_id(), get_thread_priority(0), "Timer");
 
     sysblk.todtid = 0;
 
@@ -362,7 +349,7 @@ int numcap = 1;              /* Number of CPU's being capped         */
     hdl_adsc("capping_manager_shutdown",capping_manager_shutdown, NULL);
 
     /* Display thread started message on control panel */
-    WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Capping manager");
+    WRMSG(HHC00100, "I", thread_id(), get_thread_priority(0), "Capping manager");
 
     /* Initialize interrupt wait locks */
     for(cpu = 0; cpu < sysblk.maxcpu; cpu++)
@@ -462,6 +449,6 @@ int numcap = 1;              /* Number of CPU's being capped         */
 
     sysblk.captid = 0;
 
-    WRMSG(HHC00101, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), "Capping manager");
+    WRMSG(HHC00101, "I", thread_id(), get_thread_priority(0), "Capping manager");
     return(NULL);
 }

@@ -31,10 +31,11 @@ hdt3420_OBJ = \
     $(O)tapedev.obj  \
     $(O)tapeccws.obj \
     $(O)awstape.obj  \
-    $(O)faketape.obj  \
+    $(O)faketape.obj \
     $(O)hettape.obj  \
     $(O)omatape.obj  \
-    $(O)scsitape.obj
+    $(O)scsitape.obj \
+    $(O)scsiutil.obj
 
 tuntap_OBJ = \
     $(O)tuntap.obj  \
@@ -53,6 +54,7 @@ hutil_OBJ = \
     $(O)hdl.obj      \
     $(O)hostinfo.obj \
     $(O)hscutl.obj   \
+    $(O)hexdumpe.obj \
     $(O)hscutl2.obj  \
     $(O)logger.obj   \
     $(O)logmsg.obj   \
@@ -82,12 +84,7 @@ decNumber_OBJ = \
     $(O)decPacked.obj
 
 altcmpsc_OBJ = \
-    $(O)cmpsc_2012.obj \
-    $(O)cmpscdbg.obj \
-    $(O)cmpscdct.obj \
-    $(O)cmpscget.obj \
-    $(O)cmpscmem.obj \
-    $(O)cmpscput.obj
+    $(O)cmpsc.obj
 
 hengine_OBJ = \
     $(O)archlvl.obj  \
@@ -99,7 +96,12 @@ hengine_OBJ = \
     $(O)chsc.obj     \
     $(O)clock.obj    \
     $(O)cmdtab.obj   \
-    $(O)cmpsc.obj    \
+    $(O)cmpsc_2012.obj  \
+    $(O)cmpscdbg.obj    \
+    $(O)cmpscdct.obj    \
+    $(O)cmpscget.obj    \
+    $(O)cmpscmem.obj    \
+    $(O)cmpscput.obj    \
     $(O)config.obj   \
     $(O)control.obj  \
     $(O)cpu.obj      \
@@ -129,7 +131,6 @@ hengine_OBJ = \
     $(O)hscmisc.obj  \
     $(O)httpserv.obj \
     $(O)ieee.obj     \
-    $(O)SoftFloat.obj \
     $(O)impl.obj     \
     $(O)io.obj       \
     $(O)ipl.obj      \

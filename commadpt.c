@@ -138,19 +138,23 @@
   #define sysblk (*psysblk)
 #endif
 
- /*-------------------------------------------------------------------*/
- /* Ivan Warren 20040227                                              */
- /* This table is used by channel.c to determine if a CCW code is an  */
- /* immediate command or not                                          */
- /* The tape is addressed in the DEVHND structure as 'DEVIMM immed'   */
- /* 0 : Command is NOT an immediate command                           */
- /* 1 : Command is an immediate command                               */
- /* Note : An immediate command is defined as a command which returns */
- /* CE (channel end) during initialisation (that is, no data is       */
- /* actually transfered. In this case, IL is not indicated for a CCW  */
- /* Format 0 or for a CCW Format 1 when IL Suppression Mode is in     */
- /* effect                                                            */
- /*-------------------------------------------------------------------*/
+/*-------------------------------------------------------------------*/
+/* Ivan Warren 20040227                                              */
+/*                                                                   */
+/* This table is used by channel.c to determine if a CCW code        */
+/* is an immediate command or not.                                   */
+/*                                                                   */
+/* The table is addressed in the DEVHND structure as 'DEVIMM immed'  */
+/*                                                                   */
+/*     0:  ("false")  Command is *NOT* an immediate command          */
+/*     1:  ("true")   Command *IS* an immediate command              */
+/*                                                                   */
+/* Note: An immediate command is defined as a command which returns  */
+/* CE (channel end) during initialization (that is, no data is       */
+/* actually transfered). In this case, IL is not indicated for a     */
+/* Format 0 or Format 1 CCW when IL Suppression Mode is in effect.   */
+/*                                                                   */
+/*-------------------------------------------------------------------*/
 
 static BYTE commadpt_immed_command[256]=
 { 0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -471,13 +475,14 @@ static void logdump(char *txt,DEVBLK *dev,BYTE *bfr,size_t sz)
         }
         if( i%4 == 0 && i)
         {
-            strncat(buf, " ", sizeof(buf));
+            strlcat(buf, " ", sizeof(buf));
         }
         MSGBUF(byte, "%02X",bfr[i]);
-        strncat(buf, byte, sizeof(buf) - strlen(buf));
+        strlcat(buf, byte, sizeof(buf));
     }
     WRMSG(HHC01050,"D",SSID_TO_LCSS(dev->ssid),dev->devnum,txt,buf);
 }
+
 /*-------------------------------------------------------------------*/
 /* Handler utility routines                                          */
 /*-------------------------------------------------------------------*/
@@ -505,6 +510,7 @@ void commadpt_ring_init(COMMADPT_RING *ring,size_t sz,int trace)
             "allocated");
     }
 }
+
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Free a buffer ring                       */
 /*-------------------------------------------------------------------*/
@@ -528,6 +534,7 @@ static void commadpt_ring_terminate(COMMADPT_RING *ring,int trace)
     ring->havedata=0;
     ring->overflow=0;
 }
+
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Flush a buffer ring                      */
 /*-------------------------------------------------------------------*/
@@ -538,10 +545,11 @@ static void commadpt_ring_flush(COMMADPT_RING *ring)
     ring->havedata=0;
     ring->overflow=0;
 }
+
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Queue a byte in the ring                 */
 /*-------------------------------------------------------------------*/
-inline static void commadpt_ring_push(COMMADPT_RING *ring,BYTE b)
+static inline void commadpt_ring_push(COMMADPT_RING *ring,BYTE b)
 {
     ring->bfr[ring->hi++]=b;
     if(ring->hi>=ring->sz)
@@ -554,10 +562,11 @@ inline static void commadpt_ring_push(COMMADPT_RING *ring,BYTE b)
     }
     ring->havedata=1;
 }
+
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Queue a byte array in the ring           */
 /*-------------------------------------------------------------------*/
-inline static void commadpt_ring_pushbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
+static inline void commadpt_ring_pushbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
 {
     size_t i;
     for(i=0;i<sz;i++)
@@ -565,10 +574,11 @@ inline static void commadpt_ring_pushbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
         commadpt_ring_push(ring,b[i]);
     }
 }
+
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Retrieve a byte from the ring            */
 /*-------------------------------------------------------------------*/
-inline static BYTE commadpt_ring_pop(COMMADPT_RING *ring)
+static inline BYTE commadpt_ring_pop(COMMADPT_RING *ring)
 {
     register BYTE b;
     b=ring->bfr[ring->lo++];
@@ -586,7 +596,7 @@ inline static BYTE commadpt_ring_pop(COMMADPT_RING *ring)
 /*-------------------------------------------------------------------*/
 /* Buffer ring management : Retrive a byte array from the ring       */
 /*-------------------------------------------------------------------*/
-inline static size_t commadpt_ring_popbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
+static inline size_t commadpt_ring_popbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
 {
     size_t i;
     for(i=0;i<sz && ring->havedata;i++)
@@ -595,6 +605,7 @@ inline static size_t commadpt_ring_popbfr(COMMADPT_RING *ring,BYTE *b,size_t sz)
     }
     return i;
 }
+
 /*-------------------------------------------------------------------*/
 /* Free all private structures and buffers                           */
 /*-------------------------------------------------------------------*/
@@ -660,9 +671,11 @@ static int commadpt_alloc_device(DEVBLK *dev)
     dev->commadpt->dev=dev;
     return 0;
 }
+
 /*-------------------------------------------------------------------*/
 /* Parsing utilities                                                 */
 /*-------------------------------------------------------------------*/
+
 /*-------------------------------------------------------------------*/
 /* commadpt_getport : returns a port number or -1                    */
 /*-------------------------------------------------------------------*/
@@ -682,6 +695,7 @@ static int commadpt_getport(char *txt)
     }
     return(pno);
 }
+
 /*-------------------------------------------------------------------*/
 /* commadpt_getaddr : set an in_addr_t if ok, else return -1         */
 /*-------------------------------------------------------------------*/
@@ -696,6 +710,7 @@ static int commadpt_getaddr(in_addr_t *ia,char *txt)
     memcpy(ia,he->h_addr_list[0],4);
     return(0);
 }
+
 /*-------------------------------------------------------------------*/
 /* commadpt_connout : make a tcp outgoing call                       */
 /* return values : 0 -> call succeeded or initiated                  */
@@ -721,13 +736,17 @@ static int commadpt_connout(COMMADPT *ca)
     rc=connect(ca->sfd,(struct sockaddr *)&sin,sizeof(sin));
     if(rc<0)
     {
+#if defined(_MSVC_)
+        if(HSO_errno==HSO_EWOULDBLOCK)
+#else /* defined(_MSVC_) */
         if(HSO_errno==HSO_EINPROGRESS)
+#endif /* defined(_MSVC_) */
         {
             return(0);
         }
         else
         {
-            strerror_r(HSO_errno,wbfr,256);
+            VERIFY(!strerror_r(HSO_errno,wbfr,256));
             intmp.s_addr=ca->rhost;
             WRMSG(HHC01001, "I",
                     SSID_TO_LCSS(ca->dev->ssid),
@@ -743,6 +762,7 @@ static int commadpt_connout(COMMADPT *ca)
     ca->connect=1;
     return(0);
 }
+
 /*-------------------------------------------------------------------*/
 /* commadpt_initiate_userdial : interpret DIAL data and initiate call*/
 /* return values : 0 -> call succeeded or initiated                  */
@@ -874,13 +894,13 @@ char        msgtext[256];
             MSG( HHC01073, "I", ipaddr, (int)ntohs(client.sin_port),
                            devnum, (term == COMMADPT_TERM_TTY) ? "TTY" : "2741" ) );
 
-    write(sfd, msgtext, (u_int)strlen(msgtext));
-    write(sfd, "\r\n", 2);
+    VERIFY(0 <= write(sfd, msgtext, (u_int)strlen(msgtext)));
+    VERIFY(2 == write(sfd, "\r\n", 2));
 
     WRMSG(HHC01073,"I", ipaddr, (int)ntohs(client.sin_port), devnum, (term == COMMADPT_TERM_TTY) ? "TTY" : "2741");
 
     if (binary_opt)
-        write(sfd, telnet_binary, sizeof(telnet_binary));
+        VERIFY(sizeof(telnet_binary) == write(sfd, telnet_binary, sizeof(telnet_binary)));
 
     return;
 }
@@ -1163,6 +1183,7 @@ int     rc;
         }
     }
 }
+
 /*-------------------------------------------------------------------*/
 /* Communication Thread - Set TimeOut                                */
 /*-------------------------------------------------------------------*/
@@ -1183,6 +1204,79 @@ static struct timeval *commadpt_setto(struct timeval *tv,int tmo)
         return(tv);
     }
     return(NULL);
+}
+
+/*-------------------------------------------------------------------*/
+/* Communication Thread - Set TCP Keepalive                          */
+/*-------------------------------------------------------------------*/
+static void SET_COMM_KEEPALIVE( int tempfd, COMMADPT* ca )
+{
+    if (ca->kaidle && ca->kaintv && ca->kacnt)
+    {
+#if !defined( HAVE_BASIC_KEEPALIVE )
+
+        UNREFERENCED( tempfd );
+
+        // "%1d:%04X COMM: This build of Hercules does not support TCP keepalive"
+        WRMSG( HHC01094, "E", SSID_TO_LCSS( ca->dev->ssid ), ca->devnum );
+
+#else // basic, partial or full: must attempt setting keepalive
+
+        int rc, idle, intv, cnt;
+
+  #if !defined( HAVE_FULL_KEEPALIVE ) && !defined( HAVE_PARTIAL_KEEPALIVE )
+
+        // "%1d:%04X COMM: This build of Hercules has only basic TCP keepalive support"
+        WRMSG( HHC01095, "W", SSID_TO_LCSS( ca->dev->ssid ), ca->devnum );
+
+  #elif !defined( HAVE_FULL_KEEPALIVE )
+
+        // "%1d:%04X COMM: This build of Hercules has only partial TCP keepalive support"
+        WRMSG( HHC01096, "W", SSID_TO_LCSS( ca->dev->ssid ), ca->devnum );
+
+  #endif // (basic or partial)
+
+        /* Try setting the values first */
+        rc = set_socket_keepalive( tempfd,
+            ca->kaidle, ca->kaintv, ca->kacnt );
+
+        if (rc < 0)
+        {
+            // "%1d:%04X COMM: error in function %s: %s"
+            WRMSG( HHC01000, "E",
+                SSID_TO_LCSS( ca->dev->ssid ), ca->devnum,
+                "set_socket_keepalive()", strerror( HSO_errno ));
+            return;
+        }
+
+        /* Issue partial success warning if needed */
+        if (rc > 0)
+            // "%1d:%04X COMM: Not all TCP keepalive settings honored"
+            WRMSG( HHC01092, "W",
+                SSID_TO_LCSS( ca->dev->ssid ), ca->devnum );
+
+        /* Now see which values the system actually accepted */
+        if (get_socket_keepalive( tempfd, &idle, &intv, &cnt ) < 0)
+        {
+            // "%1d:%04X COMM: error in function %s: %s"
+            WRMSG( HHC01000, "E",
+                SSID_TO_LCSS( ca->dev->ssid ), ca->devnum,
+                "get_socket_keepalive()", strerror( HSO_errno ));
+            return;
+        }
+
+        /* Save values actually being used for later */
+        ca->kaidle = idle;
+        ca->kaintv = intv;
+        ca->kacnt  = cnt;
+
+        // "%1d:%04X COMM: Keepalive: (%d,%d,%d)"
+        WRMSG( HHC01093, "I",
+            SSID_TO_LCSS( ca->dev->ssid ), ca->devnum,
+            ca->kaidle, ca->kaintv, ca->kacnt );
+
+#endif // (KEEPALIVE)
+    }
 }
 
 /*-------------------------------------------------------------------*/
@@ -1227,15 +1321,8 @@ static void *commadpt_thread(void *vca)
 
     init_signaled=0;
 
-    /* Set root mode in order to set priority */
-    SETMODE(ROOT);
-
     /* Set server thread priority; ignore any errors */
-    if(setpriority(PRIO_PROCESS, 0, sysblk.srvprio))
-       WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-
-    /* Back to user mode */
-    SETMODE(USER);
+    set_thread_priority(0, sysblk.srvprio);
 
     MSGBUF(threadname, "%1d:%04X communication thread", SSID_TO_LCSS(ca->dev->ssid), devnum);
     WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), threadname);
@@ -1319,7 +1406,7 @@ static void *commadpt_thread(void *vca)
                     if(rc!=0)
                     {
                         /* Ignore any other command at this stage */
-                        read_pipe(ca->pipe[1],&b,1);
+                        VERIFY(0 <= read_pipe(ca->pipe[1],&b,1));
                         ca->curpending=COMMADPT_PEND_IDLE;
                         signal_condition(&ca->ipc);
                     }
@@ -1542,6 +1629,9 @@ static void *commadpt_thread(void *vca)
                     break;
                 }
                 FD_SET(ca->sfd,&wfd);
+#if defined(_MSVC_)
+                FD_SET(ca->sfd,&xfd);
+#endif /* defined(_MSVC_) */
                 maxfd=maxfd<ca->sfd?ca->sfd:maxfd;
                 break;
             case COMMADPT_PEND_ENABLE:
@@ -1581,6 +1671,9 @@ static void *commadpt_thread(void *vca)
                                 /* getsockopt/SOERROR will tell if   */
                                 /* the call was sucessfull or not    */
                                 FD_SET(ca->sfd,&wfd);
+#if defined(_MSVC_)
+                                FD_SET(ca->sfd,&xfd);
+#endif /* defined(_MSVC_) */
                                 maxfd=maxfd<ca->sfd?ca->sfd:maxfd;
                                 ca->callissued=1;
                             }
@@ -1791,7 +1884,11 @@ static void *commadpt_thread(void *vca)
         }
         if(ca->sfd>=0)
         {
+#if defined(_MSVC_)
+            if(FD_ISSET(ca->sfd,&wfd) || FD_ISSET(ca->sfd,&xfd))
+#else /* defined(_MSVC_) */
             if(FD_ISSET(ca->sfd,&wfd))
+#endif /* defined(_MSVC_) */
             {
                 if(ca->dev->ccwtrace)
                 {
@@ -1803,11 +1900,20 @@ static void *commadpt_thread(void *vca)
                     case COMMADPT_PEND_ENABLE:  /* Leased line enable call case */
                     soerrsz=sizeof(soerr);
                     getsockopt(ca->sfd,SOL_SOCKET,SO_ERROR,(GETSET_SOCKOPT_T*)&soerr,&soerrsz);
+#if defined(_MSVC_)
+                    if(FD_ISSET(ca->sfd,&wfd))
+#else /* defined(_MSVC_) */
                     if(soerr==0)
+#endif /* defined(_MSVC_) */
                     {
                         ca->connect=1;
                     }
                     else
+#if defined(_MSVC_)
+                    if(FD_ISSET(ca->sfd,&xfd))
+#else /* defined(_MSVC_) */
+                    if(soerr!=0)
+#endif /* defined(_MSVC_) */
                     {
                         WRMSG(HHC01005, "W",SSID_TO_LCSS(ca->dev->ssid),devnum,commadpt_pendccw_text[ca->curpending],strerror(soerr));
                         if(ca->curpending==COMMADPT_PEND_ENABLE)
@@ -1870,8 +1976,7 @@ static void *commadpt_thread(void *vca)
                         ca->connect=1;
 
                         /* dhd - Try to detect dropped connections */
-                        if (COMM_KEEPALIVE(ca))
-                            socket_keepalive( tempfd, ca->kaidle, ca->kaintv, ca->kacnt );
+                        SET_COMM_KEEPALIVE( tempfd, ca );
 
                         ca->sfd=tempfd;
                         signal_condition(&ca->ipc);
@@ -1887,8 +1992,7 @@ static void *commadpt_thread(void *vca)
                         ca->connect=1;
 
                         /* dhd - Try to detect dropped connections */
-                        if (COMM_KEEPALIVE(ca))
-                            socket_keepalive( tempfd, ca->kaidle, ca->kaintv, ca->kacnt );
+                        SET_COMM_KEEPALIVE( tempfd, ca );
 
                         ca->sfd=tempfd;
                         if (IS_ASYNC_LNCTL(ca)) {
@@ -1919,6 +2023,7 @@ static void *commadpt_thread(void *vca)
     release_lock(&ca->lock);
     return NULL;
 }
+
 /*-------------------------------------------------------------------*/
 /* Wakeup the comm thread                                            */
 /* Code : 0 -> Just wakeup the thread to redrive the select          */
@@ -1926,8 +2031,9 @@ static void *commadpt_thread(void *vca)
 /*-------------------------------------------------------------------*/
 static void commadpt_wakeup(COMMADPT *ca,BYTE code)
 {
-    write_pipe(ca->pipe[1],&code,1);
+    VERIFY(1 == write_pipe(ca->pipe[1],&code,1));
 }
+
 /*-------------------------------------------------------------------*/
 /* Wait for a copndition from the thread                             */
 /* MUST HOLD the CA lock                                             */
@@ -1962,6 +2068,7 @@ static void commadpt_halt(DEVBLK *dev)
     dev->commadpt->haltprepare = 1; /* part of APL\360 2741 race cond I circumvention */
     release_lock(&dev->commadpt->lock);
 }
+
 /* The following 3 MSG functions ensure only 1 (one)  */
 /* hardcoded instance exist for the same numbered msg */
 /* that is issued on multiple situations              */
@@ -1982,6 +2089,7 @@ static void msg01009w(DEVBLK *dev,char *dialt,char *kw,char *kv)
     // "%1d:%04X COMM: RPORT parameter ignored"
     WRMSG(HHC01010, "I",SSID_TO_LCSS(dev->ssid),dev->devnum);
 }
+
 /*-------------------------------------------------------------------*/
 /* Device Initialisation                                             */
 /*-------------------------------------------------------------------*/
@@ -2541,7 +2649,7 @@ static int commadpt_init_handler (DEVBLK *dev, int argc, char *argv[])
     initialize_condition(&dev->commadpt->ipc_halt);
 
     /* Allocate I/O -> Thread signaling pipe */
-    create_pipe(dev->commadpt->pipe);
+    VERIFY(!create_pipe(dev->commadpt->pipe));
 
     /* Obtain the CA lock */
     obtain_lock(&dev->commadpt->lock);
@@ -2655,7 +2763,6 @@ static int commadpt_close_device ( DEVBLK *dev )
     return 0;
 }
 
-
 /*-------------------------------------------------------------------*/
 /* Execute a Channel Command Word                                    */
 /*-------------------------------------------------------------------*/
@@ -2667,7 +2774,7 @@ U32 num;                        /* Work : Actual CCW transfer count             
 BYTE    b;                      /* Input processing work variable : Current character */
 BYTE    setux;                  /* EOT kludge */
 BYTE    turnxpar;               /* Write contains turn to transparent mode */
-u_int   i;                      /* work */
+int     i;                      /* work */
 u_int   j;                      /* work */
 BYTE    gotdle;                 /* Write routine DLE marker */
 BYTE    b1, b2;                 /* 2741 overstrike rewriting */
@@ -3346,7 +3453,7 @@ BYTE    b1, b2;                 /* 2741 overstrike rewriting */
                 }
 
                 /* Scan the I/O buffer */
-                for(i=0;i<count;i++)
+                for(i=0;(U32)i<count;i++)
                 {
                     /* Get 1 byte */
                     b=iobuf[i];

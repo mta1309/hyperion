@@ -45,7 +45,6 @@ int main( int argc, char **argv )
     int         rc;                     // Return code
     pid_t       ppid;                   // Parent's PID
     int         answer;                 // 1 = write answer to stdout
-    char        szMsgBuffer[255];
 
     UNREFERENCED( argc );
 
@@ -56,9 +55,8 @@ int main( int argc, char **argv )
     // Must not be run from the commandline
     if( isatty( STDIN_FILENO ) )
     {
-        fprintf( stderr,
-                 _("HHCIF001E %s: Must be called from within Hercules.\n"),
-                 pszProgName );
+        // "%s: Must be called from within Hercules."
+        FWRMSG( stderr, HHC00162, "E", pszProgName );
         exit( 1 );
     }
 
@@ -67,9 +65,8 @@ int main( int argc, char **argv )
 
     if( fd_inet < 0 )
     {
-        fprintf( stderr,
-                 _("HHCIF002E %s: Cannot obtain inet socket: %s\n"),
-                 pszProgName, strerror( errno ) );
+        // "%s: Cannot obtain %s socket: %s"
+        FWRMSG( stderr, HHC00163, "E", pszProgName, "inet", strerror( errno ));
         exit( 2 );
     }
 
@@ -78,9 +75,8 @@ int main( int argc, char **argv )
 
     if( fd_inet6 < 0 )
     {
-        fprintf( stderr,
-                 _("HHCIF002E %s: Cannot obtain inet6 socket: %s\n"),
-                 pszProgName, strerror( errno ) );
+        // "%s: Cannot obtain %s socket: %s"
+        FWRMSG( stderr, HHC00163, "E", pszProgName, "inet6", strerror( errno ));
         fd_inet6 = fd_inet;
     }
 #endif /* defined(ENABLE_IPV6) */
@@ -96,18 +92,16 @@ int main( int argc, char **argv )
 
         if( rc == -1 )
         {
-            fprintf( stderr,
-                     _("HHCIF003E %s: I/O error on read: %s.\n"),
-                     pszProgName, strerror( errno ) );
+            // "%s: I/O error on read: %s."
+            FWRMSG( stderr, HHC00164, "E", pszProgName, strerror( errno ));
             exit( 3 );
         }
 
         if( ppid != getppid() )
         {
             sleep( 1 ); // Let other messages go first
-            fprintf( stderr,
-                     _("HHCIF007E %s: Hercules disappeared!! .. exiting\n"),
-                     pszProgName);
+            // "%s: Hercules disappeared!! .. exiting"
+            FWRMSG( stderr, HHC00168, "E", pszProgName );
             exit( 4 );
         }
 
@@ -226,19 +220,14 @@ int main( int argc, char **argv )
             exit( 0 );
 
         default:
-            snprintf( szMsgBuffer,sizeof(szMsgBuffer),
-                     _("HHCIF004W %s: Unknown request: %lX\n"),
-                     pszProgName, ctlreq.iCtlOp );
-            write( STDERR_FILENO, szMsgBuffer, strlen( szMsgBuffer ) );
+            // "%s: Unknown request: %lX"
+            FWRMSG( stderr, HHC00165, "W", pszProgName, ctlreq.iCtlOp );
             continue;
         }
 
 #if defined(DEBUG) || defined(_DEBUG)
-        snprintf( szMsgBuffer,sizeof(szMsgBuffer),
-                 _("HHCIF006I %s: Doing %s on %s\n"),
-                 pszProgName, pOp, pIF);
-
-        write( STDERR_FILENO, szMsgBuffer, strlen( szMsgBuffer ) );
+        // "%s: Doing %s on %s"
+        FWRMSG( stderr, HHC00167, "D", pszProgName, pOp, pIF );
 #endif /*defined(DEBUG) || defined(_DEBUG)*/
 
         rc = ioctl( fd, ctlreq.iCtlOp, pArg );
@@ -259,21 +248,17 @@ int main( int argc, char **argv )
         #endif
                )
             {
-                snprintf( szMsgBuffer,sizeof(szMsgBuffer),
-                     _("HHCIF005E %s: ioctl error doing %s on %s: %d %s\n"),
-                     pszProgName, pOp, pIF, errno, strerror( errno ) );
-
-                write( STDERR_FILENO, szMsgBuffer, strlen( szMsgBuffer ) );
+                // "%s: ioctl error doing %s on %s: %d %s"
+                FWRMSG( stderr, HHC00166, "E", pszProgName, pOp, pIF, errno, strerror( errno ));
             }
         }
         else if (answer)
         {
-            write( STDOUT_FILENO, &ctlreq, CTLREQ_SIZE );
+            VERIFY(0 <= write( STDOUT_FILENO, &ctlreq, CTLREQ_SIZE ));
         }
     }
 
-    // Never reached.
-    return 0;
+    UNREACHABLE_CODE( return -1 );
 }
 
 #endif // defined(BUILD_HERCIFC)

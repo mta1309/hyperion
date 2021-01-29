@@ -44,6 +44,32 @@
  #undef   _GEN_ARCH
 #endif
 
+/*-------------------------------------------------------------------*/
+/*                Script processing control                          */
+/*-------------------------------------------------------------------*/
+struct SCRCTL {                         /* Script control structure  */
+    LIST_ENTRY link;                    /* Just a link in the chain  */
+    TID     scr_tid;                    /* Script thread id. If zero
+                                           then entry is not active. */
+    int     scr_id;                     /* Script identification no. */
+    char*   scr_name;                   /* Name of script being run  */
+    char*   scr_cmdline;                /* Original command-line     */
+    int     scr_recursion;              /* Current recursion level   */
+    int     scr_flags;                  /* Script processing flags   */
+    #define SCR_CANCEL     0x80         /* Cancel script requested   */
+    #define SCR_ABORT      0x40         /* Script abort requested    */
+    #define SCR_CANCELED   0x20         /* Script has been canceled  */
+    #define SCR_ABORTED    0x10         /* Script has been aborted   */
+};
+typedef struct SCRCTL SCRCTL;           /* typedef is easier to use  */
+static LIST_ENTRY scrlist = {0,0};      /* Script list anchor entry  */
+static int scrid = 0;                   /* Script identification no. */
+#define SCRTHREADNAME "Script Thread"   /* Name of processing thread */
+
+/* Forward declarations:                                             */
+static int do_special(char *fname, int *inc_stmtnum, SCRCTL *pCtl, char *p);
+static int set_restart(const char * s);
+/* End of forward declarations.                                      */
 
 /*-------------------------------------------------------------------*/
 /* Subroutine to parse an argument string. The string that is passed */
@@ -86,7 +112,8 @@ DLL_EXPORT int parse_args (char* p, int maxargc, char** pargv, int* pargc)
         {
             char delim = *p;
             if (p == *pargv) *pargv = p+1;
-            while (*++p && *p != delim); if (!*p) break; // find end of quoted string
+            do {} while (*++p && *p != delim);
+            if (!*p) break; // find end of quoted string
         }
 
         *p++ = 0; // mark end of arg
@@ -109,9 +136,10 @@ int     c;                              /* Character work area       */
 unsigned int     stmtlen;               /* Statement length          */
 int     lstarted;                       /* Indicate if non-whitespace*/
                                         /* has been seen yet in line */
-#if defined(OPTION_CONFIG_SYMBOLS)
+
+#if defined(ENABLE_SYSTEM_SYMBOLS)
 char   *buf1;                           /* Pointer to resolved buffer*/
-#endif /*defined(OPTION_CONFIG_SYMBOLS)*/
+#endif
 
     while (1)
     {
@@ -166,23 +194,15 @@ char   *buf1;                           /* Pointer to resolved buffer*/
                 || buf[stmtlen-1] == '\t')) stmtlen--;
         buf[stmtlen] = '\0';
 
-        /* Loud comments should always be logged */
-        if (stmtlen != 0 && buf[0] == '*')
-            WRMSG( HHC01603, "I", buf );  // "%s"
+#if defined(ENABLE_SYSTEM_SYMBOLS)
 
-        /* Ignore null statements and comments */
-        if (stmtlen == 0 || buf[0] == '*' || buf[0] == '#')
-           continue;
-
-#if defined(OPTION_CONFIG_SYMBOLS)
-
-        /* Perform variable substitution */
-        /* First, set some 'dynamic' symbols to their own values */
-
+#if defined(ENABLE_BUILTIN_SYMBOLS)
         set_symbol("CUU","$(CUU)");
         set_symbol("CCUU","$(CCUU)");
         set_symbol("DEVN","$(DEVN)");
+#endif
 
+        /* Perform variable substitution */
         buf1=resolve_symbol_string(buf);
 
         if(buf1!=NULL)
@@ -195,55 +215,21 @@ char   *buf1;                           /* Pointer to resolved buffer*/
             }
             strlcpy(buf,buf1,buflen);
             free(buf1);
+            stmtlen = strlen( buf );
         }
-#endif /*defined(OPTION_CONFIG_SYMBOLS)*/
+#endif /* #if defined(ENABLE_SYSTEM_SYMBOLS) */
 
-        /* Special handling for 'pause' statement */
-        if (strncasecmp( buf, "pause ", 6 ) == 0)
-        {
-            double pauseamt     =  0.0;   /* (secs to pause) */
-            struct timespec ts  = {0,0};  /* (nanosleep arg) */
-            U64 i, nsecs        =   0;    /* (nanoseconds)   */
+        /* Loud comments should always be logged */
+        if (stmtlen != 0 && buf[0] == '*')
+            WRMSG( HHC01603, "I", buf );  // "%s"
 
-            pauseamt = atof( &buf[6] );
+        /* Ignore null statements and comments */
+        if (stmtlen == 0 || buf[0] == '*' || buf[0] == '#')
+           continue;
 
-            if (pauseamt < 0.0 || pauseamt > 999.0)
-            {
-                // "Config file[%d] %s: error processing statement: %s"
-                WRMSG( HHC01441, "W", *inc_stmtnum, fname, "syntax error; statement ignored" );
-                continue; /* (go on to next statement) */
-            }
-
-            /* We sleep in 1/4 second increments at first */
-            nsecs = (U64) (pauseamt * 1000000000.0);
-            ts.tv_nsec = 250000000; /* 1/4th of a second */
-            ts.tv_sec  = 0;
-
-            if (MLVL( VERBOSE ))
-            {
-                // "Config file[%d] %s: processing paused for %d milliseconds..."
-                WRMSG( HHC02318, "I", *inc_stmtnum, fname, (int)(pauseamt * 1000.0) );
-            }
-
-            /* Sleep for 1/4 second increments */
-            for (i = nsecs; i >= (U64) ts.tv_nsec; i -= (U64) ts.tv_nsec)
-                nanosleep( &ts, NULL );
-
-            /* Sleep for remainder of time period */
-            if (i)
-            {
-                ts.tv_nsec = (long) i;
-                nanosleep( &ts, NULL );
-            }
-
-            if (MLVL( VERBOSE ))
-            {
-                // "Config file[%d] %s: processing resumed..."
-                WRMSG( HHC02319, "I", *inc_stmtnum, fname );
-            }
-
-            continue;  /* (go on to next statement) */
-        }
+        /* Special handling for 'pause' and other statements */
+        if (do_special(fname, inc_stmtnum, NULL, buf))
+            continue;
 
         break;
     } /* end while */
@@ -255,7 +241,7 @@ char   *buf1;                           /* Pointer to resolved buffer*/
 /*-------------------------------------------------------------------*/
 /* Function to build system configuration                            */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT int process_config (char *cfg_name)
+DLL_EXPORT int process_config (const char *cfg_name)
 {
 #ifdef EXTERNALGUI
 char buf[1024];                         /* Config statement buffer   */
@@ -273,15 +259,20 @@ int     i;                              /* Array subscript           */
 int     scount;                         /* Statement counter         */
 int     inc_level;                      /* Current nesting level     */
 FILE   *inc_fp[MAX_INC_LEVEL];          /* Configuration file pointer*/
-int     inc_ignore_errors = 0;          /* 1==ignore include errors  */
 BYTE    c;                              /* Work area for sscanf      */
+
+#if defined(ENABLE_CONFIG_INCLUDE)
+int     inc_ignore_errors = 0;          /* 1==ignore include errors  */
 char    pathname[MAX_PATH];             /* file path in host format  */
+#endif
+
 char    fname[MAX_PATH];                /* normalized filename       */
 int     errorcount = 0;
+
 #if defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX)
 int     shell_flg = FALSE;              /* indicate it is has a shell
                                            path specified            */
-#endif /* defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX) */
+#endif
 
     /* Open the base configuration file */
     hostpath(fname, cfg_name, sizeof(fname));
@@ -351,7 +342,7 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
         }
 #endif /* defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX)   */
 
-#if defined( OPTION_ENHANCED_CONFIG_INCLUDE )
+#if defined( ENABLE_CONFIG_INCLUDE )
         if  (strcasecmp (addargv[0], "ignore") == 0)
         {
             if  (strcasecmp (addargv[1], "include_errors") == 0)
@@ -396,14 +387,10 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
             inc_stmtnum[inc_level] = 0;
             continue;
         }
-#endif // defined( OPTION_ENHANCED_CONFIG_INCLUDE )
+#endif /* #if defined( ENABLE_CONFIG_INCLUDE ) */
 
         if ( ( strlen(addargv[0]) <= 4 &&
-#if defined( _MSVC_)
-               sscanf_s(addargv[0], "%x%c", &rc, &c, sizeof(BYTE)) == 1)
-#else
-               sscanf(addargv[0], "%x%c", &rc, &c) == 1 )
-#endif
+               sscanf(addargv[0], "%"SCNx32"%c", &rc, &c) == 1 )
              ||
         /* Also, if addargv[0] contains ':' (added by Harold Grovesteen jan2008)  */
         /* Added because device statements may now contain channel set or LCSS id */
@@ -458,11 +445,7 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
 
         /* Check for old-style CPU statement */
         if (scount == 0 && addargc == 7 && strlen(addargv[0]) == 6
-#if defined( _MSVC_)
-            && sscanf_s(addargv[0], "%x%c", &rc, &c, sizeof(BYTE)) == 1)
-#else
-            && sscanf(addargv[0], "%x%c", &rc, &c) == 1)
-#endif
+            && sscanf(addargv[0], "%"SCNx32"%c", &rc, &c) == 1)
         {
         char *exec_cpuserial[2] = { "cpuserial", NULL };
         char *exec_cpumodel[2]  = { "cpumodel", NULL };
@@ -526,50 +509,28 @@ int     shell_flg = FALSE;              /* indicate it is has a shell
     } /* end for(scount) (end of configuration file statement loop) */
 
 #if defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX)
-rexx_done:
-#endif /* defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX) */
 
-#if !defined( OPTION_ENHANCED_CONFIG_INCLUDE )
+rexx_done:
+
+#if !defined( ENABLE_CONFIG_INCLUDE )
     /* close configuration file */
     rc = fclose(inc_fp[inc_level]);
-#endif // !defined( OPTION_ENHANCED_CONFIG_INCLUDE )
+#endif
 
     if(!sysblk.msglvl)
         sysblk.msglvl = DEFAULT_MLVL;
 
     return errorcount;
+
+#endif // defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX)
+
 } /* end function process_config */
-
-
-/*-------------------------------------------------------------------*/
-/* Script processing control                                         */
-/*-------------------------------------------------------------------*/
-struct SCRCTL {                         /* Script control structure  */
-    LIST_ENTRY link;                    /* Just a link in the chain  */
-    TID     scr_tid;                    /* Script thread id. If zero
-                                           then entry is not active. */
-    int     scr_id;                     /* Script identification no. */
-    char*   scr_name;                   /* Name of script being run  */
-    char*   scr_cmdline;                /* Original command-line     */
-    int     scr_isrcfile;               /* Script is startup ".RC"   */
-    int     scr_recursion;              /* Current recursion level   */
-    int     scr_flags;                  /* Script processing flags   */
-    #define SCR_CANCEL     0x80         /* Cancel script requested   */
-    #define SCR_ABORT      0x40         /* Script abort requested    */
-    #define SCR_CANCELED   0x20         /* Script has been canceled  */
-    #define SCR_ABORTED    0x10         /* Script has been aborted   */
-};
-typedef struct SCRCTL SCRCTL;           /* typedef is easier to use  */
-static LIST_ENTRY scrlist = {0,0};      /* Script list anchor entry  */
-static int scrid = 0;                   /* Script identification no. */
-#define SCRTHREADNAME "Script Thread"   /* Name of processing thread */
-
-//#define LOGSCRTHREADBEGEND    // TODO: make a decision about this
 
 /*-------------------------------------------------------------------*/
 /* Create new SCRCTL entry - lock must *NOT* be held      (internal) */
 /*-------------------------------------------------------------------*/
-SCRCTL* NewSCRCTL( TID tid, const char* script_name, int isrcfile )
+static
+SCRCTL* NewSCRCTL( TID tid, const char* script_name )
 {
     SCRCTL* pCtl;
     char* scr_name;
@@ -592,7 +553,6 @@ SCRCTL* NewSCRCTL( TID tid, const char* script_name, int isrcfile )
     InitializeListLink( &pCtl->link );
     pCtl->scr_tid = tid; /* (may be zero) */
     pCtl->scr_name = scr_name;
-    pCtl->scr_isrcfile = isrcfile;
 
     /* Add the new entry to our list */
     obtain_lock( &sysblk.scrlock );
@@ -789,6 +749,7 @@ int cscript_cmd( int argc, char *argv[], char *cmdline )
         if (first)
         {
             pCtl->scr_flags |= SCR_CANCEL;
+            broadcast_condition( &sysblk.scrcond );
             release_lock( &sysblk.scrlock );
             return 0;
         }
@@ -804,6 +765,9 @@ int cscript_cmd( int argc, char *argv[], char *cmdline )
             break;
         }
     }
+
+    if (count)
+        broadcast_condition( &sysblk.scrcond );
 
     release_lock( &sysblk.scrlock );
 
@@ -840,9 +804,10 @@ static int script_abort( SCRCTL* pCtl )
 /*-------------------------------------------------------------------*/
 /* Process a single script file                 (internal, external) */
 /*-------------------------------------------------------------------*/
-int process_script_file( char *script_name, int isrcfile )
+int process_script_file( char *script_name, const int isrcfile )
 {
 SCRCTL* pCtl;                           /* Script processing control */
+char   *scrname;                        /* Resolved script name      */
 char    script_path[MAX_PATH];          /* Full path of script file  */
 FILE   *fp          = NULL;             /* Script FILE pointer       */
 char    stmt[ MAX_SCRIPT_STMT ];        /* script statement buffer   */
@@ -857,17 +822,17 @@ int     rc;                             /* (work)                    */
     {
         /* If not found it's probably the Hercules ".RC" file */
         ASSERT( isrcfile );
-
         /* Create a temporary working control entry */
-        if (!(pCtl = NewSCRCTL( tid, script_name, isrcfile )))
+        if (!(pCtl = NewSCRCTL( tid, script_name )))
             return -1; /* (error message already issued) */
 
-        /* Start over again using our temporary control entry */
-        rc = process_script_file( script_name, isrcfile );
+        /* Start  over again using our temporary control entry.  The */
+        /* screwy second argument is to silence the unused parameter */
+        /* warning when ASSERT does no assert (the mind boggles)     */
+        rc = process_script_file( script_name, 0 & isrcfile );
         FreeSCRCTL( pCtl );
         return rc;
     }
-    isrcfile = pCtl->scr_isrcfile;
 
     /* Abort script if already at maximum recursion level */
     if (pCtl->scr_recursion >= MAX_SCRIPT_DEPTH)
@@ -878,30 +843,43 @@ int     rc;                             /* (work)                    */
         return -1;
     }
 
-    /* Open the specified script file */
-    hostpath( script_path, script_name, sizeof( script_path ));
-    if (!(fp = fopen( script_path, "r" )))
+#if defined( ENABLE_BUILTIN_SYMBOLS )
+    if (!(scrname = resolve_symbol_string( script_name )))
+#endif
+    scrname = strdup( script_name );
+
+    if (!strcmp(scrname, "-"))    /* Standard input?             */
     {
-        /* We only issue the "File not found" error message if the
-           script file being processed is NOT the ".RC" file since
-           .RC files are optional. For all OTHER type of errors we
-           ALWAYS issue an error message, even for the ".RC" file.
-        */
-        int save_errno = errno; /* (save error code for caller) */
+        fp = stdin;
+        strcpy(script_path, "<stdin>");
+    }
+    else
+    {
+        /* Open the specified script file */
+        hostpath( script_path, scrname, sizeof( script_path ));
+        if (!(fp = fopen( script_path, "r" )))
         {
+            /* We  get  here  with the default script file only when */
+            /* hercules.rc  exists  as  tested in impl.c.  Any error */
+            /* opening is should be reported to the user.            */
+
+            int save_errno = errno; /* (save error code for caller) */
+
             if (ENOENT != errno)    /* If NOT "File Not found" */
             {
                 // "Error in function '%s': '%s'"
                 WRMSG( HHC02219, "E", "fopen()", strerror( errno ));
             }
-            else if (!isrcfile)     /* If NOT the ".RC" file */
+            else
             {
                 // "Script file '%s' not found"
                 WRMSG( HHC01405, "E", script_path );
             }
+
+            errno = save_errno;  /* (restore error code for caller) */
+            free( scrname );
+            return -1;
         }
-        errno = save_errno;  /* (restore error code for caller) */
-        return -1;
     }
 
     pCtl->scr_recursion++;
@@ -924,13 +902,12 @@ int     rc;                             /* (work)                    */
     if (!script_abort( pCtl ) && !strncmp( p, "/*", 2 ))
     {
         char *rcmd[2] = { "exec", NULL };
-        rcmd[1] = script_name;
+        rcmd[1] = script_path;
         fclose( fp ); fp = NULL;
         exec_cmd( 2, rcmd, NULL );  /* (synchronous) */
         goto script_end;
     }
-
-#endif /* defined(ENABLE_OBJECT_REXX) || defined(ENABLE_REGINA_REXX) */
+#endif
 
     // "Script %d: begin processing file '%s'"
     WRMSG( HHC02260, "I", pCtl->scr_id, script_path );
@@ -947,57 +924,9 @@ int     rc;                             /* (work)                    */
         for (stmtlen = (int)strlen(p); stmtlen && isspace(p[stmtlen-1]); stmtlen--);
         p[stmtlen] = 0;
 
-        /* Special handling for 'pause' statement */
-        if (strncasecmp( p, "pause ", 6 ) == 0)
-        {
-            double pauseamt     =  0.0;   /* (secs to pause) */
-            struct timespec ts  = {0,0};  /* (nanosleep arg) */
-            U64 i, nsecs        =   0;    /* (nanoseconds)   */
-
-#if defined( OPTION_CONFIG_SYMBOLS )
-            {
-                char *secs = resolve_symbol_string( p+6 );
-                pauseamt = atof( secs );
-                free( secs );
-            }
-#else /* !defined( OPTION_CONFIG_SYMBOLS ) */
-            pauseamt = atof( p+6 );
-#endif /* defined( OPTION_CONFIG_SYMBOLS ) */
-
-            if (pauseamt < 0.0 || pauseamt > 999.0)
-            {
-                // "Script %d: file statement only; %s ignored"
-                WRMSG( HHC02261, "W", pCtl->scr_id, p+6 );
-                continue; /* (go on to next statement) */
-            }
-
-            nsecs = (U64) (pauseamt * 1000000000.0);
-            ts.tv_nsec = 250000000; /* 1/4th of a second */
-            ts.tv_sec  = 0;
-
-            if (!script_abort( pCtl ) && MLVL( VERBOSE ))
-            {
-                // "Script %d: processing paused for %d milliseconds..."
-                WRMSG( HHC02262, "I", pCtl->scr_id, (int)(pauseamt * 1000.0) );
-            }
-
-            for (i = nsecs; i >= (U64) ts.tv_nsec && !script_abort( pCtl ); i -= (U64) ts.tv_nsec)
-                nanosleep( &ts, NULL );
-
-            if (i && !script_abort( pCtl ))
-            {
-                ts.tv_nsec = (long) i;
-                nanosleep( &ts, NULL );
-            }
-
-            if (!script_abort( pCtl ) && MLVL( VERBOSE ))
-            {
-                // "Script %d: processing resumed..."
-                WRMSG( HHC02263, "I", pCtl->scr_id );
-            }
-            continue;  /* (go on to next statement) */
-        }
-        /* (end 'pause' stmt) */
+        /* Special handling for 'pause' and other statements */
+        if (do_special(NULL, NULL, pCtl, p))
+            continue;
 
         /* Process statement as command */
         panel_command( p );
@@ -1012,7 +941,7 @@ script_end:
         if (feof( fp ))
         {
             // "Script %d: file '%s' processing ended"
-            WRMSG( HHC02264, "I", pCtl->scr_id, script_name );
+            WRMSG( HHC02264, "I", pCtl->scr_id, script_path );
         }
         else /* (canceled, recursion, or i/o error) */
         {
@@ -1034,10 +963,12 @@ script_end:
     }
 
     pCtl->scr_recursion--;
-
+    free( scrname );
     return 0;
 }
 /* end process_script_file */
+
+//#define LOGSCRTHREADBEGEND    // TODO: make a decision about this
 
 /*-------------------------------------------------------------------*/
 /* Script processing thread - run script in background    (internal) */
@@ -1055,7 +986,7 @@ static void *script_thread( void *arg )
 #ifdef LOGSCRTHREADBEGEND
     // "Thread id "TIDPAT", prio %2d, name '%s' started"
     WRMSG( HHC00100, "I", (u_long) tid,
-        getpriority( PRIO_PROCESS, 0 ), SCRTHREADNAME );
+        get_thread_priority(0), SCRTHREADNAME );
 #endif
 
     /* Retrieve our control entry */
@@ -1080,7 +1011,7 @@ static void *script_thread( void *arg )
 #ifdef LOGSCRTHREADBEGEND
     // "Thread id "TIDPAT", prio %2d, name '%s' ended"
     WRMSG( HHC00101, "I", (u_long) tid,
-        getpriority( PRIO_PROCESS, 0 ), SCRTHREADNAME );
+        get_thread_priority(0), SCRTHREADNAME );
 #endif
 
     return NULL;
@@ -1109,19 +1040,21 @@ int script_cmd( int argc, char* argv[], char* cmdline )
     /* Find script processing control entry for this thead */
     if ((pCtl = FindSCRCTL( tid )) != NULL)
     {
-        /* This script is recursively calling itself again */
+        /* This script command is issued from a script.  It does not */
+        /* necessarily cause a recursion.                            */
         int i, rc2 = 0;
         for (i=1; !script_abort( pCtl ) && i < argc; i++)
         {
             UpdSCRCTL( pCtl, argv[i] );
             rc = process_script_file( argv[i], 0 );
-            rc2 = MAX( rc, rc2 );
+            if (0 <= rc2 && 0 < rc) rc2 = MAX( rc, rc2 );
+            else if (0 > rc) rc2 = MIN( rc, rc2 );
         }
         return rc2;
     }
 
     /* Create control entry and add to list */
-    if (!(pCtl = NewSCRCTL( 0, argv[1], 0 )))
+    if (!(pCtl = NewSCRCTL( 0, argv[1] )))
         return -1; /* (error msg already issued) */
 
     /* Create a copy of the command line */
@@ -1153,5 +1086,380 @@ int script_cmd( int argc, char* argv[], char* cmdline )
     return 0;
 }
 /* end script_cmd */
+
+/*-------------------------------------------------------------------*/
+/* $runtest command - invalid when entered as a Hercules command     */
+/*-------------------------------------------------------------------*/
+int $runtest_cmd(int argc,char *argv[], char *cmdline)
+{
+    UNREFERENCED( argc );
+    UNREFERENCED( argv );
+    UNREFERENCED( cmdline );
+
+    // "runtest is only valid as a scripting command"
+    WRMSG( HHC02337, "E" );
+    return -1;
+}
+
+/*-------------------------------------------------------------------*/
+/*                     RunTest ABORT                                 */
+/*-------------------------------------------------------------------*/
+static int test_abort( SCRCTL *pCtl )
+{
+    // "Script %d: test: aborted"
+    WRMSG( HHC02331, "E", pCtl->scr_id );
+    panel_command("stopall");
+    panel_command("sysreset");
+    return -1;
+}
+
+/*-------------------------------------------------------------------*/
+/* runtest script command - begin test and wait for completion       */
+/*-------------------------------------------------------------------*/
+int runtest( SCRCTL *pCtl, char *cmdline, char *args )
+{
+    char* p2 = NULL;                /* Resolved symbol string        */
+    struct timeval beg, now, dur;   /* To calculate remaining time   */
+    double secs = DEF_RUNTEST_DUR;  /* Optional timeout in seconds   */
+    U32 usecs;                      /* Same thing in microseconds    */
+    U32 sleep_usecs;                /* Remaining microseconds        */
+    U32 elapsed_usecs;              /* To calculate remaining time   */
+    int rc;                         /* Return code from timed wait   */
+    int dostart = 0;                /* 0 = start test via "restart"  */
+                                    /* 1 = start test via "start"    */
+    UNREFERENCED( cmdline );
+
+    ASSERT( sysblk.scrtest );       /* How else did we get called?   */
+
+    /* Parse optional RUNTEST command arguments. */
+    /* Syntax: RUNTEST [RESTART|START] [timeout] */
+
+    if (*args && *args != '#')
+    {
+#if defined( ENABLE_BUILTIN_SYMBOLS )
+        p2 = resolve_symbol_string( args );
+        if (p2)
+            args = p2;
+#endif
+
+        if (isalpha( args[0] ))  /* [RESTART|START|<oldpsw>]? */
+        {
+#define MAX_KW_LEN 15
+            char kw[ MAX_KW_LEN + 1 ] = {0};
+            char* pkw = NULL;
+
+            if (sscanf( args, "%"QSTR( MAX_KW_LEN )"s %lf", kw, &secs ))
+            {
+                if (!strcasecmp( kw, "start" ))
+                    dostart = 1;
+                else if (!strcasecmp( kw, "restart" ))
+                    ;                 /* Do nothing                  */
+                else if (!set_restart(kw))
+                    pkw = kw;         /* Not valid restart           */
+            }
+            else
+                pkw = args;
+
+            if (pkw)
+            {
+                // "Script %d: test: unknown runtest keyword: %s"
+                WRMSG( HHC02341, "E", pCtl->scr_id, pkw );
+                if (p2)
+                    free( p2 );
+                return test_abort( pCtl );
+            }
+
+            /* Get past keyword to next argument */
+            args += strlen( kw );
+        }
+
+        if ( args[0] ) /* [timeout]? */
+        {
+            if (0
+                || sscanf( args, "%lf", &secs ) < 1
+                || secs < MIN_RUNTEST_DUR
+                || secs > MAX_RUNTEST_DUR
+            )
+            {
+                // "Script %d: test: invalid timeout; set to def: %s"
+                WRMSG( HHC02335, "W", pCtl->scr_id, args );
+                secs = DEF_RUNTEST_DUR;
+            }
+        }
+
+        if (p2)
+            free( p2 );
+    }
+
+    /* Apply adjustment factor */
+    if (sysblk.scrfactor)
+        secs *= sysblk.scrfactor;
+
+    /* Calculate maximum duration */
+    usecs = (U32) (secs * 1000000.0);
+
+    if (MLVL( VERBOSE ))
+    {
+        // "Script %d: test: test starting"
+        WRMSG( HHC02336, "I", pCtl->scr_id );
+         // "Script %d: test: duration limit: %"PRId32".%06"PRId32" seconds"
+        WRMSG( HHC02339, "I", pCtl->scr_id, usecs / 1000000,
+                                            usecs % 1000000 );
+    }
+
+    /* Press the restart or start button to start the test */
+
+    obtain_lock( &sysblk.scrlock );
+    sysblk.scrtest = 1; /*(reset)*/
+    release_lock( &sysblk.scrlock );
+
+    if (dostart)
+        rc = start_cmd_cpu( 0, NULL, NULL );
+    else
+        rc = restart_cmd( 0, NULL, NULL );
+
+    if (rc)
+    {
+        // "Script %d: test: [re]start failed"
+        WRMSG( HHC02330, "E", pCtl->scr_id );
+        return test_abort( pCtl );
+    }
+
+    if (MLVL( VERBOSE ))
+        // "Script %d: test: running..."
+        WRMSG( HHC02333, "I", pCtl->scr_id );
+
+    obtain_lock( &sysblk.scrlock );
+    gettimeofday( &beg, NULL );
+    for (;;)
+    {
+        /* Check for cancelled script */
+        if (pCtl && script_abort( pCtl ))
+        {
+            release_lock( &sysblk.scrlock );
+            return -1;
+        }
+
+        /*           Has the test completed yet?
+        **
+        ** Before test scripts are started the sysblk.scrtest
+        ** counter is always reset to '1' to indicate testing
+        ** mode is active (see further above). When each CPU
+        ** completes its test (by either stopping or loading
+        ** a disabled wait PSW) code in cpu.c then increments
+        ** sysblk.scrtest. Only when sysblk.scrtest has been
+        ** incremented past the number of configured CPUs is
+        ** the test then considered to be complete.
+        */
+        if (sysblk.scrtest > sysblk.cpus)
+        {
+            rc = 0;
+            break;
+        }
+
+        /* Calculate how long to continue waiting  */
+        gettimeofday( &now, NULL );
+        timeval_subtract( &beg, &now, &dur );
+        elapsed_usecs = (dur.tv_sec * 1000000) + dur.tv_usec;
+
+        /* Is there any time remaining on the clock? */
+        if (elapsed_usecs >= usecs)
+        {
+            rc = ETIMEDOUT;
+            break;
+        }
+
+        /* Sleep until we're woken or we run out of time */
+        sleep_usecs = (usecs - elapsed_usecs);
+        timed_wait_condition_relative_usecs(
+            &sysblk.scrcond, &sysblk.scrlock, sleep_usecs, NULL );
+    }
+    gettimeofday( &now, NULL );
+    timeval_subtract( &beg, &now, &dur );
+    elapsed_usecs = (dur.tv_sec * 1000000) + dur.tv_usec;
+    release_lock( &sysblk.scrlock );
+
+    if (ETIMEDOUT == rc)
+    {
+        // "Script %d: test: timeout"
+        WRMSG( HHC02332, "E", pCtl->scr_id );
+        return test_abort( pCtl );
+    }
+
+    if (MLVL( VERBOSE ))
+    {
+        // "Script %d: test: test ended"
+        WRMSG( HHC02334, "I", pCtl->scr_id );
+        // "Script %d: test: actual duration: %"PRId32".%06"PRId32" seconds"
+        WRMSG( HHC02338, "I", pCtl->scr_id, elapsed_usecs / 1000000,
+                                            elapsed_usecs % 1000000 );
+    }
+
+    return 0;
+}
+
+/* Set the restart PSW address to the contents of an old PSW.        */
+
+static int
+set_restart(const char * s)
+{
+    int i;
+    REGS *regs;
+
+    static const char * psws[] =
+    {
+        /* Maintain in order of assigned locations                   */
+        "external", "svc", "program", "machine", "io", 0
+    };
+
+    for (i = 0; ; i++)
+    {
+        if (!psws[i]) return 0;
+        if (!strcasecmp(s, psws[i])) break;
+    }
+
+    regs = sysblk.regs[sysblk.pcpu];
+
+    if (sysblk.arch_mode == ARCH_900)
+    {
+        PSA_900 * psa = regs->zpsa;
+        const int len = sizeof(psa->rstnew);
+
+        memcpy(psa->rstnew, psa->extold + i * len, len);
+    }
+    else
+    {
+        PSA_3XX * psa = regs->psa;
+        const int len = sizeof(psa->extold);
+
+        memcpy(psa->iplpsw, psa->extold + i * len, len);
+    }
+    return 1;                         /* OK                          */
+}
+
+/*-------------------------------------------------------------------*/
+/* returns:  TRUE == stmt processed,   FALSE == stmt NOT processed   */
+/*-------------------------------------------------------------------*/
+static int
+do_special(char *fname, int *inc_stmtnum, SCRCTL *pCtl, char *p)
+{
+    struct timeval beg, now, dur;   /* To calculate remaining time   */
+    double secs;                    /* Seconds to pause processing   */
+    U32 msecs;                      /* Same thing in milliseconds    */
+    U32 usecs;                      /* Same thing in microseconds    */
+    U32 elapsed_usecs;              /* To calculate remaining time   */
+    char* p2 = p;                   /* Work ptr for stmt parsing     */
+
+    /* Determine if pause statement, special statement, or neither.  */
+    if (strncasecmp( p2, "pause ", 6 ) == 0)
+    {
+        p2 += 6;
+    }
+    else
+    /* The runtest command is only valid in scripts not config files */
+    if (1
+        && pCtl
+        && sysblk.scrtest
+        && strncasecmp( p2, "runtest", 7 ) == 0
+        && (*(p2+7) == ' ' || *(p2+7) == '\0')
+    )
+    {
+        p2 += 7;
+        /* Skip past any blanks to the first argument, if any */
+        if (*p2)
+            while (*p2 == ' ')
+                ++p2;
+        runtest( pCtl, p, p2 );
+        return TRUE;
+    }
+    else
+        return FALSE;
+
+    /* Determine maximum pause duration in seconds */
+#if defined( ENABLE_BUILTIN_SYMBOLS )
+    if (pCtl) /* only if script stmt; cfg file already did this */
+    {
+        char *p3 = resolve_symbol_string( p2 );
+        if (p3)
+        {
+            secs = atof( p3 );
+            free( p3 );
+        }
+        else
+            secs = atof( p2 );
+    }
+    else
+#endif
+    secs = atof( p2 );
+
+    if (secs < MIN_PAUSE_TIMEOUT || secs > MAX_PAUSE_TIMEOUT)
+    {
+        if (fname)
+            // "Config file[%d] %s: error processing statement: %s"
+            WRMSG( HHC01441, "E", *inc_stmtnum, fname, "syntax error; statement ignored" );
+        else
+            // "Script %d: syntax error; statement ignored: %s"
+            WRMSG( HHC02261, "E", pCtl->scr_id, p );
+        return TRUE;
+    }
+
+    /* Apply adjustment factor */
+    if (sysblk.scrfactor)
+        secs *= sysblk.scrfactor;
+
+    /* Convert floating point seconds to other subsecond work values */
+    msecs = (U32) (secs * 1000.0);
+
+    if (MLVL( VERBOSE ))
+    {
+        if (fname)
+            // "Config file[%d] %s: processing paused for %d milliseconds..."
+            WRMSG( HHC02318, "I", *inc_stmtnum, fname, msecs );
+        else
+            // "Script %d: processing paused for %d milliseconds..."
+            WRMSG( HHC02262, "I", pCtl->scr_id, msecs );
+    }
+
+    /* Initialize pause start time */
+    gettimeofday( &beg, NULL );
+
+    obtain_lock( &sysblk.scrlock );
+    for (;;)
+    {
+        /* Check for cancelled script */
+        if (pCtl && script_abort( pCtl ))
+        {
+            release_lock( &sysblk.scrlock );
+            return TRUE;
+        }
+
+        /* Calculate how long to continue pausing  */
+        gettimeofday( &now, NULL );
+        timeval_subtract( &beg, &now, &dur );
+        elapsed_usecs = (dur.tv_sec * 1000000) + dur.tv_usec;
+
+        /* Is there any time remaining on the clock? */
+        if (elapsed_usecs >= (msecs * 1000))
+            break;
+
+        /* Sleep until we're woken or we run out of time */
+        usecs = ((msecs * 1000) - elapsed_usecs);
+        timed_wait_condition_relative_usecs(
+            &sysblk.scrcond, &sysblk.scrlock, usecs, NULL );
+    }
+    release_lock( &sysblk.scrlock );
+
+    if (MLVL( VERBOSE ))
+    {
+        if (fname)
+            // "Config file[%d] %s: processing resumed..."
+            WRMSG( HHC02319, "I", *inc_stmtnum, fname );
+        else
+            // "Script %d: processing resumed..."
+            WRMSG( HHC02263, "I", pCtl->scr_id );
+    }
+
+    return TRUE;
+}
 
 #endif /*!defined(_GEN_ARCH)*/

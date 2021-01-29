@@ -74,7 +74,7 @@ int i;
                 ((i & 0x03) == 0x03) ? "\n" : "\t");
     else
         for (i = 0; i < 16; i++)
-            hprintf(webblk->sock, "CR%1.1X=%16.16" I64_FMT "X%s", i,
+            hprintf(webblk->sock, "CR%1.1X=%16.16"PRIX64"%s", i,
                 (U64)regs->CR_G(i), ((i & 0x03) == 0x03) ? "\n" : " ");
 
     hprintf(webblk->sock, "</PRE>\n");
@@ -103,7 +103,7 @@ int i;
                 ((i & 0x03) == 0x03) ? "\n" : "\t");
     else
         for (i = 0; i < 16; i++)
-            hprintf(webblk->sock, "GR%1.1X=%16.16" I64_FMT "X%s", i,
+            hprintf(webblk->sock, "GR%1.1X=%16.16"PRIX64"%s", i,
                 (U64)regs->GR_G(i), ((i & 0x03) == 0x03) ? "\n" : " ");
 
     hprintf(webblk->sock, "</PRE>\n");
@@ -250,47 +250,23 @@ int     msgcount = 22;
     // Now read the logfile starting at that index. The return
     // value is the total #of bytes of messages data there is.
 
-    if ( (num_bytes = log_read( &logbuf_ptr, &logbuf_idx, LOG_NOBLOCK )) > 0 )
+    if ((num_bytes = log_read( &logbuf_ptr, &logbuf_idx, LOG_NOBLOCK )) > 0)
     {
         // Copy the message data to a work buffer for processing.
         // This is to allow for the possibility, however remote,
         // that the logfile buffer actually wraps around and over-
         // lays the message data we were going to display (which
         // could happen if there's a sudden flood of messages)
+
         char   *wrk_bufptr      = malloc( num_bytes );
         char   *sav_wrk         = NULL;
 
-        if ( wrk_bufptr )
+        if (wrk_bufptr)
         {
-#if defined( OPTION_MSGCLR )
-            char* l = logbuf_ptr;
-            char* w = wrk_bufptr;
-            int   n = 0;
-            int   i = 0;
-            
-            sav_wrk = wrk_bufptr;
-
-            memset(wrk_bufptr, 0, num_bytes);
-
-            while ( n < num_bytes )
-            {
-                
-                if ( ( n + 5 ) < num_bytes && strncasecmp( &l[n], "<pnl", 4 ) == 0 )
-                {
-                    for ( n+=4; n < num_bytes; n++ )
-                        if ( l[n] == '>' ) break;
-                    n++;
-                }
-                
-                w[i++] = l[n++];
-            }
-            num_bytes = i;            
-#else
             sav_wrk = wrk_bufptr;
             strncpy( wrk_bufptr,  logbuf_ptr, num_bytes );
-#endif
         }
-        else                       wrk_bufptr = logbuf_ptr;
+        else         wrk_bufptr = logbuf_ptr;
 
 
         // We need to convert certain characters that might
@@ -330,7 +306,7 @@ int     msgcount = 22;
     hprintf(webblk->sock, "</PRE>\n");
 
     hprintf(webblk->sock, "<FORM method=post>Command:\n");
-    hprintf(webblk->sock, "<INPUT type=text name=command size=80>\n");
+    hprintf(webblk->sock, "<INPUT type=text name=command size=80 autofocus>\n");
     hprintf(webblk->sock, "<INPUT type=submit name=send value=\"Send\">\n");
     hprintf(webblk->sock, "<INPUT type=hidden name=%srefresh value=1>\n",autorefresh ? "auto" : "no");
     hprintf(webblk->sock, "<INPUT type=hidden name=refresh_interval value=%d>\n",refresh_interval);
@@ -432,9 +408,9 @@ REGS *regs;
             if((value = cgi_variable(webblk,regname)))
             {
                 if(regs->arch_mode != ARCH_900)
-                    sscanf(value,"%"I32_FMT"x",&(regs->GR_L(i)));
+                    sscanf(value,"%"SCNx32,&(regs->GR_L(i)));
                 else
-                    sscanf(value,"%"I64_FMT"x",&(regs->GR_G(i)));
+                    sscanf(value,"%"SCNx64,&(regs->GR_G(i)));
             }
         }
     }
@@ -448,9 +424,9 @@ REGS *regs;
             if((value = cgi_variable(webblk,regname)))
             {
                 if(regs->arch_mode != ARCH_900)
-                    sscanf(value,"%"I32_FMT"x",&(regs->CR_L(i)));
+                    sscanf(value,"%"SCNx32,&(regs->CR_L(i)));
                 else
-                    sscanf(value,"%"I64_FMT"x",&(regs->CR_G(i)));
+                    sscanf(value,"%"SCNx64,&(regs->CR_G(i)));
             }
         }
     }
@@ -516,7 +492,7 @@ REGS *regs;
                   (i&3)==0?"<tr>\n":"",i,i,regs->GR_L(i),((i&3)==3)?"</tr>\n":"");
             else
                 hprintf(webblk->sock,"%s<td>GR%d</td><td><input type=text name=alter_gr%d size=16 "
-                  "value=%16.16" I64_FMT "X></td>\n%s",
+                  "value=%16.16"PRIX64"></td>\n%s",
                   (i&3)==0?"<tr>\n":"",i,i,(U64)regs->GR_G(i),((i&3)==3)?"</tr>\n":"");
         }
         hprintf(webblk->sock,"</table>\n"
@@ -560,7 +536,7 @@ REGS *regs;
                   (i&3)==0?"<tr>\n":"",i,i,regs->CR_L(i),((i&3)==3)?"</tr>\n":"");
             else
                 hprintf(webblk->sock,"%s<td>CR%d</td><td><input type=text name=alter_cr%d size=16 "
-                  "value=%16.16" I64_FMT "X></td>\n%s",
+                  "value=%16.16"PRIX64"></td>\n%s",
                   (i&3)==0?"<tr>\n":"",i,i,(U64)regs->CR_G(i),((i&3)==3)?"</tr>\n":"");
         }
         hprintf(webblk->sock,"</table>\n"
@@ -1068,7 +1044,7 @@ int i,j;
         sprintf(cpuname,"cpu%d",i);
         if((cpustate = cgi_variable(webblk,cpuname)))
             sscanf(cpustate,"%d",&cpuonline);
-        
+
         OBTAIN_INTLOCK(NULL);
 
         switch(cpuonline) {
@@ -1113,7 +1089,7 @@ void cgibin_debug_version_info(WEBBLK *webblk)
 
     hprintf(webblk->sock,"<h1>Hercules Version Information</h1>\n"
                           "<pre>\n");
-    display_version_2(NULL,"Hercules HTTP Server", TRUE,webblk->sock);
+    display_version( NULL, webblk->sock, "Hercules HTTP Server" );
     hprintf(webblk->sock,"</pre>\n");
 
     html_footer(webblk);

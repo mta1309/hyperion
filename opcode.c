@@ -12,6 +12,17 @@
 
 #include "hstdinc.h"
 
+/* A  number  of  dummy functions are defined by UNDEF_INST that are */
+/* never  referenced  because the actual instruction does not define */
+/* the instruction for a particular architecture.  This applies, for */
+/* example  to  z900_insert_storage_key and s390_insert_storage_key. */
+/* With  clang,  the z900 instruction is diagnosed, but the s390 one */
+/* is  not.   Go  figure.   Trying to fix this through the morass of */
+/* recursive #include is not compatible with retaining one's sanity. */
+/* Thus, for this module, we shoot the messenger.                    */
+
+DISABLE_GCC_UNUSED_FUNCTION_WARNING
+
 #if !defined(_HENGINE_DLL_)
 #define _HENGINE_DLL_
 #endif
@@ -21,10 +32,6 @@
 #endif
 
 #include "feature.h"
-
-#if defined(__GNUC__) && __GNUC__ > 3 && __GNUC_MINOR__ > 5
-#pragma GCC diagnostic ignored "-Wunused-function"
-#endif
 
 #if !defined(_GEN_ARCH)
 
@@ -264,6 +271,11 @@
  UNDEF_INST(execute_relative_long)                              /*208*/
 #endif /*!defined(FEATURE_EXECUTE_EXTENSIONS_FACILITY)*/        /*208*/
 
+#if !defined(FEATURE_EXECUTION_HINT_FACILITY)                   /*912*/
+ UNDEF_INST(branch_prediction_preload)                          /*912*/
+ UNDEF_INST(branch_prediction_relative_preload)                 /*912*/
+ UNDEF_INST(next_instruction_access_intent)                     /*912*/
+#endif /*!defined(FEATURE_EXECUTION_HINT_FACILITY)*/            /*912*/
 
 #if !defined(FEATURE_GENERAL_INSTRUCTIONS_EXTENSION_FACILITY)   /*208*/
  UNDEF_INST(add_immediate_long_storage)
@@ -444,6 +456,19 @@
  UNDEF_INST(reset_reference_bits_multiple)                      /*810*/
 #endif /*!defined(FEATURE_RESET_REFERENCE_BITS_MULTIPLE_FACILITY)*/
 
+#if !defined(FEATURE_LOAD_AND_TRAP_FACILITY)                    /*912*/
+ UNDEF_INST(load_and_trap)                                      /*912*/
+ UNDEF_INST(load_long_and_trap)                                 /*912*/
+ UNDEF_INST(load_fullword_high_and_trap)                        /*912*/
+ UNDEF_INST(load_logical_long_fullword_and_trap)                /*912*/
+ UNDEF_INST(load_logical_long_thirtyone_and_trap)               /*912*/
+#endif /*!defined(FEATURE_LOAD_AND_TRAP_FACILITY)*/             /*912*/
+
+#if !defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)      /*912*/
+ UNDEF_INST(compare_logical_and_trap)                           /*912*/
+ UNDEF_INST(compare_logical_and_trap_long)                      /*912*/
+ UNDEF_INST(rotate_then_insert_selected_bits_long_reg_n)        /*912*/
+#endif /*!defined(FEATURE_MISC_INSTRUCTION_EXTENSIONS_FACILITY)*/
 
 #if !defined(FEATURE_VECTOR_FACILITY)
  UNDEF_INST(v_test_vmr)
@@ -649,12 +674,12 @@
  UNDEF_INST(convert_fix32_to_bfp_ext_reg)
  UNDEF_INST(convert_fix32_to_bfp_long_reg)
  UNDEF_INST(convert_fix32_to_bfp_short_reg)
- UNDEF_INST(convert_fix64_to_bfp_ext_reg);
- UNDEF_INST(convert_fix64_to_bfp_long_reg);
- UNDEF_INST(convert_fix64_to_bfp_short_reg);
- UNDEF_INST(convert_bfp_ext_to_fix64_reg);
- UNDEF_INST(convert_bfp_long_to_fix64_reg);
- UNDEF_INST(convert_bfp_short_to_fix64_reg);
+ UNDEF_INST(convert_fix64_to_bfp_ext_reg)
+ UNDEF_INST(convert_fix64_to_bfp_long_reg)
+ UNDEF_INST(convert_fix64_to_bfp_short_reg)
+ UNDEF_INST(convert_bfp_ext_to_fix64_reg)
+ UNDEF_INST(convert_bfp_long_to_fix64_reg)
+ UNDEF_INST(convert_bfp_short_to_fix64_reg)
  UNDEF_INST(divide_bfp_ext_reg)
  UNDEF_INST(divide_bfp_long)
  UNDEF_INST(divide_bfp_long_reg)
@@ -777,6 +802,14 @@
 #endif /*!defined(FEATURE_DECIMAL_FLOATING_POINT)*/
 
 
+#if !defined(FEATURE_DFP_ZONED_CONVERSION_FACILITY)             /*912*/
+ UNDEF_INST(convert_zoned_to_dfp_long)                          /*912*/
+ UNDEF_INST(convert_zoned_to_dfp_ext)                           /*912*/
+ UNDEF_INST(convert_dfp_long_to_zoned)                          /*912*/
+ UNDEF_INST(convert_dfp_ext_to_zoned)                           /*912*/
+#endif /*!defined(FEATURE_DFP_ZONED_CONVERSION_FACILITY)*/      /*912*/
+
+
 #if !defined(FEATURE_FLOATING_POINT_EXTENSION_FACILITY)         /*810*/
  UNDEF_INST(convert_bfp_short_to_u32_reg)                       /*810*/
  UNDEF_INST(convert_bfp_long_to_u32_reg)                        /*810*/
@@ -822,7 +855,7 @@
 
 
 #if !defined(FEATURE_COMPRESSION)
- UNDEF_INST(compression_call)
+ UNDEF_INST(cmpsc_2012)
 #endif /*!defined(FEATURE_COMPRESSION)*/
 
 
@@ -896,6 +929,10 @@
  UNDEF_INST(load_sampling_controls)
  UNDEF_INST(query_sampling_information)
 #endif /*!defined(FEATURE_CPU_MEASUREMENT_SAMPLING_FACILITY)*/
+
+#if !defined(FEATURE_STORE_CPU_MULTIPLE_COUNTER_FACILITY)
+ UNDEF_INST(store_cpu_counter_multiple)
+#endif /* !defined(FEATURE_STORE_CPU_MULTIPLE_COUNTER_FACILITY) */
 
 
 #if !defined(FEATURE_EXTENDED_TRANSLATION)
@@ -974,7 +1011,7 @@
 
 
 #if !defined(FEATURE_STORE_FACILITY_LIST)
- UNDEF_INST(store_facility_list);
+ UNDEF_INST(store_facility_list)
 #endif /*!defined(FEATURE_STORE_FACILITY_LIST) */
 
 
@@ -1156,6 +1193,10 @@
  UNDEF_INST(store_facility_list_extended)                       /*@Z9*/
 #endif /*!defined(FEATURE_STORE_FACILITY_LIST_EXTENDED)*/       /*@Z9*/
 
+#if !defined(FEATURE_PROCESSOR_ASSIST)
+ UNDEF_INST(perform_processor_assist)
+#endif
+
 
 /* The following execute_xxxx routines can be optimized by the
    compiler to an indexed jump, leaving the stack frame untouched
@@ -1329,68 +1370,82 @@ char operands[64]
 
 DISASM_TYPE(none);
   UNREFERENCED(inst);
-  DISASM_PRINT("%c",',');
+  DISASM_PRINT("%c",',')
 
 DISASM_TYPE(E);
     UNREFERENCED(inst);
-    DISASM_PRINT("%c",',');
+    DISASM_PRINT("%c",',')
 
+DISASM_TYPE(IE);
+int i1, i2;
+    i1 = inst[3] >> 4;
+    i2 = inst[3] & 0x0F;
+    DISASM_PRINT("%d,%d",i1,i2)
+
+DISASM_TYPE(MII_A);
+int m1,i2,i3;
+    const S64 Two_S64=2;
+    m1 = inst[1] >> 4;
+    i2 = (S32)(((U32)inst[1] << 8) | (U32)inst[2]);
+    i3 = (S32)(((U32)inst[3] << 16) | ((U32)inst[4] << 8)
+               | (U32)inst[5]);
+    DISASM_PRINT("%d,*%+"I64_FMT"d,*%+"I64_FMT"d",m1,i2*Two_S64,i3*Two_S64)
 
 DISASM_TYPE(RR);
 int r1, r2;
     r1 = inst[1] >> 4;
     r2 = inst[1] & 0x0F;
-    DISASM_PRINT("%d,%d",r1,r2);
+    DISASM_PRINT("%d,%d",r1,r2)
 
 
 // "Mnemonic   R1"
 DISASM_TYPE(RR_R1);
 int r1;
     r1 = inst[1] >> 4;
-    DISASM_PRINT("%d",r1);
+    DISASM_PRINT("%d",r1)
 
 DISASM_TYPE(RR_SVC);
-    DISASM_PRINT("%d",inst[1]);
+    DISASM_PRINT("%d",inst[1])
 
 DISASM_TYPE(RRE);
 int r1, r2;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d",r1,r2);
+    DISASM_PRINT("%d,%d",r1,r2)
 
 // "Mnemonic   R1"
 DISASM_TYPE(RRE_R1);
 int r1;
     r1 = inst[3] >> 4;
-    DISASM_PRINT("%d",r1);
+    DISASM_PRINT("%d",r1)
 
 DISASM_TYPE(RRF_R);
 int r1,r3,r2;
     r1 = inst[2] >> 4;
     r3 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",r1,r3,r2);
+    DISASM_PRINT("%d,%d,%d",r1,r3,r2)
 
 DISASM_TYPE(RRF_M);
 int m3,r1,r2;
     m3 = inst[2] >> 4;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",r1,m3,r2);
+    DISASM_PRINT("%d,%d,%d",r1,m3,r2)
 
 DISASM_TYPE(RRF_M3);
 int m3,r1,r2;
     m3 = inst[2] >> 4;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",r1,r2,m3);
+    DISASM_PRINT("%d,%d,%d",r1,r2,m3)
 
 DISASM_TYPE(RRF_M4);
 int m4,r1,r2;
     m4 = inst[2] & 0x0F;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",r1,r2,m4);
+    DISASM_PRINT("%d,%d,%d",r1,r2,m4)
 
 DISASM_TYPE(RRF_MM);
 int m3,m4,r1,r2;
@@ -1398,7 +1453,7 @@ int m3,m4,r1,r2;
     m4 = inst[2] & 0x0F;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d,%d",r1,m3,r2,m4);
+    DISASM_PRINT("%d,%d,%d,%d",r1,m3,r2,m4)
 
 DISASM_TYPE(RRF_RM);
 int r3,m4,r1,r2;
@@ -1406,14 +1461,14 @@ int r3,m4,r1,r2;
     m4 = inst[2] & 0x0F;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d,%d",r1,r3,r2,m4);
+    DISASM_PRINT("%d,%d,%d,%d",r1,r3,r2,m4)
 
 DISASM_TYPE(RRR);
 int r1,r2,r3;
     r3 = inst[2] >> 4;
     r1 = inst[3] >> 4;
     r2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",r1,r2,r3);
+    DISASM_PRINT("%d,%d,%d",r1,r2,r3)
 
 DISASM_TYPE(RX);
 int r1,x2,b2,d2;
@@ -1421,7 +1476,7 @@ int r1,x2,b2,d2;
     x2 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2);
+    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2)
 
 DISASM_TYPE(RXE);
 int r1,x2,b2,d2;
@@ -1429,7 +1484,7 @@ int r1,x2,b2,d2;
     x2 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2);
+    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2)
 
 DISASM_TYPE(RXY);
 int r1,x2,b2,d2;
@@ -1437,7 +1492,7 @@ int r1,x2,b2,d2;
     x2 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (((S8)inst[4]) << 12) | (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2);
+    DISASM_PRINT("%d,%d(%d,%d)",r1,d2,x2,b2)
 
 DISASM_TYPE(RXF);
 int r1,r3,x2,b2,d2;
@@ -1446,7 +1501,7 @@ int r1,r3,x2,b2,d2;
     x2 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d,%d(%d,%d)",r1,r3,d2,x2,b2);
+    DISASM_PRINT("%d,%d,%d(%d,%d)",r1,r3,d2,x2,b2)
 
 DISASM_TYPE(RS);
 int r1,r3,b2,d2;
@@ -1454,7 +1509,7 @@ int r1,r3,b2,d2;
     r3 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2);
+    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2)
 
 // "Mnemonic   R1,D2(B2)"
 DISASM_TYPE(RS_R1D2B2);
@@ -1462,7 +1517,7 @@ int r1,b2,d2;
     r1 = inst[1] >> 4;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d(%d)",r1,d2,b2);
+    DISASM_PRINT("%d,%d(%d)",r1,d2,b2)
 
 DISASM_TYPE(RSE);
 int r1,r3,b2,d2;
@@ -1470,7 +1525,7 @@ int r1,r3,b2,d2;
     r3 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2);
+    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2)
 
 DISASM_TYPE(RSY);
 int r1,r3,b2,d2;
@@ -1478,7 +1533,7 @@ int r1,r3,b2,d2;
     r3 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (((S8)inst[4]) << 12) | (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2);
+    DISASM_PRINT("%d,%d,%d(%d)",r1,r3,d2,b2)
 
 DISASM_TYPE(RSY_M3);
 int r1,b2,d2,m3;
@@ -1486,54 +1541,63 @@ int r1,b2,d2,m3;
     m3 = inst[1] & 0x0F;
     b2 = inst[2] >> 4;
     d2 = (((S8)inst[4]) << 12) | (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d,%d(%d),%d",r1,d2,b2,m3);
+    DISASM_PRINT("%d,%d(%d),%d",r1,d2,b2,m3)
 
 DISASM_TYPE(RSL);
 int l1,b1,d1;
     l1 = inst[1] >> 4;
     b1 = inst[2] >> 4;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d(%d,%d)",d1,l1+1,b1);
+    DISASM_PRINT("%d(%d,%d)",d1,l1+1,b1)
+
+DISASM_TYPE(RSL_RM);
+int r1,l2,b2,d2,m3;
+    l2 = inst[1];
+    b2 = inst[2] >> 4;
+    d2 = (inst[2] & 0x0F) << 8 | inst[3];
+    r1 = inst[4] >> 4;
+    m3 = inst[4] & 0x0F;
+    DISASM_PRINT("%d,%d(%d,%d),%d",r1,d2,l2+1,b2,m3)
 
 DISASM_TYPE(RSI);
 int r1,r3,i2;
     r1 = inst[1] >> 4;
     r3 = inst[1] & 0x0F;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
-    DISASM_PRINT("%d,%d,*%+d",r1,r3,i2*2);
+    DISASM_PRINT("%d,%d,*%+d",r1,r3,i2*2)
 
 DISASM_TYPE(RI);
 int r1,i2;
     r1 = inst[1] >> 4;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
-    DISASM_PRINT("%d,%d",r1,i2);
+    DISASM_PRINT("%d,%d",r1,i2)
 
 DISASM_TYPE(RI_B);
 int r1,i2;
     r1 = inst[1] >> 4;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
-    DISASM_PRINT("%d,*%+d",r1,i2*2);
+    DISASM_PRINT("%d,*%+d",r1,i2*2)
 
 DISASM_TYPE(RIE);
 int r1,r3,i2;
     r1 = inst[1] >> 4;
     r3 = inst[1] & 0x0F;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
-    DISASM_PRINT("%d,%d,*%+d",r1,r3,i2*2);
+    DISASM_PRINT("%d,%d,*%+d",r1,r3,i2*2)
 
 DISASM_TYPE(RIE_RRI);
 int r1,r3,i2;
     r1 = inst[1] >> 4;
     r3 = inst[1] & 0x0F;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
-    DISASM_PRINT("%d,%d,%d",r1,r3,i2);
+    DISASM_PRINT("%d,%d,%d",r1,r3,i2)
 
 DISASM_TYPE(RIE_RIM);
 int r1,i2,m3;
     r1 = inst[1] >> 4;
     i2 = (S16)(((U16)inst[2] << 8) | inst[3]);
     m3 = inst[4] >> 4;
-    DISASM_PRINT("%d,%d,%d",r1,i2,m3);
+    DISASM_PRINT("%d,%d,%d",r1,i2,m3)
 
 DISASM_TYPE(RIE_RRIM);
 int r1,r2,i4,m3;
@@ -1541,7 +1605,7 @@ int r1,r2,i4,m3;
     r2 = inst[1] & 0x0F;
     i4 = (S16)(((U16)inst[2] << 8) | inst[3]);
     m3 = inst[4] >> 4;
-    DISASM_PRINT("%d,%d,%d,*%+d",r1,r2,m3,i4*2);
+    DISASM_PRINT("%d,%d,%d,*%+d",r1,r2,m3,i4*2)
 
 DISASM_TYPE(RIE_RMII);
 int r1,m3,i4,i2;
@@ -1549,7 +1613,7 @@ int r1,m3,i4,i2;
     m3 = inst[1] & 0x0F;
     i4 = (S16)(((U16)inst[2] << 8) | inst[3]);
     i2 = inst[4];
-    DISASM_PRINT("%d,%d,%d,*%+d",r1,i2,m3,i4*2);
+    DISASM_PRINT("%d,%d,%d,*%+d",r1,i2,m3,i4*2)
 
 DISASM_TYPE(RIE_RRIII);
 int r1,r2,i3,i4,i5;
@@ -1558,14 +1622,14 @@ int r1,r2,i3,i4,i5;
     i3 = inst[2];
     i4 = inst[3];
     i5 = inst[4];
-    DISASM_PRINT("%d,%d,%d,%d,%d",r1,r2,i3,i4,i5);
+    DISASM_PRINT("%d,%d,%d,%d,%d",r1,r2,i3,i4,i5)
 
 DISASM_TYPE(RIL);
 int r1,i2;
     r1 = inst[1] >> 4;
     i2 = (S32)((((U32)inst[2] << 24) | ((U32)inst[3] << 16)
        | ((U32)inst[4] << 8)) | inst[5]);
-    DISASM_PRINT("%d,%"I32_FMT"d",r1,i2);
+    DISASM_PRINT("%d,%"PRId32,r1,i2)
 
 DISASM_TYPE(RIL_A);
 int r1,i2;
@@ -1573,7 +1637,7 @@ int r1,i2;
     r1 = inst[1] >> 4;
     i2 = (S32)((((U32)inst[2] << 24) | ((U32)inst[3] << 16)
        | ((U32)inst[4] << 8)) | inst[5]);
-    DISASM_PRINT("%d,*%+"I64_FMT"d",r1,i2*Two_S64);
+    DISASM_PRINT("%d,*%+"PRId64,r1,i2*Two_S64)
 
 DISASM_TYPE(RIS);
 int r1,i2,m3,b4,d4;
@@ -1582,7 +1646,7 @@ int r1,i2,m3,b4,d4;
     b4 = inst[2] >> 4;
     d4 = (inst[2] & 0x0F) << 8 | inst[3];
     i2 = inst[4];
-    DISASM_PRINT("%d,%d,%d,%d(%d)",r1,i2,m3,d4,b4);
+    DISASM_PRINT("%d,%d,%d,%d(%d)",r1,i2,m3,d4,b4)
 
 DISASM_TYPE(RRS);
 int r1,r2,m3,b4,d4;
@@ -1591,34 +1655,43 @@ int r1,r2,m3,b4,d4;
     b4 = inst[2] >> 4;
     d4 = (inst[2] & 0x0F) << 8 | inst[3];
     m3 = inst[4] >> 4;
-    DISASM_PRINT("%d,%d,%d,%d(%d)",r1,r2,m3,d4,b4);
+    DISASM_PRINT("%d,%d,%d,%d(%d)",r1,r2,m3,d4,b4)
 
 DISASM_TYPE(SI);
 int i2,b1,d1;
     i2 = inst[1];
     b1 = inst[2] >> 4;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d(%d),%d",d1,b1,i2);
+    DISASM_PRINT("%d(%d),%d",d1,b1,i2)
 
 DISASM_TYPE(SIY);
 int i2,b1,d1;
     i2 = inst[1];
     b1 = inst[2] >> 4;
     d1 = (((S8)inst[4]) << 12) | (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d(%d),%d",d1,b1,i2);
+    DISASM_PRINT("%d(%d),%d",d1,b1,i2)
 
 DISASM_TYPE(SIL);
 int b1,d1,i2;
     b1 = inst[2] >> 4;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     i2 = (S16)(((U16)inst[4] << 8) | inst[5]);
-    DISASM_PRINT("%d(%d),%d",d1,b1,i2);
+    DISASM_PRINT("%d(%d),%d",d1,b1,i2)
+
+DISASM_TYPE(SMI_A);
+int m1,i2,b3,d3;
+    const S64 Two_S64=2;
+    m1 = inst[1] >> 4;
+    b3 = inst[2] >> 4;
+    d3 = (inst[2] & 0x0F) << 8 | inst[3];
+    i2 = (S32)(((U32)inst[4] << 8) | (U32)inst[5]);
+    DISASM_PRINT("%d,*%+"I64_FMT"d,%d(%d)",m1,i2*Two_S64,d3,b3)
 
 DISASM_TYPE(S);
 int d2,b2;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d(%d)",d2,b2);
+    DISASM_PRINT("%d(%d)",d2,b2)
 
 DISASM_TYPE(SS);
 int l1,l2,b1,d1,b2,d2;
@@ -1628,7 +1701,7 @@ int l1,l2,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d,%d),%d(%d,%d)",d1,l1+1,b1,d2,l2+1,b2);
+    DISASM_PRINT("%d(%d,%d),%d(%d,%d)",d1,l1+1,b1,d2,l2+1,b2)
 
 DISASM_TYPE(SS_L);
 int l1,b1,d1,b2,d2;
@@ -1637,7 +1710,7 @@ int l1,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d,%d),%d(%d)",d1,l1+1,b1,d2,b2);
+    DISASM_PRINT("%d(%d,%d),%d(%d)",d1,l1+1,b1,d2,b2)
 
 // "Mnemonic   D1(B1),D2(L2,B2)"
 DISASM_TYPE(SS_L2);
@@ -1647,7 +1720,7 @@ int l2,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d),%d(%d,%d)",d1,b1,d2,l2+1,b2);
+    DISASM_PRINT("%d(%d),%d(%d,%d)",d1,b1,d2,l2+1,b2)
 
 DISASM_TYPE(SS_R);
 int r1,r3,b2,d2,b4,d4;
@@ -1657,7 +1730,7 @@ int r1,r3,b2,d2,b4,d4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
     b4 = inst[4] >> 4;
     d4 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d,%d,%d(%d),%d(%d)",r1,r3,d2,b2,d4,b4);
+    DISASM_PRINT("%d,%d,%d(%d),%d(%d)",r1,r3,d2,b2,d4,b4)
 
 // "Mnemonic   D1(R1,B1),D2(B2),R3"
 DISASM_TYPE(SS_R3);
@@ -1668,7 +1741,7 @@ int r1,r3,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d,%d),%d(%d),%d",d1,r1,b1,d2,b2,r3);
+    DISASM_PRINT("%d(%d,%d),%d(%d),%d",d1,r1,b1,d2,b2,r3)
 
 // "Mnemonic   R1,D2(B2),R3,D4(B4)"
 DISASM_TYPE(SS_RSRS);
@@ -1679,7 +1752,7 @@ int r1,r3,b2,d2,b4,d4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
     b4 = inst[4] >> 4;
     d4 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d,%d(%d),%d,%d(%d)",r1,d2,b2,r3,d4,b4);
+    DISASM_PRINT("%d,%d(%d),%d,%d(%d)",r1,d2,b2,r3,d4,b4)
 
 // "Mnemonic   D1(L1,B1),D2(B2),I3"
 DISASM_TYPE(SS_I);
@@ -1690,7 +1763,7 @@ int l1,i3,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d,%d),%d(%d),%d",d1,l1,b1,d2,b2,i3);
+    DISASM_PRINT("%d(%d,%d),%d(%d),%d",d1,l1,b1,d2,b2,i3)
 
 DISASM_TYPE(SSE);
 int b1,d1,b2,d2;
@@ -1698,7 +1771,7 @@ int b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d),%d(%d)",d1,b1,d2,b2);
+    DISASM_PRINT("%d(%d),%d(%d)",d1,b1,d2,b2)
 
 DISASM_TYPE(SSF);
 int r3,b1,d1,b2,d2;
@@ -1707,7 +1780,7 @@ int r3,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d(%d),%d(%d),%d",d1,b1,d2,b2,r3);
+    DISASM_PRINT("%d(%d),%d(%d),%d",d1,b1,d2,b2,r3)
 
 DISASM_TYPE(SSF_RSS);
 int r3,b1,d1,b2,d2;
@@ -1716,7 +1789,7 @@ int r3,b1,d1,b2,d2;
     d1 = (inst[2] & 0x0F) << 8 | inst[3];
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d,%d(%d),%d(%d)",r3,d1,b1,d2,b2);
+    DISASM_PRINT("%d,%d(%d),%d(%d)",r3,d1,b1,d2,b2)
 
 DISASM_TYPE(VST);
 int vr3,rt2,vr1,rs2;
@@ -1724,19 +1797,19 @@ int vr3,rt2,vr1,rs2;
     rt2 = inst[2] & 0x0F;
     vr1 = inst[3] >> 4;
     rs2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d(%d)",vr1,vr3,rs2,rt2);
+    DISASM_PRINT("%d,%d,%d(%d)",vr1,vr3,rs2,rt2)
 
 DISASM_TYPE(VR);
 int vr1,fr3,gr2;
     fr3 = inst[2] >> 4;
     vr1 = inst[3] >> 4;
     gr2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d,%d,%d",vr1,fr3,gr2);
+    DISASM_PRINT("%d,%d,%d",vr1,fr3,gr2)
 
 DISASM_TYPE(VS);
 int rs2;
     rs2 = inst[3] & 0x0F;
-    DISASM_PRINT("%d",rs2);
+    DISASM_PRINT("%d",rs2)
 
 DISASM_TYPE(VRSE);
 int vr1,vr3,d2,b2;
@@ -1744,13 +1817,13 @@ int vr1,vr3,d2,b2;
     vr1 = inst[3] >> 4;
     b2 = inst[4] >> 4;
     d2 = (inst[4] & 0x0F) << 8 | inst[5];
-    DISASM_PRINT("%d,%d,%d(%d)",vr1,vr3,d2,b2);
+    DISASM_PRINT("%d,%d,%d(%d)",vr1,vr3,d2,b2)
 
 DISASM_TYPE(S_NW);
 int d2,b2;
     b2 = inst[2] >> 4;
     d2 = (inst[2] & 0x0F) << 8 | inst[3];
-    DISASM_PRINT("%d(%d)",d2,b2);
+    DISASM_PRINT("%d(%d)",d2,b2)
 
 
 /*----------------------------------------------------------------------------*/
@@ -2255,8 +2328,8 @@ static zz_func opcode_table[0x100][GEN_MAXARCH] = {
  /*A5*/   GENx370x390x900 (execute_opcode_a5_x,a5_x,""), /* execute_opcode_a5xx with vector facility */
  /*A6*/   GENx370x390x900 (execute_opcode_a6xx,a6xx,""),
  /*A7*/   GENx370x390x900 (execute_opcode_a7_x,a7_x,""),
- /*A8*/   GENx370x390x900 (move_long_extended,RS,"MVCLE"),
- /*A9*/   GENx370x390x900 (compare_logical_long_extended,RS,"CLCLE"),
+ /*A8*/   GENx37Xx390x900 (move_long_extended,RS,"MVCLE"),
+ /*A9*/   GENx37Xx390x900 (compare_logical_long_extended,RS,"CLCLE"),
  /*AA*/   GENx___x___x___ ,
  /*AB*/   GENx___x___x___ ,
  /*AC*/   GENx370x390x900 (store_then_and_system_mask,SI,"STNSM"),
@@ -2284,9 +2357,9 @@ static zz_func opcode_table[0x100][GEN_MAXARCH] = {
  /*C2*/   GENx370x390x900 (execute_opcode_c2_x,c2_x,""),               /*@Z9*/
  /*C3*/   GENx___x___x___ ,
  /*C4*/   GENx370x390x900 (execute_opcode_c4_x,c4_x,""),               /*208*/
- /*C5*/   GENx___x___x___ ,
+ /*C5*/   GENx___x___x900 (branch_prediction_relative_preload,MII_A,"BPRP"),       /*912*/
  /*C6*/   GENx370x390x900 (execute_opcode_c6_x,c6_x,""),               /*208*/
- /*C7*/   GENx___x___x___ ,
+ /*C7*/   GENx___x___x900 (branch_prediction_preload,SMI_A,"BPP"),                 /*912*/
  /*C8*/   GENx370x390x900 (execute_opcode_c8_x,c8_x,""),
  /*C9*/   GENx___x___x___ ,
  /*CA*/   GENx___x___x___ ,
@@ -2742,7 +2815,7 @@ static zz_func opcode_b2xx[0x100][GEN_MAXARCH] = {
  /*B260*/ GENx___x___x___ ,                                     /* Sysplex   */
  /*B261*/ GENx___x___x___ ,                                     /* Sysplex   */
  /*B262*/ GENx___x390x900 (lock_page,RRE,"LKPG"),
- /*B263*/ GENx37Xx390x900 (compression_call,RRE,"CMPSC"),
+ /*B263*/ GENx37Xx390x900 (cmpsc_2012,RRE,"CMPSC"),
  /*B264*/ GENx___x___x___ ,                                     /* Sysplex   */
  /*B265*/ GENx___x___x900 (set_vector_summary,RRE,"SVS"),    /*           */
  /*B266*/ GENx___x___x___ ,                                     /* Sysplex   */
@@ -2875,7 +2948,7 @@ static zz_func opcode_b2xx[0x100][GEN_MAXARCH] = {
  /*B2E5*/ GENx___x___x900 (extract_peripheral_counter,RRE,"EPCTR"),     /*  CMCF */
  /*B2E6*/ GENx___x___x___ ,
  /*B2E7*/ GENx___x___x___ ,
- /*B2E8*/ GENx___x___x___ ,
+ /*B2E8*/ GENx___x___x900 (perform_processor_assist,RRF_M3,"PPA"),      /*912*/
  /*B2E9*/ GENx___x___x___ ,
  /*B2EA*/ GENx___x___x___ ,
  /*B2EB*/ GENx___x___x___ ,
@@ -2893,7 +2966,7 @@ static zz_func opcode_b2xx[0x100][GEN_MAXARCH] = {
  /*B2F7*/ GENx___x___x___ ,
  /*B2F8*/ GENx___x___x___ ,
  /*B2F9*/ GENx___x___x___ ,
- /*B2FA*/ GENx___x___x___ ,
+ /*B2FA*/ GENx___x___x900 (next_instruction_access_intent,IE,"NIAI"),              /*912*/
  /*B2FB*/ GENx___x___x___ ,
  /*B2FC*/ GENx___x___x___ ,
  /*B2FD*/ GENx___x___x___ ,
@@ -2906,34 +2979,34 @@ static zz_func opcode_b3xx[0x100][GEN_MAXARCH] = {
  /*B301*/ GENx37Xx390x900 (load_negative_bfp_short_reg,RRE,"LNEBR"),
  /*B302*/ GENx37Xx390x900 (load_and_test_bfp_short_reg,RRE,"LTEBR"),
  /*B303*/ GENx37Xx390x900 (load_complement_bfp_short_reg,RRE,"LCEBR"),
- /*B304*/ GENx37Xx390x900 (load_lengthened_bfp_short_to_long_reg,RRE,"LDEBR"),
- /*B305*/ GENx37Xx390x900 (load_lengthened_bfp_long_to_ext_reg,RRE,"LXDBR"),
- /*B306*/ GENx37Xx390x900 (load_lengthened_bfp_short_to_ext_reg,RRE,"LXEBR"),
- /*B307*/ GENx37Xx390x900 (multiply_bfp_long_to_ext_reg,RRE,"MXDBR"),
- /*B308*/ GENx37Xx390x900 (compare_and_signal_bfp_short_reg,RRE,"KEBR"),
- /*B309*/ GENx37Xx390x900 (compare_bfp_short_reg,RRE,"CEBR"),
- /*B30A*/ GENx37Xx390x900 (add_bfp_short_reg,RRE,"AEBR"),
- /*B30B*/ GENx37Xx390x900 (subtract_bfp_short_reg,RRE,"SEBR"),
- /*B30C*/ GENx37Xx390x900 (multiply_bfp_short_to_long_reg,RRE,"MDEBR"),
- /*B30D*/ GENx37Xx390x900 (divide_bfp_short_reg,RRE,"DEBR"),
- /*B30E*/ GENx37Xx390x900 (multiply_add_bfp_short_reg,RRF_R,"MAEBR"),
- /*B30F*/ GENx37Xx390x900 (multiply_subtract_bfp_short_reg,RRF_R,"MSEBR"),
+ /*B304*/ GENx37Xx390x900 (load_lengthened_bfp_short_to_long,RRE,"LDEBR"),
+ /*B305*/ GENx37Xx390x900 (load_lengthened_bfp_long_to_ext,RRE,"LXDBR"),
+ /*B306*/ GENx37Xx390x900 (load_lengthened_bfp_short_to_ext,RRE,"LXEBR"),
+ /*B307*/ GENx37Xx390x900 (multiply_bfp_long_to_ext,RRE,"MXDBR"),
+ /*B308*/ GENx37Xx390x900 (compare_and_signal_bfp_short,RRE,"KEBR"),
+ /*B309*/ GENx37Xx390x900 (compare_bfp_short,RRE,"CEBR"),
+ /*B30A*/ GENx37Xx390x900 (add_bfp_short,RRE,"AEBR"),
+ /*B30B*/ GENx37Xx390x900 (subtract_bfp_short,RRE,"SEBR"),
+ /*B30C*/ GENx37Xx390x900 (multiply_bfp_short_to_long,RRE,"MDEBR"),
+ /*B30D*/ GENx37Xx390x900 (divide_bfp_short,RRE,"DEBR"),
+ /*B30E*/ GENx37Xx390x900 (multiply_addsub_bfp_short,RRF_R,"MAEBR"),
+ /*B30F*/ GENx37Xx390x900 (multiply_addsub_bfp_short,RRF_R,"MSEBR"),
  /*B310*/ GENx37Xx390x900 (load_positive_bfp_long_reg,RRE,"LPDBR"),
  /*B311*/ GENx37Xx390x900 (load_negative_bfp_long_reg,RRE,"LNDBR"),
  /*B312*/ GENx37Xx390x900 (load_and_test_bfp_long_reg,RRE,"LTDBR"),
  /*B313*/ GENx37Xx390x900 (load_complement_bfp_long_reg,RRE,"LCDBR"),
- /*B314*/ GENx37Xx390x900 (squareroot_bfp_short_reg,RRE,"SQEBR"),
- /*B315*/ GENx37Xx390x900 (squareroot_bfp_long_reg,RRE,"SQDBR"),
+ /*B314*/ GENx37Xx390x900 (squareroot_bfp_short,RRE,"SQEBR"),
+ /*B315*/ GENx37Xx390x900 (squareroot_bfp_long,RRE,"SQDBR"),
  /*B316*/ GENx37Xx390x900 (squareroot_bfp_ext_reg,RRE,"SQXBR"),
- /*B317*/ GENx37Xx390x900 (multiply_bfp_short_reg,RRE,"MEEBR"),
- /*B318*/ GENx37Xx390x900 (compare_and_signal_bfp_long_reg,RRE,"KDBR"),
- /*B319*/ GENx37Xx390x900 (compare_bfp_long_reg,RRE,"CDBR"),
- /*B31A*/ GENx37Xx390x900 (add_bfp_long_reg,RRE,"ADBR"),
- /*B31B*/ GENx37Xx390x900 (subtract_bfp_long_reg,RRE,"SDBR"),
- /*B31C*/ GENx37Xx390x900 (multiply_bfp_long_reg,RRE,"MDBR"),
- /*B31D*/ GENx37Xx390x900 (divide_bfp_long_reg,RRE,"DDBR"),
- /*B31E*/ GENx37Xx390x900 (multiply_add_bfp_long_reg,RRF_R,"MADBR"),
- /*B31F*/ GENx37Xx390x900 (multiply_subtract_bfp_long_reg,RRF_R,"MSDBR"),
+ /*B317*/ GENx37Xx390x900 (multiply_bfp_short,RRE,"MEEBR"),
+ /*B318*/ GENx37Xx390x900 (compare_and_signal_bfp_long,RRE,"KDBR"),
+ /*B319*/ GENx37Xx390x900 (compare_bfp_long,RRE,"CDBR"),
+ /*B31A*/ GENx37Xx390x900 (add_bfp_long,RRE,"ADBR"),
+ /*B31B*/ GENx37Xx390x900 (subtract_bfp_long,RRE,"SDBR"),
+ /*B31C*/ GENx37Xx390x900 (multiply_bfp_long,RRE,"MDBR"),
+ /*B31D*/ GENx37Xx390x900 (divide_bfp_long,RRE,"DDBR"),
+ /*B31E*/ GENx37Xx390x900 (multiply_addsub_bfp_long,RRF_R,"MADBR"),
+ /*B31F*/ GENx37Xx390x900 (multiply_addsub_bfp_long,RRF_R,"MSDBR"),
  /*B320*/ GENx___x___x___ ,
  /*B321*/ GENx___x___x___ ,
  /*B322*/ GENx___x___x___ ,
@@ -2990,8 +3063,8 @@ static zz_func opcode_b3xx[0x100][GEN_MAXARCH] = {
  /*B355*/ GENx___x___x___ ,
  /*B356*/ GENx___x___x___ ,
  /*B357*/ GENx37Xx390x900 (load_fp_int_bfp_short_reg,RRF_M,"FIEBR"),
- /*B358*/ GENx37Xx390x900 (convert_bfp_short_to_float_long_reg,RRE,"THDER"),
- /*B359*/ GENx37Xx390x900 (convert_bfp_long_to_float_long_reg,RRE,"THDR"),
+ /*B358*/ GENx37Xx390x900 (convert_bfp_to_float_long_reg,RRE,"THDER"),
+ /*B359*/ GENx37Xx390x900 (convert_bfp_to_float_long_reg,RRE,"THDR"),
  /*B35A*/ GENx___x___x___ ,
  /*B35B*/ GENx37Xx390x900 (divide_integer_bfp_long_reg,RRF_RM,"DIDBR"),
  /*B35C*/ GENx___x___x___ ,
@@ -3667,7 +3740,7 @@ static zz_func opcode_e3xx[0x100][GEN_MAXARCH] = {
  /*E382*/ GENx___x___x900 (exclusive_or_long,RXY,"XG"),
  /*E383*/ GENx___x___x___ ,
  /*E384*/ GENx___x___x___ ,
- /*E385*/ GENx___x___x___ ,
+ /*E385*/ GENx___x___x900 (load_long_and_trap,RXY,"LGAT"),                         /*912*/
  /*E386*/ GENx___x___x900 (multiply_logical_long,RXY,"MLG"),
  /*E387*/ GENx___x___x900 (divide_logical_long,RXY,"DLG"),
  /*E388*/ GENx___x___x900 (add_logical_carry_long,RXY,"ALCG"),
@@ -3690,10 +3763,10 @@ static zz_func opcode_e3xx[0x100][GEN_MAXARCH] = {
  /*E399*/ GENx37Xx390x900 (subtract_logical_borrow,RXY,"SLB"),
  /*E39A*/ GENx___x___x___ ,
  /*E39B*/ GENx___x___x___ ,
- /*E39C*/ GENx___x___x___ ,
- /*E39D*/ GENx___x___x___ ,
+ /*E39C*/ GENx___x___x900 (load_logical_long_thirtyone_and_trap,RXY,"LLGTAT"),     /*912*/
+ /*E39D*/ GENx___x___x900 (load_logical_long_fullword_and_trap,RXY,"LLGFAT"),      /*912*/
  /*E39E*/ GENx___x___x___ ,
- /*E39F*/ GENx___x___x___ ,
+ /*E39F*/ GENx___x___x900 (load_and_trap,RXY,"LAT"),                               /*912*/
  /*E3A0*/ GENx___x___x___ ,
  /*E3A1*/ GENx___x___x___ ,
  /*E3A2*/ GENx___x___x___ ,
@@ -3734,7 +3807,7 @@ static zz_func opcode_e3xx[0x100][GEN_MAXARCH] = {
  /*E3C5*/ GENx___x___x___ ,
  /*E3C6*/ GENx___x___x900 (load_logical_halfword_high,RXY,"LLHH"),                 /*810*/
  /*E3C7*/ GENx___x___x900 (store_halfword_high,RXY,"STHH"),                        /*810*/
- /*E3C8*/ GENx___x___x___ ,
+ /*E3C8*/ GENx___x___x900 (load_fullword_high_and_trap,RXY,"LFHAT"),               /*912*/
  /*E3C9*/ GENx___x___x___ ,
  /*E3CA*/ GENx___x___x900 (load_fullword_high,RXY,"LFH"),                          /*810*/
  /*E3CB*/ GENx___x___x900 (store_fullword_high,RXY,"STFH"),                        /*810*/
@@ -4336,7 +4409,7 @@ static zz_func opcode_ebxx[0x100][GEN_MAXARCH] = {
  /*EB14*/ GENx___x___x900 (compare_and_swap_y,RSY,"CSY"),
  /*EB15*/ GENx___x___x___ ,
  /*EB16*/ GENx___x___x___ ,
- /*EB17*/ GENx___x___x___ ,
+ /*EB17*/ GENx___x___x900  (store_cpu_counter_multiple,RSY,"STCCTM"),	/* STCCTM - store-CPU-counter-multiple facility */
  /*EB18*/ GENx___x___x___ ,
  /*EB19*/ GENx___x___x___ ,
  /*EB1A*/ GENx___x___x___ ,
@@ -4348,7 +4421,7 @@ static zz_func opcode_ebxx[0x100][GEN_MAXARCH] = {
  /*EB20*/ GENx___x___x900 (compare_logical_characters_under_mask_high,RSY,"CLMH"),
  /*EB21*/ GENx___x___x900 (compare_logical_characters_under_mask_y,RSY,"CLMY"),
  /*EB22*/ GENx___x___x___ ,
- /*EB23*/ GENx___x___x___ ,
+ /*EB23*/ GENx___x___x900 (compare_logical_and_trap,RSY,"CLT"),                    /*912*/
  /*EB24*/ GENx___x___x900 (store_multiple_long,RSY,"STMG"),
  /*EB25*/ GENx___x___x900 (store_control_long,RSY,"STCTG"),
  /*EB26*/ GENx___x___x900 (store_multiple_high,RSY,"STMH"),
@@ -4356,7 +4429,7 @@ static zz_func opcode_ebxx[0x100][GEN_MAXARCH] = {
  /*EB28*/ GENx___x___x___ ,
  /*EB29*/ GENx___x___x___ ,
  /*EB2A*/ GENx___x___x___ ,
- /*EB2B*/ GENx___x___x___ ,
+ /*EB2B*/ GENx___x___x900 (compare_logical_and_trap_long,RSY,"CLGT"),              /*912*/
  /*EB2C*/ GENx___x___x900 (store_characters_under_mask_high,RSY,"STCMH"),
  /*EB2D*/ GENx___x___x900 (store_characters_under_mask_y,RSY,"STCMY"),
  /*EB2E*/ GENx___x___x___ ,
@@ -4661,7 +4734,7 @@ static zz_func opcode_ecxx[0x100][GEN_MAXARCH] = {
  /*EC56*/ GENx___x___x900 (rotate_then_or_selected_bits_long_reg,RIE_RRIII,"ROSBG"),           /*208*/
  /*EC57*/ GENx___x___x900 (rotate_then_exclusive_or_selected_bits_long_reg,RIE_RRIII,"RXSBG"), /*208*/
  /*EC58*/ GENx___x___x___ ,
- /*EC59*/ GENx___x___x___ ,
+ /*EC59*/ GENx___x___x900 (rotate_then_insert_selected_bits_long_reg_n,RIE_RRIII,"RISBGN"),    /*912*/
  /*EC5A*/ GENx___x___x___ ,
  /*EC5B*/ GENx___x___x___ ,
  /*EC5C*/ GENx___x___x___ ,
@@ -4845,8 +4918,8 @@ static zz_func opcode_edxx[0x100][GEN_MAXARCH] = {
  /*ED0B*/ GENx37Xx390x900 (subtract_bfp_short,RXE,"SEB"),
  /*ED0C*/ GENx37Xx390x900 (multiply_bfp_short_to_long,RXE,"MDEB"),
  /*ED0D*/ GENx37Xx390x900 (divide_bfp_short,RXE,"DEB"),
- /*ED0E*/ GENx37Xx390x900 (multiply_add_bfp_short,RXF,"MAEB"),
- /*ED0F*/ GENx37Xx390x900 (multiply_subtract_bfp_short,RXF,"MSEB"),
+ /*ED0E*/ GENx37Xx390x900 (multiply_addsub_bfp_short,RXF,"MAEB"),
+ /*ED0F*/ GENx37Xx390x900 (multiply_addsub_bfp_short,RXF,"MSEB"),
  /*ED10*/ GENx37Xx390x900 (test_data_class_bfp_short,RXE,"TCEB"),
  /*ED11*/ GENx37Xx390x900 (test_data_class_bfp_long,RXE,"TCDB"),
  /*ED12*/ GENx37Xx390x900 (test_data_class_bfp_ext,RXE,"TCXB"),
@@ -4861,8 +4934,8 @@ static zz_func opcode_edxx[0x100][GEN_MAXARCH] = {
  /*ED1B*/ GENx37Xx390x900 (subtract_bfp_long,RXE,"SDB"),
  /*ED1C*/ GENx37Xx390x900 (multiply_bfp_long,RXE,"MDB"),
  /*ED1D*/ GENx37Xx390x900 (divide_bfp_long,RXE,"DDB"),
- /*ED1E*/ GENx37Xx390x900 (multiply_add_bfp_long,RXF,"MADB"),
- /*ED1F*/ GENx37Xx390x900 (multiply_subtract_bfp_long,RXF,"MSDB"),
+ /*ED1E*/ GENx37Xx390x900 (multiply_addsub_bfp_long,RXF,"MADB"),
+ /*ED1F*/ GENx37Xx390x900 (multiply_addsub_bfp_long,RXF,"MSDB"),
  /*ED20*/ GENx___x___x___ ,
  /*ED21*/ GENx___x___x___ ,
  /*ED22*/ GENx___x___x___ ,
@@ -4999,10 +5072,10 @@ static zz_func opcode_edxx[0x100][GEN_MAXARCH] = {
  /*EDA5*/ GENx___x___x___ ,
  /*EDA6*/ GENx___x___x___ ,
  /*EDA7*/ GENx___x___x___ ,
- /*EDA8*/ GENx___x___x___ ,
- /*EDA9*/ GENx___x___x___ ,
- /*EDAA*/ GENx___x___x___ ,
- /*EDAB*/ GENx___x___x___ ,
+ /*EDA8*/ GENx___x___x900 (convert_dfp_long_to_zoned,RSL_RM,"CZDT"),                /*912*/
+ /*EDA9*/ GENx___x___x900 (convert_dfp_ext_to_zoned,RSL_RM,"CZXT"),                 /*912*/
+ /*EDAA*/ GENx___x___x900 (convert_zoned_to_dfp_long,RSL_RM,"CDZT"),                /*912*/
+ /*EDAB*/ GENx___x___x900 (convert_zoned_to_dfp_ext,RSL_RM,"CXZT"),                 /*912*/
  /*EDAC*/ GENx___x___x___ ,
  /*EDAD*/ GENx___x___x___ ,
  /*EDAE*/ GENx___x___x___ ,

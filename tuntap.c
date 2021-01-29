@@ -16,6 +16,17 @@
 // that works on all platforms with (hopefully) equal results.
 //
 
+/* On  Linux  you  open  the character special file /dev/net/tun and */
+/* then select the particular tunnel by ioctl().                     */
+/*                                                                   */
+/* On  FreeBSD  and  OS/X you can open /dev/tun which will clone the */
+/* interface  and  give  you a file descriptor for /dev/tun<n> where */
+/* <n>   is  the  lowest  unused  interface.   For  a  preconfigured */
+/* interface  you  open  /dev/tun0  (or  which ever one you desire). */
+/* Thus  for  preconfigured FreeBSD interfaces we need to modify the */
+/* name of the character file being opened.                          */
+
+
 #include "hstdinc.h"
 
 /* jbs 1/19/2008 added ifdef on __SOLARIS__ */
@@ -112,7 +123,7 @@ static int TUNTAP_SetMode (int fd, struct hifr *hifr, int iFlags)
         ctlreq.iCtlOp = TUNSETIFF;
         ctlreq.iProcID = fd;
         memcpy (&ctlreq.iru.hifr, hifr, sizeof (struct hifr));
-        write (ifd[1], &ctlreq, CTLREQ_SIZE);
+        VERIFY(CTLREQ_SIZE == write (ifd[1], &ctlreq, CTLREQ_SIZE));
 
         /* Get response, if any, from hercifc */
         FD_ZERO (&selset);
@@ -645,6 +656,8 @@ int           TUNTAP_GetMACAddr( char*   pszNetDevName,
 
     return FormatMAC( ppszMACAddr, (BYTE*) addr->sa_data );
 #else // defined(OPTION_TUNTAP_GETMACADDR)
+    UNREFERENCED(pszNetDevName);
+    UNREFERENCED(ppszMACAddr);
     WRMSG(HHC00136, "E", "TUNTAP_GetMACAddr", "Unsupported" );
     return -1; // (unsupported)
 #endif // defined(OPTION_TUNTAP_GETMACADDR)
@@ -1048,7 +1061,7 @@ static int      IFC_IOCtl( int fd, unsigned long int iRequest, char* argp )
 
     TRACE(MSG(HHC00149,"I",request_name,ifc_fd[0],ifc_fd[1]));
 
-    write( ifc_fd[0], &ctlreq, CTLREQ_SIZE );
+    VERIFY(CTLREQ_SIZE == write( ifc_fd[0], &ctlreq, CTLREQ_SIZE ));
 
     return 0;
 }   // End of function  IFC_IOCtl()
@@ -1257,7 +1270,7 @@ int FormatMAC( char** ppszMACAddr, BYTE* mac )
         return -1;
     }
 
-    MSGBUF( szMAC, "%02X:%02X:%02X:%02X:%02X:%02X",
+    MSGBUF( szMAC, "%02x:%02x:%02x:%02x:%02x:%02x",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5] );
 
     if (!(*ppszMACAddr = strdup( szMAC )))
@@ -1275,6 +1288,16 @@ int FormatMAC( char** ppszMACAddr, BYTE* mac )
 /* ------------------------------------------------------------------ */
 void packet_trace( BYTE* pAddr, int iLen, BYTE bDir )
 {
+    net_data_trace( NULL, pAddr, iLen, bDir, 'I', "packet trace", 0 );
+}
+
+
+/* ------------------------------------------------------------------ */
+/* net_data_trace                                                     */
+/* ------------------------------------------------------------------ */
+void net_data_trace( DEVBLK* pDEVBLK, BYTE* pAddr, int iLen, BYTE bDir, BYTE bSev, char* pWhat, U32 uOpt )
+{
+    char*         pType;
     int           offset;
     unsigned int  i;
     u_char        c = '\0';
@@ -1284,7 +1307,13 @@ void packet_trace( BYTE* pAddr, int iLen, BYTE bDir )
     char          print_line[64];
     char          tmp[32];
 
-    for( offset = 0; offset < iLen; )
+    UNREFERENCED( uOpt );
+
+
+    if (pDEVBLK) pType = pDEVBLK->typname;
+    else pType = "CTC";
+
+    for (offset = 0; offset < iLen; )
     {
         memset( print_ascii, ' ', sizeof(print_ascii)-1 );    /* set to spaces */
         print_ascii[sizeof(print_ascii)-1] = '\0';            /* with null termination */
@@ -1325,7 +1354,12 @@ void packet_trace( BYTE* pAddr, int iLen, BYTE bDir )
             }
         }
 
-        WRMSG(HHC00964, "I", print_line, print_ascii, print_ebcdic );
+        // HHC00979 "%s: %s: %s %s %s"
+        if( bSev == 'D' ) {
+          WRMSG(HHC00979, "D", pType, pWhat, print_line, print_ascii, print_ebcdic );
+        } else {
+          WRMSG(HHC00979, "I", pType, pWhat, print_line, print_ascii, print_ebcdic );
+        }
     }
 }
 

@@ -404,6 +404,8 @@
 #define SR_DEV_PGID             0xace3001c
  /* By Adrian - SR_DEV_DRVPWD              */
 #define SR_DEV_DRVPWD           0xace3001d
+ /* By Ian - SR_DEV_NUMCONFDEV             */
+#define SR_DEV_NUMCONFDEV       0xace3001e
 
 #define SR_DEV_BUSY             0xace30020
 #define SR_DEV_RESERVED         0xace30021
@@ -434,6 +436,7 @@
 #define SR_DEV_CTCT             0xace3c000
 #define SR_DEV_VMNET            0xace3d000
 #define SR_DEV_LCS              0xace3e000
+#define SR_DEV_CTCE             0xace3f000
 
 #define SR_DELIMITER            0xaceffffe
 #define SR_EOF                  0xacefffff
@@ -458,13 +461,13 @@
 #define SR_OPEN(_path, _mode) \
  gzopen((_path), (_mode))
 #define SR_READ(_ptr, _size, _nmemb, _stream) \
- gzread((_stream), (_ptr), (unsigned int)((_size) * (_nmemb)))
+ gzread((gzFile)(_stream), (_ptr), (unsigned int)((_size) * (_nmemb)))
 #define SR_WRITE(_ptr, _size, _nmemb, _stream) \
- gzwrite((_stream), (_ptr), (unsigned int)((_size) * (_nmemb)))
+ gzwrite((gzFile)(_stream), (_ptr), (unsigned int)((_size) * (_nmemb)))
 #define SR_SEEK(_stream, _offset, _whence) \
- gzseek((_stream), (_offset), (_whence))
+ gzseek((gzFile)(_stream), (_offset), (_whence))
 #define SR_CLOSE(_stream) \
- gzclose((_stream))
+ gzclose((gzFile)(_stream))
 #else
 #define SR_DEFAULT_FILENAME "hercules.srf"
 #define SR_FILE FILE *
@@ -594,7 +597,7 @@ BYTE*  buf  = p;
     if (sr_write_hdr(file, key, len) != 0)
         return -1;
 
-    TRACE("SR: sr_write_buf:    key=0x%8.8x, len=0x%16.16llx\n", key, len);
+    TRACE("SR: sr_write_buf:    key=0x%8.8x, len=0x%16.16"PRIx64"\n", key, len);
 
     while (tot)
     {
@@ -619,7 +622,7 @@ static INLINE int sr_write_value (SR_FILE file, U32 key, U64 val, U32 len)
 {
 BYTE    buf[8];
 
-    TRACE("SR: sr_write_value:  key=0x%8.8x, len=0x%8.8x, val=0x%16.16llx\n", key, len, val);
+    TRACE("SR: sr_write_value:  key=0x%8.8x, len=0x%8.8x, val=0x%16.16"PRIx64"\n", key, len, val);
 
     if (len != 1 && len != 2 && len != 4 && len != 8)
     {
@@ -726,7 +729,7 @@ U32    siz;
 U64    tot  = len;
 BYTE*  buf  = p;
 
-    TRACE("SR: sr_read_buf:                   len=0x%16.16llx\n", len);
+    TRACE("SR: sr_read_buf:                   len=0x%16.16"PRIx64"\n", len);
 
     while (tot)
     {
@@ -775,7 +778,7 @@ U64     value;
         default: value = 0;              break; /* To ward off gcc -Wall */
     }
 
-    TRACE("                           val=0x%16.16llx\n", value);
+    TRACE("                           val=0x%16.16"PRIx64"\n", value);
 
     switch (reslen)
     {

@@ -178,14 +178,14 @@ static char *dbg_name[] = {
         int i;
         for(i = 0; i < 0x61; i++)
             if(sie_perfmon[i])
-                logmsg(MSG(HHC02285, "I" ,sie_perfmon[i],dbg_name[i]));
-        logmsg(MSG(HHC02286, "I",
+                WRMSG( HHC02285, "I" ,sie_perfmon[i], dbg_name[i] );
+        WRMSG( HHC02286, "I",
             (sie_perfmon[SIE_PERF_EXEC+SIE_PERF_MAXNEG] +
              sie_perfmon[SIE_PERF_EXEC_U+SIE_PERF_MAXNEG]*7) /
-            sie_perfmon[SIE_PERF_ENTER+SIE_PERF_MAXNEG]));
+             sie_perfmon[SIE_PERF_ENTER+SIE_PERF_MAXNEG] );
     }
     else
-        logmsg(MSG(HHC02287, "I"));
+        WRMSG( HHC02287, "I" );
 }
 #else
 #define SIE_PERFMON(_code)
@@ -235,7 +235,7 @@ U64     dreg;
 
     PRIV_CHECK(regs);
 
-    PTT(PTT_CL_SIE,"SIE", regs->GR_L(14), regs->GR_L(15), (U32)(effective_addr2 & 0xffffffff));
+    PTT_SIE("SIE", regs->GR_L(14), regs->GR_L(15), (U32)(effective_addr2 & 0xffffffff));
 
     SIE_PERFMON(SIE_PERF_ENTER);
 
@@ -284,7 +284,7 @@ U64     dreg;
         GUESTREGS = calloc_aligned(sizeof(REGS), 4096);
         if (GUESTREGS == NULL)
         {
-            logmsg(MSG(HHC00813, "E", PTYPSTR(regs->cpuad), regs->cpuad, "calloc()", strerror(errno)));
+            WRMSG( HHC00813, "E", PTYPSTR(regs->cpuad), regs->cpuad, "calloc()", strerror(errno) );
 #if !defined(NO_SIGABEND_HANDLER)
             signal_thread(sysblk.cputid[regs->cpuad], SIGUSR1);
 #endif
@@ -604,10 +604,12 @@ U64     dreg;
         /* Update Last Host CPU address */
         STORE_HW(STATEBK->lhcpu, regs->cpuad);
 
-        /* Purge guest TLB entries */
-        ARCH_DEP(purge_tlb) (GUESTREGS);
-        ARCH_DEP(purge_alb) (GUESTREGS);
     }
+    /* Purge guest TLB entries */
+    /* @ISW20160730 : FIXME - Force TLB/ALB purge of guest context since there seem to be
+       some areas in hercules where the guest TLB/ALB is not properly maintained */
+    ARCH_DEP(purge_tlb) (GUESTREGS);
+    ARCH_DEP(purge_alb) (GUESTREGS);
 
     /* Initialize interrupt mask and state */
     SET_IC_MASK(GUESTREGS);
@@ -676,7 +678,7 @@ U64     dreg;
         OBTAIN_INTLOCK(regs);
 
         /* CPU timer */
-        if(cpu_timer(GUESTREGS) < 0)
+        if(CPU_TIMER(GUESTREGS) < 0)
             ON_IC_PTIMER(GUESTREGS);
 
         /* Clock comparator */
@@ -767,7 +769,7 @@ int     n;
                nt2 |= (ip[4] << 24) | (ip[5] << 16);
         }
 
-        PTT(PTT_CL_SIE,"*SIE", nt1, nt2, code);
+        PTT_SIE("*SIE", nt1, nt2, code);
     }
 
 #if defined(SIE_DEBUG)
@@ -1204,7 +1206,7 @@ int     zone;                           /* Zone number               */
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_IO,"STZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
+    PTT_IO("STZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
 
     FW_CHECK(regs->GR(2), regs);
 
@@ -1212,7 +1214,7 @@ int     zone;                           /* Zone number               */
 
     if(zone >= FEATURE_SIE_MAXZONES)
     {
-        PTT(PTT_CL_ERR,"*STZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
+        PTT_ERR("*STZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
         regs->psw.cc = 3;
         return;
     }
@@ -1248,7 +1250,7 @@ RADR    mso,                            /* Main Storage Origin       */
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_IO,"SZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
+    PTT_IO("SZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
 
     FW_CHECK(regs->GR(2), regs);
 
@@ -1256,7 +1258,7 @@ RADR    mso,                            /* Main Storage Origin       */
 
     if(zone == 0 || zone >= FEATURE_SIE_MAXZONES)
     {
-        PTT(PTT_CL_ERR,"*SZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
+        PTT_ERR("*SZP", regs->GR_L(1), regs->GR_L(2),regs->psw.IA_L);
         regs->psw.cc = 3;
         return;
     }
@@ -1306,7 +1308,7 @@ int     zone;                           /* Zone number               */
 
     SIE_INTERCEPT(regs);
 
-    PTT(PTT_CL_IO,"TPZI", regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
+    PTT_IO("TPZI", regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
 
     FW_CHECK(regs->GR(2), regs);
 
@@ -1318,7 +1320,7 @@ int     zone;                           /* Zone number               */
 
     if(zone >= FEATURE_SIE_MAXZONES)
     {
-        PTT(PTT_CL_ERR,"*TPZI", regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
+        PTT_ERR("*TPZI", regs->GR_L(1),(U32)(effective_addr2 & 0xffffffff),regs->psw.IA_L);
         regs->psw.cc = 0;
         return;
     }
@@ -1379,7 +1381,7 @@ U32    newgr1;
         || (dev->pmcw.flag5 & PMCW5_V) == 0
         || (dev->pmcw.flag5 & PMCW5_E) == 0)
     {
-        PTT(PTT_CL_ERR,"*DIAG002", regs->GR_L(r1),regs->GR_L(r3),regs->GR_L(1));
+        PTT_ERR("*DIAG002", regs->GR_L(r1),regs->GR_L(r3),regs->GR_L(1));
         regs->psw.cc = 3;
         return;
     }

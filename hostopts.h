@@ -45,6 +45,10 @@
 #include "hercwind.h"   // (need HAVE_DECL_SIOCSIFHWADDR, etc)
 #endif
 
+#if defined(__sun__) && defined(__svr4__)
+#define __SOLARIS__ 1
+#endif
+
 /*-------------------------------------------------------------------*/
 /* ZZ FIXME
                   'OPTION_SCSI_ERASE_TAPE'
@@ -193,16 +197,23 @@
 #define DEFAULT_TOD_PRIO  -20
 #define DEFAULT_CPU_PRIO   15
 #define DEFAULT_DEV_PRIO    8
-#define DEFAULT_SRV_PRIO    4           
+#define DEFAULT_SRV_PRIO    4
+
+#define CASELESS_SYMBOLS
+
 
 #ifdef _MSVC_
   #define HOW_TO_IMPLEMENT_SH_COMMAND   USE_W32_POOR_MANS_FORK
   #define SET_CONSOLE_CURSOR_SHAPE_METHOD CURSOR_SHAPE_WINDOWS_NATIVE
   #define OPTION_EXTCURS                /* Extended cursor handling  */
+  #undef  SCANDIR_CONST_STRUCT_DIRENT   /* define if scandir uses
+                                           const for struct dirent   */
 #else  /* Cygwin or MinGW */
   #define HOW_TO_IMPLEMENT_SH_COMMAND   USE_FORK_API_FOR_SH_COMMAND
   #define SET_CONSOLE_CURSOR_SHAPE_METHOD CURSOR_SHAPE_VIA_SPECIAL_LINUX_ESCAPE
   #undef  OPTION_EXTCURS                /* Normal cursor handling    */
+  #undef  SCANDIR_CONST_STRUCT_DIRENT   /* define if scandir uses
+                                           const for struct dirent   */
 #endif
 
 #define IsEventSet(h)   (WaitForSingleObject(h,0) == WAIT_OBJECT_0)
@@ -223,9 +234,8 @@
 /*-------------------------------------------------------------------*/
 /* Hard-coded Solaris-specific features and options...               */
 /*-------------------------------------------------------------------*/
-#elif defined(__sun__) && defined(__svr4__)
+#elif defined(__SOLARIS__)
 
-#define __SOLARIS__ 1
 /* jbs 10/15/2003 need to define INADDR_NONE if using Solaris 10
    and not Solaris Nevada aka OpenSolaris */
 #if !defined(INADDR_NONE)
@@ -246,6 +256,8 @@
 #define HOW_TO_IMPLEMENT_SH_COMMAND       USE_ANSI_SYSTEM_API_FOR_SH_COMMAND
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_NOT_SUPPORTED
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#undef  SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 /*-------------------------------------------------------------------*/
@@ -270,6 +282,8 @@
 #define HOW_TO_IMPLEMENT_SH_COMMAND       USE_ANSI_SYSTEM_API_FOR_SH_COMMAND
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_NOT_SUPPORTED
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#define SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 /*-------------------------------------------------------------------*/
@@ -292,6 +306,8 @@
 #define HOW_TO_IMPLEMENT_SH_COMMAND       USE_ANSI_SYSTEM_API_FOR_SH_COMMAND
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_NOT_SUPPORTED
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#undef  SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 /*-------------------------------------------------------------------*/
@@ -321,6 +337,8 @@
 #endif
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_VIA_SPECIAL_LINUX_ESCAPE
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#define SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 /*-------------------------------------------------------------------*/
@@ -350,6 +368,8 @@
 #endif
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_NOT_SUPPORTED
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#define SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 /*-------------------------------------------------------------------*/
@@ -357,7 +377,7 @@
 /*-------------------------------------------------------------------*/
 #else                                   /* "Other platform" options  */
 
-#warning hostopts.h: unknown target platform: defaulting to generic platform settings.
+WARNING( "unknown target platform: defaulting to generic platform settings" )
 
 #define DLL_IMPORT   extern             /* (a safe default)          */
 #define DLL_EXPORT
@@ -380,6 +400,8 @@
 #endif
 #define SET_CONSOLE_CURSOR_SHAPE_METHOD   CURSOR_SHAPE_NOT_SUPPORTED
 #undef  OPTION_EXTCURS                  /* Normal cursor handling    */
+#define SCANDIR_CONST_STRUCT_DIRENT     /* define if scandir uses
+                                           const for struct dirent   */
 
 
 #endif // (host-specific tests)

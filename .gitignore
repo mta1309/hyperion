@@ -66,10 +66,13 @@ autoconf/compile
 /libtool
 /makefile
 /msvc.AMD64.bin
+/msvc.AMD64.cod
 /msvc.AMD64.map
 /msvc.AMD64.obj
 /msvc.AMD64.pdb
+/msvc.AMD64.inc
 /msvc.dllmod.bin
+/msvc.dllmod.cod
 /msvc.dllmod.map
 /msvc.dllmod.obj
 /msvc.dllmod.pdb
@@ -130,20 +133,35 @@ autoconf/compile
 *.app
 
 # Eclipse
+.project
+.cproject
 /.metadata
+/.settings
 
 # Visual Studio
 /*.aps
 /*.idc
 /*.pdb
 /*.psess
-/* BuildLog.htm
+/*.suo
+/*.ncb
+/*.opendb
+/*BuildLog*
 /Hercules_VS*.opensdf
 /Hercules_VS*.sdf
-/Hercules_VS*.suo
+/Hercules*.user
 /msvc.*
+*.vcxproj.user
+.vs
+*.VC.db
 
 # Editors
+*.aps
+# Windows resource editor working files
 *.aus
 *.bak
 *~
+
+# QA Testing
+allTests.*
+

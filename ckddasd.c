@@ -205,7 +205,12 @@
 /*-------------------------------------------------------------------*/
 /* Static data areas                                                 */
 /*-------------------------------------------------------------------*/
-static  BYTE eighthexFF[] = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+static const BYTE   eighthex00[]    = {0x00,0x00,0x00,0x00,
+                                       0x00,0x00,0x00,0x00};
+
+static const BYTE   eighthexFF[]    = {0xff,0xff,0xff,0xff,
+                                       0xff,0xff,0xff,0xff};
+
 
 /*-------------------------------------------------------------------*/
 /* Initialize the device handler                                     */
@@ -228,9 +233,10 @@ int             highcyl;                /* Highest cyl# in CKD file  */
 char           *cu = NULL;              /* Specified control unit    */
 char           *kw = NULL;              /* Argument keyword          */
 int             cckd=0;                 /* 1 if compressed CKD       */
-char            pathname[MAX_PATH];     /* file path in host format  */
 char            filename[FILENAME_MAX]; /* work area for display     */
 char           *strtok_str = NULL;      /* save last position        */
+
+    dev->rcd = &dasd_build_ckd_config_data;
 
     /* For re-initialisation, close the existing file, if any */
     if (dev->fd >= 0)
@@ -261,8 +267,10 @@ char           *strtok_str = NULL;      /* save last position        */
         MSGBUF(filename, "'%s'", dev->filename);
     }
 
+#if defined( OPTION_SHARED_DEVICES )
     /* Device is shareable */
-    dev->shared = 1;
+    dev->shareable = 1;
+#endif // defined( OPTION_SHARED_DEVICES )
 
     /* Check for possible remote device */
     if (stat(dev->filename, &statbuf) < 0)
@@ -337,20 +345,8 @@ char           *strtok_str = NULL;      /* save last position        */
         if (strlen (argv[i]) > 3 &&
             memcmp ("sf=", argv[i], 3) == 0)
         {
-            if ('\"' == argv[i][3]) argv[i]++;
-            hostpath(pathname, argv[i]+3, sizeof(pathname));
-            dev->dasdsfn = strdup(pathname);
-            if (dev->dasdsfn)
-            {
-                /* Set the pointer to the suffix character */
-                dev->dasdsfx = strrchr (dev->dasdsfn, PATHSEPC);
-                if (dev->dasdsfx == NULL)
-                    dev->dasdsfx = dev->dasdsfn + 1;
-                dev->dasdsfx = strchr (dev->dasdsfx, '.');
-                if (dev->dasdsfx == NULL)
-                    dev->dasdsfx = dev->dasdsfn + strlen(dev->dasdsfn);
-                dev->dasdsfx--;
-            }
+            /* Parse the shadow file name parameter */
+            cckd_sf_parse_sfn( dev, argv[i]+3 );
             continue;
         }
         if (strlen (argv[i]) > 3
@@ -734,7 +730,7 @@ void ckddasd_query_device (DEVBLK *dev, char **devclass,
     {
         if ( dev->ckdnumfd > 1)
         {
-            snprintf( buffer, buflen-1, "%s [%d cyls] [%d segs] IO[%" I64_FMT "u]",
+            snprintf( buffer, buflen-1, "%s [%d cyls] [%d segs] IO[%"PRIu64"]",
                       devname,
                       dev->ckdcyls,
                       dev->ckdnumfd,
@@ -742,7 +738,7 @@ void ckddasd_query_device (DEVBLK *dev, char **devclass,
         }
         else
         {
-            snprintf( buffer, buflen-1, "%s [%d cyls] IO[%" I64_FMT "u]",
+            snprintf( buffer, buflen-1, "%s [%d cyls] IO[%"PRIu64"]",
                       devname,
                       dev->ckdcyls,
                       dev->excps );
@@ -750,7 +746,7 @@ void ckddasd_query_device (DEVBLK *dev, char **devclass,
     }
     else
     {
-        snprintf( buffer, buflen-1, "%s [%d cyls] [%d sfs] IO[%" I64_FMT "u]",
+        snprintf( buffer, buflen-1, "%s [%d cyls] [%d sfs] IO[%"PRIu64"]",
                   devname,
                   dev->ckdcyls,
                   cckd->sfn,
@@ -845,7 +841,7 @@ int ckd_trklen (DEVBLK *dev, BYTE *buf)
 int             sz;                     /* Size so far               */
 
     for (sz = CKDDASD_TRKHDR_SIZE;
-         memcmp (buf + sz, &eighthexFF, 8) != 0; )
+         memcmp (buf + sz, eighthexFF, 8) != 0; )
     {
         /* add length of count, key, and data fields */
         sz += CKDDASD_RECHDR_SIZE +
@@ -1993,7 +1989,7 @@ int             ckdlen;                 /* Count+key+data length     */
     }
 
     /* Logically erase rest of track by writing end of track marker */
-    rc = (dev->hnd->write) (dev, dev->bufcur, dev->bufoff, eighthexFF, 8, unitstat);
+    rc = (dev->hnd->write) (dev, dev->bufcur, dev->bufoff, (BYTE *)eighthexFF, 8, unitstat);
     if (rc < 0) return -1;
 
     /* Return total count key and data size */
@@ -2071,7 +2067,7 @@ int             ckdlen;                 /* Count+key+data length     */
     }
 
     /* Logically erase rest of track by writing end of track marker */
-    rc = (dev->hnd->write) (dev, dev->bufcur, dev->bufoff, eighthexFF, 8, unitstat);
+    rc = (dev->hnd->write) (dev, dev->bufcur, dev->bufoff, (BYTE *)eighthexFF, 8, unitstat);
     if (rc < 0) return -1;
 
     /* Set the device orientation fields */
@@ -3203,8 +3199,30 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
 
         case 0x18: /* Prepare for Read Subsystem Data */
 
-            /* Command reject if bytes 1-5 not zero */
-            if (memcmp(&iobuf[1], "\x00\x00\x00\x00\x00", 5) != 0)
+            /* Validate fields */
+            if (
+                /* Reject if flag byte not zero */
+                iobuf[1]           ||
+
+                /* Reject if byte 7 invalid */
+                ((iobuf[6] != 0x01) &&
+                 iobuf[7]) ||
+                ((iobuf[6] == 0x01) &&
+                 (iobuf[7] > 0x00 && iobuf[7] < 0xff)) ||
+
+                /* Reject if bad settings for bytes 8-11 */
+                ((iobuf[6] == 0x00 ||
+//                iobuf[6] == 0x02 ||                       // TBD: For future support
+//                iobuf[6] == 0x04 ||                       // TBD: For future support
+                  iobuf[6] >= 0x06) &&
+                 mem_ne(iobuf+8, eighthex00, 4))   ||
+                (iobuf[6] == 0x01 &&
+//               (iobuf[8] >= 0x02 ||                       // TBD: For future support
+                  mem_ne(iobuf+9, eighthex00, 3))
+//               )                                          // TBD: For future support
+//              (iobuf[6] == 0x05 &&                        // TBD: For future support
+//               valid(cylinder,head)                       // TBD: Validate cylinder and head address in 8-11)
+                )
             {
                 ckd_build_sense (dev, SENSE_CR, 0, 0,
                                 FORMAT_0, MESSAGE_4);
@@ -3238,6 +3256,7 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
                 iobuf[94] = (myssid >> 8) & 0xff;
                 iobuf[95] = myssid & 0xff;
                 break;
+
             case 0x03:  /* Read attention message for this path-group for
                            the addressed device Return a "No Message"
                            message */
@@ -3268,6 +3287,7 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
                 iobuf[8] = 0x00;               /* Flags = 00            */
                 dev->ckdssdlen = 9;            /* Len of prepared data  */
                 break;
+
             case 0x0E: /* Unit address configuration */
                 /* Prepare unit address configuration record */
                 memset (iobuf, 0, 512);
@@ -3283,6 +3303,58 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
 
                 /* Indicate the length of subsystem data prepared */
                 dev->ckdssdlen = 256;
+                break;
+
+            case 0x1C: /* Query Host Access */
+                /*------------------------------------------------------*/
+                /* PROGRAMMING NOTE: 2017-02-14 Ian                     */
+                /*                                                      */
+                /* IBM OA40720 PROBLEM DESCRIPTION says:-               */
+                /*                                                      */
+                /*   This provides new function support for DS8870      */
+                /*   Query Host Access function                         */
+                /*                                                      */
+                /*   The MVS System DEVSERV QDASD command was enhanced  */
+                /*   to support a new keyword 'QHA' which allows user   */
+                /*   to query host access information for a CKD volume. */
+                /*   The host access information includes a list of     */
+                /*   Path Group IDs or systems that have a device       */
+                /*   grouped (online) and/or ungrouped (offline) or     */
+                /*   Reserved. In addition, the Path Status Flags, z/OS */
+                /*   Sysplex name, and Maximum number of Cylinders per  */
+                /*   Volume supported by the host are also returned for */
+                /*   each Path Group entry.                             */
+                /*                                                      */
+                /* Linux support for QHA was added to kernel 4.6 with   */
+                /* patch 8712731 in March 2016.                         */
+                /*                                                      */
+                /* iobuf[4]-[5] contains the device being queried.      */
+                /* Other than the Linux kernel source (see structures   */
+                /* dasd_psf_query_host_access and                       */
+                /* dasd_ckd_host_information in                         */
+                /* drivers/s390/block/dasd_eckd.h) I haven't discovered */
+                /* any documentation explaining the contents of the     */
+                /* response.                                            */
+                /*------------------------------------------------------*/
+
+#define QHA_RESPONSE_SIZE  16+4+32   /* 16 = the first 16-bytes of the  */
+                                     /*      dasd_psf_query_host_access */
+                                     /*      structure.                 */
+                                     /*  4 = the first 4-bytes of the   */
+                                     /*      dasd_ckd_host_information  */
+                                     /*      structure.                 */
+                                     /* 32 = an arbitrary entry length  */
+
+                /* Indicate the length of prepared host access response */
+                dev->ckdssdlen = QHA_RESPONSE_SIZE;
+
+                /* Prepare host access response */
+                memset (iobuf, 0, QHA_RESPONSE_SIZE);
+
+                iobuf[17] = 0x20;              /* Entry size = 32       */
+                iobuf[18] = 0x00;              /* Entry...              */
+                iobuf[19] = 0x01;              /* ...count = 1          */
+
                 break;
 
             default: /* Unknown suborder code */
@@ -3744,7 +3816,7 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
 #endif /*OPTION_CKD_KEY_TRACING*/
 
         /* Set flag if entire key was equal for SEARCH KEY EQUAL */
-        if (rc == 0 && num == dev->ckdcurkl && (code & 0x7F) == 0x29)
+        if (rc == 0 && num == (U32)dev->ckdcurkl && (code & 0x7F) == 0x29)
             dev->ckdkyeq = 1;
         else
             dev->ckdkyeq = 0;
@@ -4328,7 +4400,7 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
         }
 
         /* Write end of track marker */
-        rc = ckd_erase (dev, iobuf, count, &size, unitstat);
+        rc = ckd_erase (dev, iobuf, count, (int*)&size, unitstat);
         if (rc < 0) break;
 
         /* Calculate number of bytes used and set residual count */
@@ -5985,7 +6057,7 @@ BYTE            trk_ovfl;               /* == 1 if track ovfl write  */
         }
 
         /* Build the configuration data area */
-        num = dasd_build_ckd_config_data (dev, iobuf, count);
+        num = dev->rcd( dev, iobuf, count );
 
         /* Calculate residual byte count */
         *residual = count < num ? 0 : count - num;

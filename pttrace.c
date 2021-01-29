@@ -22,7 +22,7 @@
 struct PTT_TRACE
 {
     TID             tid;                /* Thread id                 */
-    U32             trclass;            /* Trace class (see header)  */
+    U64             trclass;            /* Trace class (see header)  */
     const char*     msg;                /* Trace message             */
     const void*     data1;              /* Data 1                    */
     const void*     data2;              /* Data 2                    */
@@ -33,10 +33,22 @@ struct PTT_TRACE
 typedef struct PTT_TRACE PTT_TRACE;
 
 /*-------------------------------------------------------------------*/
+/* Trace classes table                                               */
+/*-------------------------------------------------------------------*/
+struct PTTCL
+{
+    const char*     name;               /* Trace class name. Should  */
+                                        /* not start with chars "no" */
+    U64             trcl;               /* Trace class               */
+    int             alias;              /* 0: favored name, 1: alias */
+};
+typedef struct PTTCL PTTCL;
+
+/*-------------------------------------------------------------------*/
 /* Global variables                                                  */
 /*-------------------------------------------------------------------*/
 HLOCK      pttlock;                     /* Pthreads trace lock       */
-DLL_EXPORT U32 pttclass  = 0;           /* Pthreads trace class      */
+DLL_EXPORT U64 pttclass  = 0;           /* Pthreads trace class      */
 DLL_EXPORT int pttthread = 0;           /* pthreads is active        */
 int        pttracen      = 0;           /* Number of table entries   */
 int        pttracex      = 0;           /* Index of current entry    */
@@ -48,6 +60,35 @@ int        pttto         = 0;           /* timeout in seconds        */
 COND       ptttocond;                   /* timeout thread condition  */
 HLOCK      ptttolock;                   /* timeout thread lock       */
 TID        ptttotid;                    /* timeout thread id         */
+PTTCL      pttcltab[] =                 /* trace class names table   */
+{
+    /*  NOTE!  keywords "lock", "tod" and "wrap" are reserved        */
+    /*         and must not be used for PTT trace class names!       */
+
+    { "log"     , PTT_CL_LOG  , 0 },    /* Logger records            */
+    { "tmr"     , PTT_CL_TMR  , 0 },    /* Timer/Clock records       */
+    { "thr"     , PTT_CL_THR  , 0 },    /* Thread records            */
+    { "inf"     , PTT_CL_INF  , 0 },    /* Instruction info          */
+    { "err"     , PTT_CL_ERR  , 0 },    /* Instruction error/unsupp  */
+    { "pgm"     , PTT_CL_PGM  , 0 },    /* Program interrupt         */
+    { "csf"     , PTT_CL_CSF  , 0 },    /* Compare & Swap Failure    */
+    { "sie"     , PTT_CL_SIE  , 0 },    /* Interpretive Execution    */
+    { "sig"     , PTT_CL_SIG  , 0 },    /* SIGP signalling           */
+    { "io"      , PTT_CL_IO   , 0 },    /* IO                        */
+    { "lcs1"    , PTT_CL_LCS1 , 0 },    /* LCS Timing Debug          */
+    { "lcs2"    , PTT_CL_LCS2 , 0 },    /* LCS General Debugging     */
+
+    /* The following aliases are defined for backward compatibility  */
+
+    { "logger"  , PTT_CL_LOG  , 1 },    /* alias for 'log'           */
+    { "timer"   , PTT_CL_TMR  , 1 },    /* alias for 'tmr'           */
+    { "threads" , PTT_CL_THR  , 1 },    /* alias for 'thr'           */
+    { "control" , PTT_CL_INF  , 1 },    /* alias for 'inf'           */
+    { "error"   , PTT_CL_ERR  , 1 },    /* alias for 'err'           */
+    { "prog"    , PTT_CL_PGM  , 1 },    /* alias for 'pgm'           */
+    { "inter"   , PTT_CL_CSF  , 1 },    /* alias for 'csf'           */
+    { "signal"  , PTT_CL_SIG  , 1 },    /* alias for 'sig'           */
+};
 
 /*-------------------------------------------------------------------*/
 /* Internal helper macros                                            */
@@ -71,6 +112,91 @@ TID        ptttotid;                    /* timeout thread id         */
   while (0)
 
 /*-------------------------------------------------------------------*/
+/* Trace classes table lookup and helper functions                   */
+/*-------------------------------------------------------------------*/
+static PTTCL* pttcl_byname( const char* name, int* no )
+{
+    /* Return class table entry matching "[no]name" or NULL. */
+    /* "no" flag set on return indicates match on "[no]name" */
+    size_t i;
+    *no = (strlen(name) > 2 && strncasecmp(name, "no", 2) == 0);
+    if (*no) name += 2;
+    for (i=0; i < _countof( pttcltab ); i++)
+        if (strcasecmp( pttcltab[i].name, name ) == 0)
+            return &pttcltab[i];
+    return NULL;
+}
+
+#if 0 // (this function is not needed yet)
+static PTTCL* pttcl_byclass( U64 trcl )
+{
+    /* Return first class table entry matching the expression */
+    /* (trcl & pttcltab[i].trcl) == pttcltab[i].trcl i.e. the */
+    /* trcl passed may have multiple bits on but only first   */
+    /* sequentially searched table entry found is returned.   */
+    int  i;
+    for (i=0; i < _countof( pttcltab ); i++)
+        if ((trcl & pttcltab[i].trcl) == pttcltab[i].trcl)
+            return &pttcltab[i];
+    return NULL;
+}
+#endif // (not needed yet)
+
+static char* pttcl_all( U64 trcl, char** ppStr )
+{
+    /* Return string of class names corresponding to trcl. */
+    /* Bits are examined right to left (low order to high) */
+    /* Bits corresponding to unassigned classes ignored.   */
+    /* CALLER responsible for freeing returned *ppStr buf. */
+    size_t i, sep = 0, bufsz = 1;
+    if (*ppStr) free(*ppStr);
+    if ((*ppStr = malloc( bufsz )) != NULL)
+    {
+        **ppStr = 0; /* start with empty string */
+        for (i=0; i < _countof( pttcltab ) && !pttcltab[i].alias; i++)
+        {
+            if (!(trcl & pttcltab[i].trcl))
+                continue;
+            bufsz += sep + strlen( pttcltab[i].name );
+            if (!(*ppStr = realloc( *ppStr, bufsz )))
+                break;
+            if (sep)
+                strlcat( *ppStr, " ", bufsz );
+            strlcat( *ppStr, pttcltab[i].name, bufsz );
+            sep = 1;
+        }
+    }
+    return *ppStr;
+}
+
+/*-------------------------------------------------------------------*/
+/* Show the currently defined trace parameters                       */
+/*-------------------------------------------------------------------*/
+static void ptt_showparms()
+{
+    char* str = NULL;   /* PTT trace classes that are active. */
+
+    /* Build string identifying trace classes that are active */
+    pttcl_all( pttclass, &str );
+
+    if (str)
+    {
+        // "Pttrace: %s %s %s %s to=%d %d"
+        WRMSG
+        (
+            HHC90012, "I",
+            str,
+            pttnolock ? "nolock" : "lock",
+            pttnotod  ? "notod"  : "tod",
+            pttnowrap ? "nowrap" : "wrap",
+            pttto,
+            pttracen
+        );
+        free( str );
+    }
+}
+
+/*-------------------------------------------------------------------*/
 /* Thread to print trace after timeout                               */
 /*-------------------------------------------------------------------*/
 static void* ptt_timeout( void* arg )
@@ -81,7 +207,7 @@ static void* ptt_timeout( void* arg )
     UNREFERENCED( arg );
 
     // "Thread id "TIDPAT", prio %2d, name %s started"
-    WRMSG( HHC00100, "I", (u_long)hthread_self(), getpriority(PRIO_PROCESS,0),"PTT timeout timer");
+    WRMSG( HHC00100, "I", thread_id(), get_thread_priority(0),"PTT timeout timer");
 
     hthread_mutex_lock( &ptttolock );
 
@@ -92,9 +218,12 @@ static void* ptt_timeout( void* arg )
     hthread_cond_timedwait( &ptttocond, &ptttolock, &tm );
 
     /* Print the trace table automatically */
-    if (hthread_equal( hthread_self(), ptttotid ))
+    if (hthread_equal( thread_id(), ptttotid ))
     {
-        ptt_pthread_print();
+        /* Show the parameters both before and after the table dump */
+        ptt_showparms();
+        if (ptt_pthread_print() > 0)
+            ptt_showparms();
         pttto = 0;
         ptttotid = 0;
     }
@@ -102,7 +231,7 @@ static void* ptt_timeout( void* arg )
     hthread_mutex_unlock( &ptttolock );
 
     // "Thread id "TIDPAT", prio %2d, name %s ended"
-    WRMSG( HHC00101, "I", (u_long) hthread_self(), getpriority( PRIO_PROCESS, 0 ), "PTT timeout timer");
+    WRMSG( HHC00101, "I", thread_id(), get_thread_priority(0), "PTT timeout timer");
 
     return NULL;
 }
@@ -110,119 +239,47 @@ static void* ptt_timeout( void* arg )
 /*-------------------------------------------------------------------*/
 /* Process 'ptt' tracing command                                     */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
+DLL_EXPORT int ptt_cmd( int argc, char* argv[], char* cmdline )
 {
     int  rc = 0;
     int  n, to = -1;
     char c;
+    PTTCL* pPTTCL;
+    int no;
 
-    UNREFERENCED(cmdline);
+    UNREFERENCED( cmdline );
 
     if (argc > 1)
     {
+        int showparms = 0;
+
         /* process arguments; last arg can be trace table size */
         for (--argc, argv++; argc; --argc, ++argv)
         {
             if (strcasecmp("opts", argv[0]) == 0)
                 continue;
-            else if (strcasecmp("error", argv[0]) == 0)
+
+            /* Try to find this trace class in our table */
+            pPTTCL = pttcl_byname( argv[0], &no );
+
+            /* Enable/disable tracing for class if found */
+            if (pPTTCL)
             {
-                pttclass |= PTT_CL_ERR;
+                U64 trcl = pPTTCL->trcl;
+                if (no)
+                    pttclass &= ~trcl;
+                else
+                    pttclass |=  trcl;
                 continue;
             }
-            else if (strcasecmp("noerror", argv[0]) == 0)
+            /* Check if other valid PTT command argument */
+            else if (strcasecmp("?", argv[0]) == 0)
             {
-                pttclass &= ~PTT_CL_ERR;
-                continue;
+                showparms = 1;
             }
-            else if (strcasecmp("control", argv[0]) == 0)
+            else if (strcasecmp("lock", argv[0]) == 0)
             {
-                pttclass |= PTT_CL_INF;
-                continue;
-            }
-            else if (strcasecmp("nocontrol", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_INF;
-                continue;
-            }
-            else if (strcasecmp("prog", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_PGM;
-                continue;
-            }
-            else if (strcasecmp("noprog", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_PGM;
-                continue;
-            }
-            else if (strcasecmp("inter", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_CSF;
-                continue;
-            }
-            else if (strcasecmp("nointer", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_CSF;
-                continue;
-            }
-            else if (strcasecmp("sie", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_SIE;
-                continue;
-            }
-            else if (strcasecmp("nosie", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_SIE;
-                continue;
-            }
-            else if (strcasecmp("signal", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_SIG;
-                continue;
-            }
-            else if (strcasecmp("nosignal", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_SIG;
-                continue;
-            }
-            else if (strcasecmp("io", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_IO;
-                continue;
-            }
-            else if (strcasecmp("noio", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_IO;
-                continue;
-            }
-            else if (strcasecmp("timer", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_TMR;
-                continue;
-            }
-            else if (strcasecmp("notimer", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_TMR;
-                continue;
-            }
-            else if (strcasecmp("logger", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_LOG;
-                continue;
-            }
-            else if (strcasecmp("nologger", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_LOG;
-                continue;
-            }
-            else if (strcasecmp("nothreads", argv[0]) == 0)
-            {
-                pttclass &= ~PTT_CL_THR;
-                continue;
-            }
-            else if (strcasecmp("threads", argv[0]) == 0)
-            {
-                pttclass |= PTT_CL_THR;
+                pttnolock = 0;
                 continue;
             }
             else if (strcasecmp("nolock", argv[0]) == 0)
@@ -230,9 +287,9 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
                 pttnolock = 1;
                 continue;
             }
-            else if (strcasecmp("lock", argv[0]) == 0)
+            else if (strcasecmp("tod", argv[0]) == 0)
             {
-                pttnolock = 0;
+                pttnotod = 0;
                 continue;
             }
             else if (strcasecmp("notod", argv[0]) == 0)
@@ -240,19 +297,14 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
                 pttnotod = 1;
                 continue;
             }
-            else if (strcasecmp("tod", argv[0]) == 0)
+            else if (strcasecmp("wrap", argv[0]) == 0)
             {
-                pttnotod = 0;
+                pttnowrap = 0;
                 continue;
             }
             else if (strcasecmp("nowrap", argv[0]) == 0)
             {
                 pttnowrap = 1;
-                continue;
-            }
-            else if (strcasecmp("wrap", argv[0]) == 0)
-            {
-                pttnowrap = 0;
                 continue;
             }
             else if (strncasecmp("to=", argv[0], 3) == 0 && strlen(argv[0]) > 3
@@ -269,6 +321,7 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
                     if (pttrace != NULL)
                     {
                         RELEASE_PTTLOCK;
+                        // "Pttrace: trace is busy"
                         WRMSG(HHC90010, "E");
                         return -1;
                     }
@@ -287,6 +340,7 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
             }
             else
             {
+                // "Pttrace: invalid argument %s"
                 WRMSG(HHC90011, "E", argv[0]);
                 rc = -1;
                 break;
@@ -308,32 +362,25 @@ DLL_EXPORT int ptt_cmd(int argc, char *argv[], char* cmdline)
             hthread_mutex_lock (&ptttolock);
             ptttotid = 0;
             rc = hthread_create (&ptttotid, NULL, ptt_timeout, NULL, "ptt_timeout");
-        if (rc)
-            WRMSG(HHC00102, "E", strerror(rc));
+            if (rc)
+                // "Error in function create_thread(): %s"
+                WRMSG(HHC00102, "E", strerror(rc));
             hthread_mutex_unlock (&ptttolock);
         }
-    }
-    else
-    {
-        if (pttracen)
-            rc = ptt_pthread_print();
 
-        WRMSG(HHC90012, "I",
-               (pttclass & PTT_CL_INF) ? "control " : "",
-               (pttclass & PTT_CL_ERR) ? "error " : "",
-               (pttclass & PTT_CL_PGM) ? "prog " : "",
-               (pttclass & PTT_CL_CSF) ? "inter " : "",
-               (pttclass & PTT_CL_SIE) ? "sie " : "",
-               (pttclass & PTT_CL_SIG) ? "signal " : "",
-               (pttclass & PTT_CL_IO) ? "io " : "",
-               (pttclass & PTT_CL_TMR) ? "timer " : "",
-               (pttclass & PTT_CL_THR) ? "threads " : "",
-               (pttclass & PTT_CL_LOG) ? "logger " : "",
-               pttnolock ? "nolock" : "lock",
-               pttnotod ? "notod" : "tod",
-               pttnowrap ? "nowrap" : "wrap",
-               pttto,
-               pttracen);
+        if (showparms)
+            ptt_showparms();
+    }
+    else /* No arguments. Dump the table. */
+    {
+        /* Dump table when tracing is active (number of entries > 0) */
+        if (pttracen)
+        {
+            /* Show parameters both before and after the table dump  */
+            ptt_showparms();
+            if (ptt_pthread_print() > 0)
+                ptt_showparms();
+        }
     }
 
     return rc;
@@ -379,7 +426,7 @@ DLL_EXPORT void ptt_trace_init( int n, int init )
 /*-------------------------------------------------------------------*/
 /* Primary PTT tracing function to fill in a PTT_TRACE table entry.  */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT void ptt_pthread_trace (int trclass, const char *msg,
+DLL_EXPORT void ptt_pthread_trace (U64 trclass, const char *msg,
                                    const void *data1, const void *data2,
                                    const char *loc, int rc, TIMEVAL* pTV)
 {
@@ -419,7 +466,7 @@ int i, n;
         else
             gettimeofday( &pttrace[i].tv, NULL );
     }
-    pttrace[i].tid     = hthread_self();
+    pttrace[i].tid     = thread_id();
     pttrace[i].trclass = trclass;
     pttrace[i].msg     = msg;
     pttrace[i].data1   = data1;
@@ -429,7 +476,8 @@ int i, n;
 }
 
 /*-------------------------------------------------------------------*/
-/* Function to print all PTT_TRACE table entries                     */
+/* Function to print all PTT_TRACE table entries.                    */
+/* Return code is the  #of table entries printed.                    */
 /*-------------------------------------------------------------------*/
 DLL_EXPORT int ptt_pthread_print ()
 {
@@ -453,30 +501,31 @@ char  tod[27];     // "YYYY-MM-DD HH:MM:SS.uuuuuu"
             {
                 FormatTIMEVAL( &pttrace[i].tv, tod, sizeof( tod ));
 
+                /* If this is the thread class, an 'rc' of PTT_MAGIC
+                   indicates its value is uninteresting to us, so we
+                   don't show it by formatting it as an empty string.
+                */
                 if (pttrace[i].rc == PTT_MAGIC && (pttrace[i].trclass & PTT_CL_THR))
                     retcode[0] = '\0';
                 else
+                {
+                    /* If not thread class, format return code as just
+                       another 32-bit hex value. Otherwise if it is the
+                       thread class, format it as a +/- decimal value.
+                    */
                     if((pttrace[i].trclass & ~PTT_CL_THR))
-                        MSGBUF(retcode, "%8.8x", pttrace[i].rc);
+                        MSGBUF(retcode, "%8.8"PRIx32, pttrace[i].rc);
                     else
                         MSGBUF(retcode, "%d", pttrace[i].rc);
-                logmsg
-                (
-                    "%-18s "                           // File name
-                    "%s "                              // Time of day (HH:MM:SS.usecs)
-                    I32_FMTX" "                        // Thread id (low 32 bits)
-                    "%-12s "                           // Trace message (string; 12 chars)
-                    PTR_FMTx" "                        // Data value 1
-                    PTR_FMTx" "                        // Data value 2
-                    "%s\n"                             // Return code (or empty string)
-
-                    ,pttrace[i].loc                    // File name
-                    ,&tod[11]                          // Time of day (HH:MM:SS.usecs)
-                    ,(U32)(uintptr_t)(pttrace[i].tid)  // Thread id (low 32 bits)
-                    ,pttrace[i].msg                    // Trace message (string; 12 chars)
-                    ,(uintptr_t)pttrace[i].data1       // Data value 1
-                    ,(uintptr_t)pttrace[i].data2       // Data value 2
-                    ,retcode                           // Return code (or empty string)
+                }
+                WRMSG( HHC90021, "I"
+                    , pttrace[i].loc                    // File name (string; 18 chars)
+                    , &tod[11]                          // Time of day (HH:MM:SS.usecs)
+                    , pttrace[i].tid                    // Thread id
+                    , pttrace[i].msg                    // Trace message (string; 18 chars)
+                    , (uintptr_t)pttrace[i].data1       // Data value 1
+                    , (uintptr_t)pttrace[i].data2       // Data value 2
+                    , retcode                           // Return code (or empty string)
                 );
                 count++;
             }

@@ -335,14 +335,10 @@
 #define SHR_DLL_IMPORT DLL_EXPORT
 #endif
 
-
-#define OPTION_SHARED_DEVICES
-#undef FBA_SHARED
-
-  /*
-   * Differing version levels are not compatible
-   * Differing release levels are compatible
-   */
+/*
+ * Differing version levels are not compatible
+ * Differing release levels are compatible
+ */
 
 #define SHARED_VERSION              0   /* Version level  (0 .. 15)  */
 #define SHARED_RELEASE              1   /* Release level  (0 .. 15)  */
@@ -475,11 +471,14 @@ static int     shared_ckd_write (DEVBLK *dev, int trk, int off,
                       BYTE *buf, int len, BYTE *unitstat);
 static int     shared_ckd_trklen (DEVBLK *dev, BYTE *buf);
 
-#if defined(FBA_SHARED)
+#if 0
+Not called
+#if defined( OPTION_SHARED_DEVICES ) && defined(FBA_SHARED)
 static int     shared_fba_read (DEVBLK *dev, int blkgrp, BYTE *unitstat);
 static int     shared_fba_write (DEVBLK *dev, int blkgrp, int off,
                       BYTE *buf, int len, BYTE *unitstat);
 static int     shared_fba_blkgrp_len (DEVBLK *dev, int blkgrp);
+#endif
 #endif
 
 static int     shared_used (DEVBLK *dev);
@@ -506,7 +505,7 @@ static void    serverDisconnect (DEVBLK *dev, int ix);
 static char   *clientip (int sock);
 static DEVBLK *findDevice (U16 devnum);
 static void   *serverConnect (void *psock);
-static void    shrdtrc (DEVBLK *dev, char *msg, ...);
+static void    shrdtrc (DEVBLK *dev, char *msg, ...) ATTR_PRINTF(2,3);
 #endif /* _SHARED_C_ */
 
 #endif /* _HERCULES_SHARED_H */

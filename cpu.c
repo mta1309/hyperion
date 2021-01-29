@@ -46,6 +46,8 @@
 #include "opcode.h"
 #include "inline.h"
 
+// #define JPHTEST
+
 /*-------------------------------------------------------------------*/
 /* Put a CPU in check-stop state                                     */
 /* Must hold the system intlock                                      */
@@ -402,7 +404,7 @@ static char *pgmintname[] = {
     if(regs->ghostregs)
         longjmp(regs->progjmp, pcode);
 
-    PTT(PTT_CL_PGM,"*PROG",pcode,(U32)(regs->TEA & 0xffffffff),regs->psw.IA_L);
+    PTT_PGM("*PROG",pcode,(U32)(regs->TEA & 0xffffffff),regs->psw.IA_L);
 
     /* program_interrupt() may be called with a shadow copy of the
        regs structure, realregs is the pointer to the real structure
@@ -581,9 +583,9 @@ static char *pgmintname[] = {
     if(code && (CPU_STEPPING_OR_TRACING(realregs, ilc)
         || sysblk.pgminttr & ((U64)1 << ((code - 1) & 0x3F))))
     {
-     BYTE *ip;
-     char buf1[10] = "";
-     char buf2[32] = "";
+    BYTE *ip;
+    char buf1[10] = "";
+    char buf2[32] = "";
 #if defined(OPTION_FOOTPRINT_BUFFER)
         if(!(sysblk.insttrace || sysblk.inststep))
             for(n = sysblk.footprptr[realregs->cpuad] + 1 ;
@@ -598,22 +600,33 @@ static char *pgmintname[] = {
           strlcpy(buf1, "SIE: ", sizeof(buf1) );
 #endif /*defined(_FEATURE_SIE)*/
 #if defined(SIE_DEBUG)
-       strlcpy(buf2, QSTR(_GEN_ARCH), sizeof(buf2) );
-       strlcat(buf2, " ", sizeof(buf2) );
+        strlcpy(buf2, QSTR(_GEN_ARCH), sizeof(buf2) );
+        strlcat(buf2, " ", sizeof(buf2) );
 #endif /*defined(SIE_DEBUG)*/
-       if (code == PGM_DATA_EXCEPTION)
+        if (code == PGM_DATA_EXCEPTION)
            snprintf(dxcstr, sizeof(dxcstr), " DXC=%2.2X", regs->dxc);
-       dxcstr[sizeof(dxcstr)-1] = '\0';
-       WRMSG(HHC00801, "I",
-        PTYPSTR(realregs->cpuad), realregs->cpuad, buf1, buf2,
-                pgmintname[ (code - 1) & 0x3F], pcode, ilc, dxcstr);
+        dxcstr[sizeof(dxcstr)-1] = '\0';
 
         /* Calculate instruction pointer */
         ip = realregs->instinvalid ? NULL
            : (realregs->ip - ilc < realregs->aip)
              ? realregs->inst : realregs->ip - ilc;
 
-        ARCH_DEP(display_inst) (realregs, ip);
+        /* Trace pgm interrupt if not being specially suppressed */
+        if (0
+            || !ip
+            || ip[0] != 0xB1 /* LRA */
+            || code != PGM_SPECIAL_OPERATION_EXCEPTION
+            || !sysblk.nolrasoe /* suppression not requested */
+        )
+        {
+            // "Processor %s%02X: %s%s %s code %4.4X  ilc %d%s"
+            WRMSG(HHC00801, "I",
+            PTYPSTR(realregs->cpuad), realregs->cpuad, buf1, buf2,
+                    pgmintname[ (code - 1) & 0x3F], pcode, ilc, dxcstr);
+
+            ARCH_DEP(display_inst) (realregs, ip);
+        }
     }
 
     realregs->instinvalid = 0;
@@ -916,13 +929,24 @@ static char *pgmintname[] = {
 
 #if defined(_FEATURE_SIE)
     if(nointercept)
-    {
 #endif /*defined(_FEATURE_SIE)*/
-//FIXME: Why are we getting intlock here??
-//      OBTAIN_INTLOCK(realregs);
+    {
+        PSW pgmold, pgmnew;
+        int pgmintloop = 0;
+        int detect_pgmintloop = FACILITY_ENABLED( DETECT_PGMINTLOOP, realregs );
 
         /* Store current PSW at PSA+X'28' or PSA+X'150' for ESAME */
         ARCH_DEP(store_psw) (realregs, psa->pgmold);
+
+        /* Save program old psw */
+        if (detect_pgmintloop)
+        {
+            memcpy( &pgmold, &realregs->psw, sizeof( PSW ));
+            pgmold.cc      = 0;
+            pgmold.intcode = 0;
+            pgmold.ilc     = 0;
+            pgmold.unused  = 0;
+        }
 
         /* Load new PSW from PSA+X'68' or PSA+X'1D0' for ESAME */
         if ( (code = ARCH_DEP(load_psw) (realregs, psa->pgmnew)) )
@@ -930,31 +954,46 @@ static char *pgmintname[] = {
 #if defined(_FEATURE_SIE)
             if(SIE_MODE(realregs))
             {
-//              RELEASE_INTLOCK(realregs);
                 longjmp(realregs->progjmp, pcode);
             }
             else
 #endif /*defined(_FEATURE_SIE)*/
-            if(FACILITY_ENABLED(DETECT_PGMINTLOOP,regs))
-            {
-                char buf[64];
+            /* Invalid pgmnew ==> program interrupt loop */
+            pgmintloop = detect_pgmintloop;
+        }
+        else if (detect_pgmintloop)
+        {
+            /* Save program new psw */
+            memcpy( &pgmnew, &realregs->psw, sizeof( PSW ));
+            pgmnew.cc      = 0;
+            pgmnew.intcode = 0;
+            pgmnew.ilc     = 0;
+            pgmnew.unused  = 0;
 
-                WRMSG(HHC00803, "I", PTYPSTR(realregs->cpuad), realregs->cpuad,
-                         str_psw (realregs, buf));
-                OBTAIN_INTLOCK(realregs);
-                realregs->cpustate = CPUSTATE_STOPPING;
-                ON_IC_INTERRUPT(realregs);
-                RELEASE_INTLOCK(realregs);
-            }
+            /* Adjust pgmold instruction address */
+            pgmold.ia.D -= ilc;
+
+            /* Check for program interrupt loop (old==new) */
+            if (memcmp( &pgmold, &pgmnew, sizeof( PSW )) == 0)
+                pgmintloop = 1;
         }
 
-//      RELEASE_INTLOCK(realregs);
+        if (pgmintloop)
+        {
+            char buf[64];
+            // "Processor %s%02X: program interrupt loop PSW %s"
+            WRMSG(HHC00803, "I", PTYPSTR(realregs->cpuad), realregs->cpuad,
+                     str_psw (realregs, buf));
+            OBTAIN_INTLOCK(realregs);
+            realregs->cpustate = CPUSTATE_STOPPING;
+            ON_IC_INTERRUPT(realregs);
+            RELEASE_INTLOCK(realregs);
+        }
 
         longjmp(realregs->progjmp, SIE_NO_INTERCEPT);
-
-#if defined(_FEATURE_SIE)
     }
 
+#if defined(_FEATURE_SIE)
     longjmp (realregs->progjmp, pcode);
 #endif /*defined(_FEATURE_SIE)*/
 
@@ -968,7 +1007,7 @@ static void ARCH_DEP(restart_interrupt) (REGS *regs)
 int     rc;                             /* Return code               */
 PSA    *psa;                            /* -> Prefixed storage area  */
 
-    PTT(PTT_CL_INF,"*RESTART",regs->cpuad,regs->cpustate,regs->psw.IA_L);
+    PTT_INF("*RESTART",regs->cpuad,regs->cpustate,regs->psw.IA_L);
 
     /* Set the main storage reference and change bits */
     STORAGE_KEY(regs->PX, regs) |= (STORKEY_REF | STORKEY_CHANGE);
@@ -1021,7 +1060,7 @@ DBLWRD  csw;                            /* CSW for S/370 channels    */
     /* Exit if no interrupt was presented */
     if (icode == 0) return;
 
-    PTT(PTT_CL_IO,"*IOINT",ioid,ioparm,iointid);
+    PTT_IO("*IOINT",ioid,ioparm,iointid);
 
 #if defined(_FEATURE_IO_ASSIST)
     if(SIE_MODE(regs) && icode != SIE_NO_INTERCEPT)
@@ -1234,19 +1273,13 @@ int   rc;
             return NULL;
         }
     }
-    /* Set root mode in order to set priority */
-    SETMODE(ROOT);
 
     /* Set CPU thread priority */
-    if (setpriority(PRIO_PROCESS, 0, sysblk.cpuprio))
-        WRMSG(HHC00136, "W", "setpriority()", strerror(errno));
-
-    /* Back to user mode */
-    SETMODE(USER);
+    set_thread_priority(0, sysblk.cpuprio);
 
     /* Display thread started message on control panel */
     MSGBUF( cpustr, "Processor %s%02X", PTYPSTR( cpu ), cpu );
-    WRMSG(HHC00100, "I", (u_long)thread_id(), getpriority(PRIO_PROCESS,0), cpustr);
+    WRMSG(HHC00100, "I", thread_id(), get_thread_priority(0), cpustr);
     SET_THREAD_NAME_ID(-1, cpustr);
 
     /* Execute the program in specified mode */
@@ -1271,7 +1304,7 @@ int   rc;
     signal_condition (&sysblk.cpucond);
 
     /* Display thread ended message on control panel */
-    WRMSG(HHC00101, "I", (u_long)thread_id(),  getpriority(PRIO_PROCESS,0), cpustr);
+    WRMSG(HHC00101, "I", thread_id(),  get_thread_priority(0), cpustr);
 
     RELEASE_INTLOCK(NULL);
 
@@ -1454,13 +1487,35 @@ CPU_Wait (REGS* regs)
         wait_condition (&sysblk.sync_bc_cond, &sysblk.intlock);
     }
 
+    /*
+    ** Let test script know when a CPU either stops or loads a
+    ** disabled wait state PSW, but NOT when a CPU simply loads
+    ** an ENABLED wait PSW such as when it wishes to simply wait
+    ** for an I/O, External or other type of interrupt.
+    **
+    ** NOTE: we can't rely on just sysblk.started_mask since there
+    ** is no guarantee the last CPU to have its sysblk.started_mask
+    ** cleared will actually be the last CPU to reach this point.
+    */
+    if (WAITSTATE( &regs->psw ) && !IS_IC_DISABLED_WAIT_PSW( regs ))
+        ;   /* enabled wait: do nothing */
+    else
+    {
+        obtain_lock( &sysblk.scrlock );
+        if (sysblk.scrtest)
+        {
+            sysblk.scrtest++;
+            broadcast_condition( &sysblk.scrcond );
+        }
+        release_lock( &sysblk.scrlock );
+    }
+
     /* Wait for interrupt */
     wait_condition (&regs->intcond, &sysblk.intlock);
 
     /* And we're the owner of intlock once again */
     sysblk.intowner = regs->cpuad;
 }
-
 
 #endif /*!defined(_GEN_ARCH)*/
 
@@ -1579,7 +1634,7 @@ cpustate_stopping:
     /* This is where a stopped CPU will wait */
     if (unlikely(regs->cpustate == CPUSTATE_STOPPED))
     {
-        TOD saved_timer = cpu_timer(regs);
+        S64 saved_timer = cpu_timer(regs);
         regs->ints_state = IC_INITIAL_STATE;
         sysblk.started_mask ^= regs->cpubit;
 
@@ -1609,15 +1664,16 @@ cpustate_stopping:
     if (WAITSTATE(&regs->psw))
     {
         regs->waittod = host_tod();
-        set_cpu_timer_mode(regs);
 
         /* Test for disabled wait PSW and issue message */
         if( IS_IC_DISABLED_WAIT_PSW(regs) )
         {
             char buf[40];
+            // "Processor %s%02X: disabled wait state %s"
             WRMSG (HHC00809, "I", PTYPSTR(regs->cpuad), regs->cpuad, str_psw(regs, buf));
             regs->cpustate = CPUSTATE_STOPPING;
             RELEASE_INTLOCK(regs);
+
             longjmp(regs->progjmp, SIE_NO_INTERCEPT);
         }
 
@@ -1638,8 +1694,6 @@ cpustate_stopping:
         /* Calculate the time we waited */
         regs->waittime += host_tod() - regs->waittod;
         regs->waittod = 0;
-
-        set_cpu_timer_mode(regs);
 
         /* If late state change to stopping, go reprocess */
         if (unlikely(regs->cpustate == CPUSTATE_STOPPING))
@@ -1721,7 +1775,7 @@ register int    *caplocked = &sysblk.caplocked[cpu];
     /* Switch architecture mode if appropriate */
     if(sysblk.arch_mode != regs->arch_mode)
     {
-        PTT(PTT_CL_INF,"*SETARCH",regs->arch_mode,sysblk.arch_mode,cpu);
+        PTT_INF("*SETARCH",regs->arch_mode,sysblk.arch_mode,cpu);
         regs->arch_mode = sysblk.arch_mode;
         oldregs = malloc_aligned(sizeof(REGS), 4096);
         if (oldregs)
@@ -1782,8 +1836,7 @@ register int    *caplocked = &sysblk.caplocked[cpu];
 
     } while (1);
 
-    /* Never reached */
-    return NULL;
+    UNREACHABLE_CODE( return NULL );
 
 } /* end function cpu_thread */
 
@@ -1814,7 +1867,7 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
     if (shouldstep)
     {
         REGS *hostregs = regs->hostregs;
-        TOD saved_timer[2];
+        S64 saved_timer[2];
 
         OBTAIN_INTLOCK(hostregs);
 #ifdef OPTION_MIPS_COUNTING
@@ -1822,8 +1875,8 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
 #endif
         /* The CPU timer is not decremented for a CPU that is in
            the manual state (e.g. stopped in single step mode) */
-        save_cpu_timers(hostregs, &saved_timer[0],
-                        regs,     &saved_timer[1]);
+        saved_timer[0] = cpu_timer(regs);
+        saved_timer[1] = cpu_timer(hostregs);
         hostregs->cpustate = CPUSTATE_STOPPED;
         sysblk.started_mask &= ~hostregs->cpubit;
         hostregs->stepwait = 1;
@@ -1835,8 +1888,8 @@ int     shouldstep = 0;                 /* 1=Wait for start command  */
         sysblk.intowner = hostregs->cpuad;
         hostregs->stepwait = 0;
         sysblk.started_mask |= hostregs->cpubit;
-        set_cpu_timers(hostregs, saved_timer[0],
-                       regs,     saved_timer[1]);
+        set_cpu_timer(regs,saved_timer[0]);
+        set_cpu_timer(hostregs,saved_timer[1]);
 #ifdef OPTION_MIPS_COUNTING
         hostregs->waittime += host_tod() - hostregs->waittod;
         hostregs->waittod = 0;

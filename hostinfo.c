@@ -12,12 +12,17 @@
 
 #include "hstdinc.h"
 
+#ifndef _HOSTINFO_C_
 #define _HOSTINFO_C_
+#endif
+
+#ifndef _HUTIL_DLL_
 #define _HUTIL_DLL_
+#endif
 
 #include "hercules.h"
 
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(HAVE_SYS_SYSCTL_H)
 #include <sys/sysctl.h>
 #endif
 
@@ -135,28 +140,25 @@ DLL_EXPORT void init_hostinfo ( HOST_INFO* pHostInfo )
         if ( sysctlbyname("hw.cpufrequency", &ui64RV, &length, NULL, 0 ) != -1 )
             pHostInfo->cpu_speed = ui64RV;
 
-        length = sizeof(iRV);
-        if ( CMD(pHostInfo->machine,i386,4) )
+        length = (size_t)sizeof(iRV);
+        iRV = 0;
+        if ( sysctlbyname("hw.optional.x86_64", &iRV, &length, NULL, 0 ) != -1 )
         {
-            if ( sysctlbyname("hw.optional.x86_64", &iRV, &length, NULL, 0 ) != -1 )
-            {
-                char mach[64];
+            char mach[64];
 
-                MSGBUF( mach, "%s %s", iRV != 0 ? "64-bit" : "32-bit", pHostInfo->machine );
-                strlcpy( pHostInfo->machine, mach, sizeof( pHostInfo->machine ) );
-                pHostInfo->cpu_64bits = 1;
-            }
+            MSGBUF( mach, "%s %s", iRV != 0 ? "64-bit" : "32-bit", pHostInfo->machine );
+            strlcpy( pHostInfo->machine, mach, sizeof( pHostInfo->machine ) );
+            pHostInfo->cpu_64bits = 1;
         }
-        else
-        {
-            if ( sysctlbyname("hw.optional.64bitops", &iRV, &length, NULL, 0 ) != -1 )
-            {
-                char mach[64];
 
-                MSGBUF( mach, "%s %s", iRV != 0 ? "64-bit" : "32-bit", pHostInfo->machine );
-                strlcpy( pHostInfo->machine, mach, sizeof( pHostInfo->machine ) );
-                pHostInfo->cpu_64bits = 1;
-            }
+        iRV = 0;
+        if ( sysctlbyname("hw.optional.aes", &iRV, &length, NULL, 0 ) != -1 )
+        {
+            char mach[64];
+
+            MSGBUF( mach, "%s %s", iRV != 0 ? "64-bit" : "32-bit", pHostInfo->machine );
+            strlcpy( pHostInfo->machine, mach, sizeof( pHostInfo->machine ) );
+            pHostInfo->cpu_aes_extns = 1;
         }
 
 #if defined(HW_MEMSIZE)
@@ -225,7 +227,7 @@ DLL_EXPORT void init_hostinfo ( HOST_INFO* pHostInfo )
     }
 #endif
 
-    pHostInfo->hostpagesz = (RADR) HPAGESIZE();
+    pHostInfo->hostpagesz = (U64) HPAGESIZE();
 
     if ( pHostInfo->cachelinesz == 0 )
     {
@@ -235,13 +237,13 @@ DLL_EXPORT void init_hostinfo ( HOST_INFO* pHostInfo )
 
     if ( pHostInfo->L1Dcachesz == 0 && pHostInfo->L1Icachesz == 0 && pHostInfo->L1Ucachesz == 0 )
     {
-        pHostInfo->L1Dcachesz = pHostInfo->L1Icachesz = (RADR)((RADR)8 << SHIFT_KILOBYTE );
+        pHostInfo->L1Dcachesz = pHostInfo->L1Icachesz = ((U64)8 << SHIFT_KILOBYTE );
         pHostInfo->valid_cache_nums = FALSE;
     }
 
     if ( pHostInfo->L2cachesz == 0 )
     {
-        pHostInfo->L2cachesz = (RADR)((RADR)256 << SHIFT_KILOBYTE );
+        pHostInfo->L2cachesz = ((U64)256 << SHIFT_KILOBYTE );
         pHostInfo->valid_cache_nums = FALSE;
     }
 
@@ -278,15 +280,26 @@ DLL_EXPORT char* get_hostinfo_str ( HOST_INFO*  pHostInfo,
                 strlcpy( num_procs,   "",  sizeof(num_procs) );
         }
 
+#if defined( OPTION_LONG_HOSTINFO )
         snprintf( pszHostInfoStrBuff, nHostInfoStrBuffSiz,
-            _("Running on %s %s-%s. %s, %s%s"),
+            "Running on %s %s-%s. %s, %s%s",
             pHostInfo->nodename,
             pHostInfo->sysname,
             pHostInfo->release,
-            pHostInfo->version,
+            pHostInfo->version,     // (show host version too)
             pHostInfo->machine,
             num_procs
         );
+#else // (short: no host version info)
+        snprintf( pszHostInfoStrBuff, nHostInfoStrBuffSiz,
+            "Running on: %s (%s-%s %s)%s",
+            pHostInfo->nodename,
+            pHostInfo->sysname,
+            pHostInfo->release,
+            pHostInfo->machine,
+            num_procs
+        );
+#endif
         *(pszHostInfoStrBuff + nHostInfoStrBuffSiz - 1) = 0;
     }
     return pszHostInfoStrBuff;
@@ -295,18 +308,21 @@ DLL_EXPORT char* get_hostinfo_str ( HOST_INFO*  pHostInfo,
 /*-------------------------------------------------------------------*/
 /* Display host system information on the indicated stream           */
 /*-------------------------------------------------------------------*/
-DLL_EXPORT void display_hostinfo ( HOST_INFO* pHostInfo, FILE *f, int httpfd )
+DLL_EXPORT void display_hostinfo ( HOST_INFO* pHostInfo, FILE* f, int httpfd )
 {
     char host_info_str[256]; init_hostinfo( pHostInfo );
+
     get_hostinfo_str(pHostInfo, host_info_str, sizeof(host_info_str));
-    if(httpfd<0)
-    {
-        if (!f) f = stdout; if (f != stdout)
-             fprintf(f, MSG(HHC01417, "I", host_info_str));
-        else WRMSG(HHC01417, "I", host_info_str);
-    }
+
+    if (httpfd)
+        hprintf( httpfd, MSG( HHC01417, "I", host_info_str ));
     else
     {
-        hprintf(httpfd, MSG(HHC01417, "I", host_info_str));
+        if (!f)
+            f = stdout;
+        if (f == stdout)
+            WRMSG( HHC01417, "I", host_info_str );
+        else
+             fprintf( f, MSG( HHC01417, "I", host_info_str ));
     }
 }

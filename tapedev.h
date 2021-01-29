@@ -11,8 +11,8 @@
 /* for the Hercules ESA/390 emulator.                                */
 /*-------------------------------------------------------------------*/
 
-#ifndef __TAPEDEV_H__
-#define __TAPEDEV_H__
+#ifndef _TAPEDEV_H_
+#define _TAPEDEV_H_
 
 #include "scsitape.h"       /* SCSI Tape handling functions          */
 #include "htypes.h"         /* Hercules struct typedefs              */
@@ -185,7 +185,7 @@
 #define STS_EOD(dev)            GMT_EOD     ( (dev)->sstat )
 #define STS_WR_PROT(dev)        GMT_WR_PROT ( (dev)->sstat )
 #define STS_ONLINE(dev)         GMT_ONLINE  ( (dev)->sstat )
-#define STS_MOUNTED(dev)        ((dev)->fd >= 0 && !GMT_DR_OPEN( (dev)->sstat ))
+#define STS_MOUNTED(dev)        int_scsi_status_mounted((dev),0)
 #define STS_NOT_MOUNTED(dev)    (!STS_MOUNTED(dev))
 #endif
 
@@ -340,9 +340,11 @@ struct TAPEMEDIA_HANDLER
 /*-------------------------------------------------------------------*/
 /* Functions defined in TAPEDEV.C                                    */
 /*-------------------------------------------------------------------*/
+#ifdef _TAPEDEV_C_
 static int   tapedev_init_handler   (DEVBLK *dev, int argc, char *argv[]);
 static int   tapedev_close_device   (DEVBLK *dev );
 static void  tapedev_query_device   (DEVBLK *dev, char **devclass, int buflen, char *buffer);
+#endif
 
 extern void  autoload_init          (DEVBLK *dev, int ac,   char **av);
 extern int   autoload_mount_first   (DEVBLK *dev);
@@ -769,4 +771,4 @@ extern int  readhdr_omaheaders (DEVBLK *dev, OMATAPE_DESC *omadesc,
 #define  TAPE_SNS7_FMT_70_3490                0x70
 #define  TAPE_SNS7_FMT_71_3490                0x71
 
-#endif // __TAPEDEV_H__
+#endif // _TAPEDEV_H_

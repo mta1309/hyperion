@@ -49,7 +49,7 @@ RADR    pfx;
 PSA     *psa;
 int     rc;
 
-    PTT(PTT_CL_SIG,"*EXTINT",code,regs->cpuad,regs->psw.IA_L);
+    PTT_SIG("*EXTINT",code,regs->cpuad,regs->psw.IA_L);
 
 #if defined(_FEATURE_SIE)
     /* Set the main storage reference and change bits */
@@ -159,7 +159,6 @@ void ARCH_DEP(perform_external_interrupt) (REGS *regs)
 {
 PSA    *psa;                            /* -> Prefixed storage area  */
 U16     cpuad;                          /* Originating CPU address   */
-S64     dreg;                           /* Double word workarea      */
 #if defined(FEATURE_VM_BLOCKIO)
 #if defined(FEATURE_ESAME)
 RADR    servpadr;      /* Address of 64-bit block I/O interrupt */
@@ -287,13 +286,12 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
     }
 
     /* External interrupt if CPU timer is negative */
-    dreg = cpu_timer(regs);
-    if ( dreg < 0
+    if ( CPU_TIMER(regs) < 0
         && OPEN_IC_PTIMER(regs) )
     {
         if (CPU_STEPPING_OR_TRACING_ALL)
         {
-            WRMSG (HHC00842, "I", dreg );
+            WRMSG (HHC00842, "I", CPU_TIMER(regs) );
         }
         ARCH_DEP(external_interrupt) (EXT_CPU_TIMER_INTERRUPT, regs);
     }
@@ -328,7 +326,7 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
     {
 
 #if defined(FEATURE_VM_BLOCKIO)
-        
+
         /* Note: Both Block I/O and Service Signal are enabled by the */
         /* the same CR0 bit.  Hence they are handled in the same code */
         switch(sysblk.servcode)
@@ -355,7 +353,7 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
            if (sysblk.biosubcd == 0x07)
            {
            /* 8-byte interrupt parm */
-           
+
                if (CPU_STEPPING_OR_TRACING_ALL)
                {
                   char buf[40];
@@ -373,7 +371,7 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
                /* Point to 2nd page of PSA in main storage */
                servpadr=APPLY_PREFIXING(VM_BLOCKIO_INT_PARM,regs->PX);
 
-               STORAGE_KEY(servpadr, regs) 
+               STORAGE_KEY(servpadr, regs)
                      |= (STORKEY_REF | STORKEY_CHANGE);
 
 #if 0
@@ -411,18 +409,18 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
 
            /* Store sub-interruption code and status at PSA+X'84' */
            STORE_HW(psa->extcpad,(sysblk.biosubcd<<8)|sysblk.biostat);
-           
+
            /* Reset interruption data */
            sysblk.bioparm  = 0;
            sysblk.biosubcd = 0;
            sysblk.biostat  = 0;
-           
+
            break;
 
         case EXT_SERVICE_SIGNAL_INTERRUPT: /* Service Signal */
         default:
              servcode = EXT_SERVICE_SIGNAL_INTERRUPT;
-             
+
             /* Apply prefixing if the parameter is a storage address */
             if ( (sysblk.servparm & SERVSIG_ADDR) )
                 sysblk.servparm =
@@ -449,7 +447,7 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
 
         /* Generate service signal interrupt */
         ARCH_DEP(external_interrupt) (servcode, regs);
-             
+
 #else /* defined(FEATURE_VM_BLOCKIO) */
 
         /* Apply prefixing if the parameter is a storage address */
@@ -471,7 +469,7 @@ U16     servcode;      /* Service Signal or Block I/O Interrupt code */
 
         /* Reset service signal pending */
         OFF_IC_SERVSIG;
-        
+
         /* Generate service signal interrupt */
         ARCH_DEP(external_interrupt) (EXT_SERVICE_SIGNAL_INTERRUPT, regs);
 

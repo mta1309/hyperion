@@ -13,7 +13,10 @@
 #define _HSTDINC_H
 
 #ifdef HAVE_CONFIG_H
-  #include <config.h> // Hercules build configuration options/settings
+  #ifndef    _CONFIG_H
+  #define    _CONFIG_H
+    #include <config.h>         /* Hercules build configuration      */
+  #endif /*  _CONFIG_H*/
 #endif
   #include "hqainc.h" // User override of build configuration/settings
 #ifdef WIN32
@@ -24,7 +27,10 @@
 /* Required and optional SYSTEM headers...                           */
 /*-------------------------------------------------------------------*/
 
+#if !defined(_REENTRANT)
+/* Jan should have specified -pthread for linking.  jph              */
 #define _REENTRANT    /* Ensure that reentrant code is generated *JJ */
+#endif
 #define _THREAD_SAFE            /* Some systems use this instead *JJ */
 
 #if defined(HAVE_STRSIGNAL) && defined(__GNUC__) && !defined(_GNU_SOURCE)
@@ -48,7 +54,23 @@
   #include <windows.h>
 #endif
 
+/* -----------------------------------------------------------------------------------------
+   Note: <math.h> must come BEFORE <intrin.h> for Visual Studio 2008 because
+   of a duplicate definition of the ceil() function in those two headers.  See
+   MS VC Bug ID 381422 at https://connect.microsoft.com/VisualStudio/Feedback/Details/381422
+   for additional information.  This issue was addressed by the time of Visual
+   Studio 2015, when the Windows headers including <intrin.h> were moved to the
+   Windows SDK and the ceil() definition removed.  This issue may have been
+   addressed between VS2008 and VS2015, but we do not have confirmation.  (Yet?)
+
+   So if we are building on Windows before VS2015, we shall include <math.h> here.
+   Otherwise we shall include it later in the list of headers.
+   ---------------------------------------------------------------------------------------- */
+
 #ifdef _MSVC_
+#  if (_MSC_VER < VS2015) || defined(HAVE_MATH_H_FIRST)
+#    include <math.h>
+#  endif
   #include <xmmintrin.h>
   #include <tchar.h>
   #include <wincon.h>
@@ -58,10 +80,12 @@
   #include <tlhelp32.h>
   #include <dbghelp.h>
   #include <crtdbg.h>
+  #include <intrin.h>
 #else
   #include <libgen.h>
 #endif
 
+#include <stddef.h>             // (ptrdiff_t, size_t, offsetof, etc)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -80,11 +104,13 @@
 #include <time.h>
 #include <sys/stat.h>
 #if !defined(_MSVC_)
+  #include <sched.h>
   #include <sys/time.h>
   #include <sys/ioctl.h>
   #include <sys/mman.h>
 #endif
 #include <sys/types.h>
+#include <math.h>           /* needed for impl.c, clock.c, control.c use  */
 
 /* Optional headers  --  These we can live without */
 
@@ -109,12 +135,20 @@
 #ifdef HAVE_NETINET_IN_H
   #include <netinet/in.h>
 #endif
-#ifdef HAVE_NETINET_TCP_H
+#if defined( HAVE_NETINET_TCP_H )
   #include <netinet/tcp.h>
+#elif defined( HAVE_NET_TCP_H )
+  #include <net/tcp.h>
 #endif
 #ifdef HAVE_SYS_IOCTL_H
   #include <sys/ioctl.h>
 #endif
+
+/*  sockio.h needed for Solaris only.  It is guarded, so a NOP on BSD systems.  */
+#ifdef HAVE_SYS_SOCKIO_H
+  #include <sys/sockio.h>
+#endif
+
 #ifdef HAVE_SYS_PARAM_H
   #include <sys/param.h>
 #endif
@@ -173,17 +207,11 @@
     #endif
   #endif
 #endif
-#ifdef HAVE_FENV_H
-  #include <fenv.h>
-#endif
 #ifdef HAVE_INTTYPES_H
   #include <inttypes.h>
 #endif
 #ifdef HAVE_MALLOC_H
   #include <malloc.h>
-#endif
-#ifdef HAVE_MATH_H
-  #include <math.h>
 #endif
 #ifdef HAVE_NETDB_H
   #include <netdb.h>
@@ -193,9 +221,6 @@
 #endif
 #ifdef HAVE_REGEX_H
   #include <regex.h>
-#endif
-#ifdef HAVE_SCHED_H
-  #include <sched.h>
 #endif
 #ifdef HAVE_SIGNAL_H
   #include <signal.h>
@@ -232,5 +257,8 @@
 #include "hostopts.h"           // Must come before htypes.h
 #include "htypes.h"             // Hercules-wide data types
 #include "dbgtrace.h"           // Hercules default debugging
+
+/* Defines CAN_IAF2 needed for FEATURE_INTERLOCKED_ACCESS_FACILITY_2 */
+#include "hatomic.h"                  /* Interlocked update          */
 
 #endif // _HSTDINC_H
